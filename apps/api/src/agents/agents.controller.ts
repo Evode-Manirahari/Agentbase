@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { z } from 'zod';
 import { ZodValidationPipe } from 'nestjs-zod';
 import {
   RegisterAgentRequest,
@@ -6,6 +15,12 @@ import {
   type RegisterAgentResponse,
 } from '@dejavas/shared';
 import { AgentsService } from './agents.service.js';
+
+const RevokeAgentRequest = z.object({
+  reason: z.string().max(1000).optional(),
+  revoked_by_email: z.string().email().optional(),
+});
+type RevokeAgentRequest = z.infer<typeof RevokeAgentRequest>;
 
 @Controller('v1/agents')
 export class AgentsController {
@@ -39,6 +54,21 @@ export class AgentsController {
       orgId,
       name: body.name,
       description: body.description,
+    });
+  }
+
+  @Post(':id/revoke')
+  async revoke(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body(new ZodValidationPipe(RevokeAgentRequest))
+    body: RevokeAgentRequest,
+  ) {
+    const orgId = await this.agents.ensureDefaultOrg();
+    return this.agents.revoke({
+      orgId,
+      agentId: id,
+      reason: body.reason,
+      revokedByEmail: body.revoked_by_email,
     });
   }
 }

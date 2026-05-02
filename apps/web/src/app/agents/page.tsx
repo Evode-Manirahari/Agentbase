@@ -21,6 +21,21 @@ async function registerAgentAction(formData: FormData) {
   revalidatePath('/');
 }
 
+async function revokeAgentAction(formData: FormData) {
+  'use server';
+  const id = String(formData.get('agent_id') ?? '');
+  const email = String(formData.get('revoked_by_email') ?? '').trim() || undefined;
+  const reason = String(formData.get('reason') ?? '').trim() || undefined;
+  if (!id) return;
+  await api.agents.revoke(id, {
+    ...(email ? { revoked_by_email: email } : {}),
+    ...(reason ? { reason } : {}),
+  });
+  revalidatePath('/agents');
+  revalidatePath('/audit');
+  revalidatePath('/');
+}
+
 export default async function AgentsPage() {
   let items: Awaited<ReturnType<typeof api.agents.list>>['items'] = [];
   let error: unknown = null;
@@ -61,6 +76,7 @@ export default async function AgentsPage() {
                 <th className="text-left px-4 py-2 font-medium">Status</th>
                 <th className="text-left px-4 py-2 font-medium">API key prefix</th>
                 <th className="text-left px-4 py-2 font-medium">Created</th>
+                <th className="text-left px-4 py-2 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -78,6 +94,30 @@ export default async function AgentsPage() {
                   <td className="px-4 py-2 mono text-xs">{a.api_key_prefix ?? '—'}</td>
                   <td className="px-4 py-2 mono text-xs text-[var(--color-muted)]">
                     {new Date(a.created_at).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2">
+                    {a.status === 'active' ? (
+                      <form action={revokeAgentAction} className="flex gap-2 items-center">
+                        <input type="hidden" name="agent_id" value={a.id} />
+                        <input
+                          type="email"
+                          name="revoked_by_email"
+                          placeholder="your@email.com"
+                          required
+                          className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 text-xs focus:outline-none focus:border-[var(--color-accent)] w-44"
+                        />
+                        <button
+                          type="submit"
+                          className="px-3 py-1 rounded-md text-xs font-medium bg-rose-500/15 border border-rose-500/40 text-rose-300 hover:bg-rose-500/25"
+                        >
+                          Revoke
+                        </button>
+                      </form>
+                    ) : (
+                      <span className="text-xs text-[var(--color-muted)]">
+                        {a.revoked_at ? new Date(a.revoked_at).toLocaleString() : '—'}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

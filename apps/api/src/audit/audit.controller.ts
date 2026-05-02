@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, forwardRef, Get, Inject, Query } from '@nestjs/common';
 import { AuditService } from './audit.service.js';
 import { AgentsService } from '../agents/agents.service.js';
 
@@ -6,6 +6,7 @@ import { AgentsService } from '../agents/agents.service.js';
 export class AuditController {
   constructor(
     private readonly audit: AuditService,
+    @Inject(forwardRef(() => AgentsService))
     private readonly agents: AgentsService,
   ) {}
 

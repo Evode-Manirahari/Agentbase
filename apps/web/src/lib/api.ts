@@ -89,6 +89,17 @@ export const api = {
         `/v1/agents`,
         { method: 'POST', body: JSON.stringify(body) },
       ),
+    revoke: (agentId: string, body: { reason?: string; revoked_by_email?: string } = {}) =>
+      req<{
+        agent_id: string;
+        status: 'revoked';
+        revoked_at: string | null;
+        keys_revoked: number;
+        already_revoked: boolean;
+      }>(`/v1/agents/${agentId}/revoke`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   },
   actions: {
     list: (limit = 100) => req<{ items: ActionRow[] }>(`/v1/actions?limit=${limit}`),

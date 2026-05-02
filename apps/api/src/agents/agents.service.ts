@@ -1,13 +1,18 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { desc, eq } from 'drizzle-orm';
+import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
 import { agents, agentApiKeys, orgs } from '@dejavas/db';
 import { generateApiKey } from '../auth/api-key.js';
+import { AuditService } from '../audit/audit.service.js';
 
 @Injectable()
 export class AgentsService {
-  constructor(@Inject(DB) private readonly db: Database) {}
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    @Inject(forwardRef(() => AuditService))
+    private readonly audit: AuditService,
+  ) {}
 
   /**
    * Bootstrap helper for the smoke test: ensure a default org exists and return its id.
@@ -60,6 +65,71 @@ export class AgentsService {
     const row = rows[0];
     if (!row) throw new NotFoundException('agent not found');
     return row;
+  }
+
+  async revoke(input: {
+    orgId: string;
+    agentId: string;
+    reason?: string | undefined;
+    revokedByEmail?: string | undefined;
+  }) {
+    const rows = await this.db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.id, input.agentId), eq(agents.orgId, input.orgId)))
+      .limit(1);
+    const found = rows[0];
+    if (!found) throw new NotFoundException('agent not found');
+
+    if (found.status === 'revoked') {
+      return {
+        agent_id: found.id,
+        status: 'revoked' as const,
+        revoked_at: found.revokedAt?.toISOString() ?? null,
+        keys_revoked: 0,
+        already_revoked: true,
+      };
+    }
+
+    const now = new Date();
+    const revokedKeys = await this.db.transaction(async (tx) => {
+      await tx
+        .update(agents)
+        .set({ status: 'revoked', revokedAt: now })
+        .where(eq(agents.id, input.agentId));
+      return tx
+        .update(agentApiKeys)
+        .set({ revokedAt: now })
+        .where(
+          and(
+            eq(agentApiKeys.agentId, input.agentId),
+            isNull(agentApiKeys.revokedAt),
+          ),
+        )
+        .returning({ id: agentApiKeys.id, prefix: agentApiKeys.keyPrefix });
+    });
+
+    await this.audit.record({
+      orgId: input.orgId,
+      actorType: 'user',
+      actorId: input.revokedByEmail ?? 'unknown',
+      eventType: 'agent.revoked',
+      payload: {
+        agentId: input.agentId,
+        agentName: found.name,
+        keysRevoked: revokedKeys.length,
+        keyPrefixes: revokedKeys.map((k) => k.prefix),
+        reason: input.reason ?? null,
+      },
+    });
+
+    return {
+      agent_id: found.id,
+      status: 'revoked' as const,
+      revoked_at: now.toISOString(),
+      keys_revoked: revokedKeys.length,
+      already_revoked: false,
+    };
   }
 
   async listForOrg(orgId: string, limit = 100) {
