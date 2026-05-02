@@ -212,10 +212,8 @@ describe('OutreachConnector.invoke — HTTP behavior', () => {
     const r = await c.invoke('outreach.prospects.create', { attributes: {} });
     assert.equal(r.error?.code, 'http_422');
     assert.match(r.error?.message ?? '', /emails: can't be blank/);
-    assert.deepEqual(
-      ((r.error?.details as { errors: { detail: string }[] }).errors[0]).detail,
-      "emails: can't be blank",
-    );
+    const details = r.error?.details as { errors: { detail: string }[] };
+    assert.equal(details.errors[0]?.detail, "emails: can't be blank");
   });
 
   it('falls back to title when detail is absent', async () => {
