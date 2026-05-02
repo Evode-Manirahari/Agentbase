@@ -82,6 +82,7 @@ export class ActionsService {
 
       if (approval && this.slack.isConfigured()) {
         const agentName = await this.lookupAgentName(input.agentId);
+        const channelOverride = decision.rule_matched?.slack_channel ?? null;
         const card = await this.slack.postApprovalCard({
           approvalId: approval.id,
           agentName,
@@ -89,6 +90,7 @@ export class ActionsService {
           params: input.params,
           reason: decision.reason ?? null,
           expiresAt,
+          channelOverride,
         });
         if (card) {
           await this.audit.record({
@@ -100,6 +102,7 @@ export class ActionsService {
               approvalId: approval.id,
               actionId: action.id,
               channel: card.channel,
+              channel_override_used: channelOverride,
               ts: card.ts,
             },
           });

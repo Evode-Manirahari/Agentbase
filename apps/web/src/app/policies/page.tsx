@@ -18,6 +18,12 @@ rules:
     effect: require_approval
     approver_role: approver
     reason: "high-value deal"
+    slack_channel: "#critical-approvals"
+  - match:
+      tool: hubspot.deals.update
+    effect: require_approval
+    approver_role: approver
+    reason: "deal change"
   - match:
       tool: hubspot.*.delete
     effect: deny

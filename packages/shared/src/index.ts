@@ -80,6 +80,7 @@ export const PolicyRule = z.object({
   effect: PolicyEffect,
   approver_role: UserRole.optional(),
   reason: z.string().optional(),
+  slack_channel: z.string().min(1).optional(),
 });
 export type PolicyRule = z.infer<typeof PolicyRule>;
 

@@ -10,6 +10,7 @@ export interface ApprovalCardInput {
   params: Record<string, unknown>;
   reason: string | null;
   expiresAt: Date | null;
+  channelOverride?: string | null;
 }
 
 export interface PostedCard {
@@ -40,10 +41,12 @@ export class SlackService {
   }
 
   async postApprovalCard(input: ApprovalCardInput): Promise<PostedCard | null> {
-    if (!this.client || !this.defaultChannel) return null;
+    if (!this.client) return null;
+    const channel = input.channelOverride ?? this.defaultChannel;
+    if (!channel) return null;
     try {
       const res = await this.client.chat.postMessage({
-        channel: this.defaultChannel,
+        channel,
         text: `Approval needed: ${input.agentName} → ${input.tool}`,
         blocks: buildPendingBlocks(input),
       });
