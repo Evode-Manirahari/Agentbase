@@ -1,4 +1,3 @@
-import { revalidatePath } from 'next/cache';
 import { api } from '../../lib/api';
 import {
   Card,
@@ -8,33 +7,10 @@ import {
   StatusPill,
   Subtitle,
 } from '../../components/nav';
+import { RegisterForm } from './register-form';
+import { revokeAgentAction } from './actions';
 
 export const dynamic = 'force-dynamic';
-
-async function registerAgentAction(formData: FormData) {
-  'use server';
-  const name = String(formData.get('name') ?? '').trim();
-  const description = String(formData.get('description') ?? '').trim() || undefined;
-  if (!name) return;
-  await api.agents.register({ name, ...(description ? { description } : {}) });
-  revalidatePath('/agents');
-  revalidatePath('/');
-}
-
-async function revokeAgentAction(formData: FormData) {
-  'use server';
-  const id = String(formData.get('agent_id') ?? '');
-  const email = String(formData.get('revoked_by_email') ?? '').trim() || undefined;
-  const reason = String(formData.get('reason') ?? '').trim() || undefined;
-  if (!id) return;
-  await api.agents.revoke(id, {
-    ...(email ? { revoked_by_email: email } : {}),
-    ...(reason ? { reason } : {}),
-  });
-  revalidatePath('/agents');
-  revalidatePath('/audit');
-  revalidatePath('/');
-}
 
 export default async function AgentsPage() {
   let items: Awaited<ReturnType<typeof api.agents.list>>['items'] = [];
@@ -53,16 +29,7 @@ export default async function AgentsPage() {
       {error ? <ErrorBox error={error} /> : null}
 
       <Card className="mb-6 p-4">
-        <form action={registerAgentAction} className="flex gap-3 items-end flex-wrap">
-          <Field label="Name" name="name" placeholder="research-agent" required />
-          <Field label="Description (optional)" name="description" placeholder="researches and updates leads" />
-          <button
-            type="submit"
-            className="px-4 py-2 rounded-md text-sm font-medium bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:opacity-90"
-          >
-            Register
-          </button>
-        </form>
+        <RegisterForm />
       </Card>
 
       {items.length === 0 ? (
@@ -126,30 +93,5 @@ export default async function AgentsPage() {
         </Card>
       )}
     </div>
-  );
-}
-
-function Field({
-  label,
-  name,
-  placeholder,
-  required = false,
-}: {
-  label: string;
-  name: string;
-  placeholder?: string;
-  required?: boolean;
-}) {
-  return (
-    <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)] flex-1 min-w-[200px]">
-      {label}
-      <input
-        type="text"
-        name={name}
-        placeholder={placeholder}
-        required={required}
-        className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-[var(--color-muted)] focus:outline-none focus:border-[var(--color-accent)]"
-      />
-    </label>
   );
 }
