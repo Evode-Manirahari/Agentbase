@@ -54,7 +54,11 @@ test.describe('policy editor live YAML validation', () => {
     const ta = page.locator('textarea[name="yaml"]');
     await ta.fill(': : :');
     // Debounced 200ms — wait a beat then assert the invalid badge appears.
-    await expect(page.locator('text=/invalid YAML|schema mismatch/').first()).toBeVisible();
+    // Cold compile of /policies in CI can push the first validate() past the
+    // default 5s expect timeout.
+    await expect(
+      page.locator('text=/invalid YAML|schema mismatch/').first(),
+    ).toBeVisible({ timeout: 10_000 });
     // Save button disables on invalid input.
     await expect(page.getByRole('button', { name: 'Save and activate' })).toBeDisabled();
   });

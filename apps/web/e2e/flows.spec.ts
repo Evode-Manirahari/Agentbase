@@ -14,9 +14,10 @@ test.describe('register an agent', () => {
     await page.getByPlaceholder('research-agent').fill(name);
     await page.getByRole('button', { name: 'Register' }).click();
 
-    // Banner appears with the dvk_ key
+    // Banner appears with the dvk_ key. CI cold-compiles /agents on first
+    // hit, so allow extra time before falling back to a retry.
     const banner = page.locator('text=/Agent .* registered/').first();
-    await expect(banner).toBeVisible({ timeout: 10_000 });
+    await expect(banner).toBeVisible({ timeout: 20_000 });
     await expect(page.locator(`text=${name}`).first()).toBeVisible();
     const key = page.locator('code').filter({ hasText: /^dvk_/ }).first();
     await expect(key).toBeVisible();
@@ -43,7 +44,7 @@ test.describe('type-to-confirm revoke', () => {
     await page.getByPlaceholder('research-agent').fill(name);
     await page.getByRole('button', { name: 'Register' }).click();
     await expect(page.locator('text=/Agent .* registered/').first()).toBeVisible({
-      timeout: 10_000,
+      timeout: 20_000,
     });
     // Dismiss the banner so it doesn't intercept clicks on the row below.
     await page.getByRole('button', { name: 'Dismiss' }).click();
