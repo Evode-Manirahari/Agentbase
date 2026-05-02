@@ -198,10 +198,10 @@ interface MessageInput {
   to: string | string[];
   subject: string;
   body: string;
-  cc?: string | string[];
-  bcc?: string | string[];
-  html?: boolean;
-  threadId?: string;
+  cc?: string | string[] | undefined;
+  bcc?: string | string[] | undefined;
+  html?: boolean | undefined;
+  threadId?: string | undefined;
 }
 
 /** Builds the {raw, threadId?} payload Gmail expects for messages.send. */
