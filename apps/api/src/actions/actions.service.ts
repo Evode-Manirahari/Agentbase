@@ -1,5 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { desc, eq } from 'drizzle-orm';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { and, desc, eq } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
 import { actions, agents, approvals } from '@dejavas/db';
@@ -29,6 +29,8 @@ export interface ExecuteOutput {
 
 @Injectable()
 export class ActionsService {
+  private readonly log = new Logger(ActionsService.name);
+
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly audit: AuditService,
@@ -38,6 +40,24 @@ export class ActionsService {
   ) {}
 
   async execute(input: ExecuteInput): Promise<ExecuteOutput> {
+    // Idempotency: if this (org, agent, key) tuple was already processed,
+    // return the stored outcome instead of re-evaluating policy and re-calling
+    // the connector. Agents that retry on network errors get exactly-one
+    // CRM/email side effect for a given key.
+    if (input.idempotencyKey) {
+      const cached = await this.findByIdempotencyKey(
+        input.orgId,
+        input.agentId,
+        input.idempotencyKey,
+      );
+      if (cached) {
+        this.log.debug(
+          `idempotency hit org=${input.orgId} agent=${input.agentId} key=${input.idempotencyKey}`,
+        );
+        return cached;
+      }
+    }
+
     const decision = await this.policy.evaluate(input.orgId, {
       tool: input.tool,
       params: input.params,
@@ -219,24 +239,96 @@ export class ActionsService {
     decision: PolicyDecision,
     result: Record<string, unknown> | null,
   ) {
-    const [created] = await this.db
-      .insert(actions)
-      .values({
-        orgId: input.orgId,
-        agentId: input.agentId,
-        tool: input.tool,
-        params: input.params,
-        status,
-        policyDecision: decision as unknown as Record<string, unknown>,
-        result,
-        idempotencyKey: input.idempotencyKey ?? null,
-        completedAt:
-          status === 'executed' || status === 'denied' || status === 'failed'
-            ? new Date()
-            : null,
-      })
-      .returning();
-    if (!created) throw new Error('failed to record action');
-    return created;
+    try {
+      const [created] = await this.db
+        .insert(actions)
+        .values({
+          orgId: input.orgId,
+          agentId: input.agentId,
+          tool: input.tool,
+          params: input.params,
+          status,
+          policyDecision: decision as unknown as Record<string, unknown>,
+          result,
+          idempotencyKey: input.idempotencyKey ?? null,
+          completedAt:
+            status === 'executed' || status === 'denied' || status === 'failed'
+              ? new Date()
+              : null,
+        })
+        .returning();
+      if (!created) throw new Error('failed to record action');
+      return created;
+    } catch (err) {
+      // Concurrent request claimed the same idempotency key while we were
+      // executing. Return the existing row so the client sees a coherent
+      // response rather than a 500. The connector side effect happened twice
+      // in this rare race; document for buyers as best-effort dedup.
+      if (input.idempotencyKey && isUniqueViolation(err)) {
+        const existing = await this.findActionRowByIdempotencyKey(
+          input.orgId,
+          input.agentId,
+          input.idempotencyKey,
+        );
+        if (existing) {
+          this.log.warn(
+            `idempotency race org=${input.orgId} agent=${input.agentId} key=${input.idempotencyKey} — connector called twice`,
+          );
+          return existing;
+        }
+      }
+      throw err;
+    }
   }
+
+  private async findByIdempotencyKey(
+    orgId: string,
+    agentId: string,
+    key: string,
+  ): Promise<ExecuteOutput | null> {
+    const row = await this.findActionRowByIdempotencyKey(orgId, agentId, key);
+    if (!row) return null;
+    const out: ExecuteOutput = {
+      action_id: row.id,
+      status: row.status,
+      policy_decision: (row.policyDecision ?? {
+        effect: 'allow',
+        reason: null,
+        rule_index: null,
+        rule_matched: null,
+        approver_role: null,
+        policy_id: null,
+        fallback: true,
+      }) as unknown as PolicyDecision,
+    };
+    if (row.result !== null && row.result !== undefined) {
+      out.result = row.result as Record<string, unknown>;
+    }
+    return out;
+  }
+
+  private async findActionRowByIdempotencyKey(
+    orgId: string,
+    agentId: string,
+    key: string,
+  ) {
+    const [row] = await this.db
+      .select()
+      .from(actions)
+      .where(
+        and(
+          eq(actions.orgId, orgId),
+          eq(actions.agentId, agentId),
+          eq(actions.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const code = (err as { code?: unknown }).code;
+  return code === '23505';
 }

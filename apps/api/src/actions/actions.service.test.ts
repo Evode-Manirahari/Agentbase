@@ -341,6 +341,118 @@ describe('ActionsService.execute', () => {
       .where(eq(actions.id, out.action_id));
     assert.equal(row!.idempotencyKey, 'unique-abc-123');
   });
+
+  it('idempotency: second execute with same key returns cached result, no second connector call', async () => {
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.result = { ok: true, data: { id: 'crm-42' } };
+
+    const first = await svc.execute({
+      orgId,
+      agentId,
+      tool: 'hubspot.contacts.update',
+      params: { contactId: 'c1' },
+      idempotencyKey: 'retry-key-1',
+    });
+    assert.equal(first.status, 'executed');
+    assert.equal(registry.invocations.length, 1);
+
+    // Same key, identical params → cached path. Note we change `result` on
+    // the registry to prove the connector wasn't re-invoked.
+    registry.result = { ok: true, data: { id: 'should-not-appear' } };
+    const second = await svc.execute({
+      orgId,
+      agentId,
+      tool: 'hubspot.contacts.update',
+      params: { contactId: 'c1' },
+      idempotencyKey: 'retry-key-1',
+    });
+
+    assert.equal(second.action_id, first.action_id);
+    assert.equal(second.status, 'executed');
+    assert.deepEqual(
+      (second.result as { data: unknown }).data,
+      { id: 'crm-42' },
+    );
+    // Critically: connector was called exactly once across both requests.
+    assert.equal(registry.invocations.length, 1);
+
+    // No second action row was created.
+    const rows = await db
+      .select()
+      .from(actions)
+      .where(eq(actions.orgId, orgId));
+    assert.equal(rows.length, 1);
+  });
+
+  it('idempotency: returns cached deny without re-evaluating policy', async () => {
+    policy.decision = makeDecision({ effect: 'deny', reason: 'forbidden' });
+    const first = await svc.execute({
+      orgId,
+      agentId,
+      tool: 't.deny',
+      params: {},
+      idempotencyKey: 'key-deny',
+    });
+    assert.equal(first.status, 'denied');
+
+    // Even if policy now flips to allow, the cached deny stands.
+    policy.decision = makeDecision({ effect: 'allow' });
+    const second = await svc.execute({
+      orgId,
+      agentId,
+      tool: 't.deny',
+      params: {},
+      idempotencyKey: 'key-deny',
+    });
+    assert.equal(second.status, 'denied');
+    assert.equal(second.action_id, first.action_id);
+    // Connector still never called.
+    assert.equal(registry.invocations.length, 0);
+  });
+
+  it('idempotency: different keys → independent executions', async () => {
+    policy.decision = makeDecision({ effect: 'allow' });
+    await svc.execute({
+      orgId, agentId, tool: 't.t', params: {}, idempotencyKey: 'key-a',
+    });
+    await svc.execute({
+      orgId, agentId, tool: 't.t', params: {}, idempotencyKey: 'key-b',
+    });
+    assert.equal(registry.invocations.length, 2);
+    const rows = await db
+      .select()
+      .from(actions)
+      .where(eq(actions.orgId, orgId));
+    assert.equal(rows.length, 2);
+  });
+
+  it('idempotency: same key for different agents → independent (key is scoped to agent)', async () => {
+    policy.decision = makeDecision({ effect: 'allow' });
+    const [agent2] = await db
+      .insert(agents)
+      .values({ orgId, name: 'second-agent' })
+      .returning();
+
+    await svc.execute({
+      orgId, agentId, tool: 't.t', params: {}, idempotencyKey: 'shared-key',
+    });
+    await svc.execute({
+      orgId,
+      agentId: agent2!.id,
+      tool: 't.t',
+      params: {},
+      idempotencyKey: 'shared-key',
+    });
+    assert.equal(registry.invocations.length, 2);
+  });
+
+  it('idempotency: no key → no dedup, every call executes fresh', async () => {
+    policy.decision = makeDecision({ effect: 'allow' });
+    await execute('t.t', { v: 1 });
+    await execute('t.t', { v: 2 });
+    await execute('t.t', { v: 3 });
+    assert.equal(registry.invocations.length, 3);
+  });
 });
 
 describe('ActionsService.listForOrg', () => {
