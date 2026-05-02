@@ -14,21 +14,38 @@ Every step is mediated by Dejavas. The agent prints the policy decision + the
 connector outcome for each step so you can see exactly where the control plane
 intervenes.
 
-## Run it
+## Two modes
 
-Prereqs: API + web running, Postgres + Redis up (`docker compose -f infra/docker-compose.yml up -d`).
+### Hard-coded sequence (`src/index.ts`)
+
+The order of operations is fixed. Best for a deterministic demo and works without any Anthropic credentials.
 
 ```bash
-# Apply the demo policy and register the agent
 ./examples/demo-agent/setup.sh
+export DEJAVAS_API_KEY=dvk_...        # printed by setup.sh
+pnpm --filter '@dejavas/demo-agent' run start
 
-# Run the agent (the export line is printed at the end of setup.sh)
-export DEJAVAS_API_KEY=dvk_...
-pnpm --filter '@dejavas/demo-agent' exec tsx src/index.ts
-
-# Optionally pass a custom email
+# Or with a custom email:
 pnpm --filter '@dejavas/demo-agent' exec tsx src/index.ts cto@globex.com
 ```
+
+### Claude-driven (`src/claude.ts`)
+
+Uses the Anthropic SDK with tool use — Claude decides what to call when. Each Anthropic tool wraps a Dejavas SDK call, so policy / approval / audit / connector mediation is identical to the hard-coded variant. Uses `claude-opus-4-7` with adaptive thinking + `effort: xhigh`.
+
+```bash
+./examples/demo-agent/setup.sh
+export DEJAVAS_API_KEY=dvk_...
+export ANTHROPIC_API_KEY=sk-ant-...
+pnpm --filter '@dejavas/demo-agent' run start:claude
+
+# Or with a custom email:
+pnpm --filter '@dejavas/demo-agent' exec tsx src/claude.ts cto@globex.com
+```
+
+This run prints Claude's tool-use trace in real time — every tool call shows the same `✓ executed / ✗ failed / 🛂 awaiting_approval` icon as the hard-coded variant, plus the policy decision and reason. At the end Claude prints a brief summary of what happened. Token usage is reported for cost visibility.
+
+Prereqs for either mode: API + web running, Postgres + Redis up (`docker compose -f infra/docker-compose.yml up -d`).
 
 ## What you'll see
 

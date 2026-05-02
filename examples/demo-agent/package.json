@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
+    "start:claude": "tsx src/claude.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@dejavas/sdk": "workspace:*"
+    "@anthropic-ai/sdk": "^0.92.0",
+    "@dejavas/sdk": "workspace:*",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
