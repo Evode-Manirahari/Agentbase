@@ -1,0 +1,36 @@
+import { Body, Controller, Get, Put } from '@nestjs/common';
+import { ZodValidationPipe } from 'nestjs-zod';
+import {
+  SetActivePolicyRequest,
+  type SetActivePolicyRequest as SetActivePolicyRequestT,
+  type ActivePolicyResponse,
+} from '@dejavas/shared';
+import { PolicyService } from './policy.service.js';
+import { AgentsService } from '../agents/agents.service.js';
+
+@Controller('v1/policies')
+export class PolicyController {
+  constructor(
+    private readonly policy: PolicyService,
+    private readonly agents: AgentsService,
+  ) {}
+
+  @Get('active')
+  async getActive(): Promise<ActivePolicyResponse> {
+    const orgId = await this.agents.ensureDefaultOrg();
+    return this.policy.getActive(orgId);
+  }
+
+  @Put('active')
+  async setActive(
+    @Body(new ZodValidationPipe(SetActivePolicyRequest))
+    body: SetActivePolicyRequestT,
+  ): Promise<ActivePolicyResponse> {
+    const orgId = await this.agents.ensureDefaultOrg();
+    return this.policy.setActive({
+      orgId,
+      name: body.name,
+      yaml: body.yaml,
+    });
+  }
+}

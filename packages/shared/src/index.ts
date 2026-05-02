@@ -47,12 +47,37 @@ export const RegisterAgentResponse = z.object({
 });
 export type RegisterAgentResponse = z.infer<typeof RegisterAgentResponse>;
 
+export const ConditionOperator = z.union([
+  z.object({ eq: z.unknown() }).strict(),
+  z.object({ neq: z.unknown() }).strict(),
+  z.object({ gt: z.number() }).strict(),
+  z.object({ gte: z.number() }).strict(),
+  z.object({ lt: z.number() }).strict(),
+  z.object({ lte: z.number() }).strict(),
+  z.object({ in: z.array(z.unknown()).min(1) }).strict(),
+  z.object({ contains: z.unknown() }).strict(),
+  z.object({ exists: z.boolean() }).strict(),
+]);
+export type ConditionOperator = z.infer<typeof ConditionOperator>;
+
+export const Condition = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  ConditionOperator,
+]);
+export type Condition = z.infer<typeof Condition>;
+
+export const PolicyEffect = z.enum(['allow', 'require_approval', 'deny']);
+export type PolicyEffect = z.infer<typeof PolicyEffect>;
+
 export const PolicyRule = z.object({
   match: z.object({
-    tool: z.string(),
-    when: z.record(z.unknown()).optional(),
+    tool: z.string().min(1),
+    when: z.record(Condition).optional(),
   }),
-  effect: z.enum(['allow', 'require_approval', 'deny']),
+  effect: PolicyEffect,
   approver_role: UserRole.optional(),
   reason: z.string().optional(),
 });
@@ -60,7 +85,34 @@ export type PolicyRule = z.infer<typeof PolicyRule>;
 
 export const PolicyDocument = z.object({
   version: z.literal(1),
-  rules: z.array(PolicyRule),
   default: z.enum(['allow', 'deny']).default('deny'),
+  rules: z.array(PolicyRule).default([]),
 });
 export type PolicyDocument = z.infer<typeof PolicyDocument>;
+
+export const PolicyDecision = z.object({
+  effect: PolicyEffect,
+  reason: z.string().nullable(),
+  rule_index: z.number().int().nullable(),
+  rule_matched: PolicyRule.nullable(),
+  approver_role: UserRole.nullable(),
+  policy_id: z.string().uuid().nullable(),
+  fallback: z.boolean(),
+});
+export type PolicyDecision = z.infer<typeof PolicyDecision>;
+
+export const SetActivePolicyRequest = z.object({
+  name: z.string().min(1).max(120).default('default'),
+  yaml: z.string().min(1),
+});
+export type SetActivePolicyRequest = z.infer<typeof SetActivePolicyRequest>;
+
+export const ActivePolicyResponse = z.object({
+  policy_id: z.string().uuid().nullable(),
+  name: z.string().nullable(),
+  version: z.number().int().nullable(),
+  yaml: z.string().nullable(),
+  document: PolicyDocument.nullable(),
+  is_fallback: z.boolean(),
+});
+export type ActivePolicyResponse = z.infer<typeof ActivePolicyResponse>;
