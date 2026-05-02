@@ -26,12 +26,12 @@ Early. The full demoable loop works end-to-end locally; nothing is hardened for 
 
 - **Identity & API keys** — register agents, scoped `dvk_…` tokens (sha256-hashed at rest), idempotent revocation
 - **Policy DSL (YAML + Zod)** — rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, dotted-path conditions, 9 operators (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`)
-- **Connector dispatch** — HubSpot CRM v3 (contacts + deals create/update/get) with structured errors, Zod-validated params
+- **Connector dispatch** — HubSpot CRM v3 (contacts + deals) and Salesforce REST v60 (Account + Opportunity + Contact), all create/update/get, with structured errors and Zod-validated params
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
 - **Slack approval cards** — interactive buttons, signed webhook (HMAC + 5-min replay window), per-rule channel routing, two-way consistency (web decisions update the Slack card via `chat.update`)
 - **Audit log** — every state transition recorded with actor type/id
 - **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions, Audit
-- **Tests** — 118 passing across 27 suites in 2.4s
+- **Tests** — 132 passing across 30 suites in ~3s
 
 ## Quick start
 
@@ -124,7 +124,8 @@ packages/
 └── sdk/                 @dejavas/sdk client (what agents import)
 
 connectors/
-└── hubspot/             HubspotConnector (Zod-validated, native fetch)
+├── hubspot/             HubspotConnector (Zod-validated, native fetch)
+└── salesforce/          SalesforceConnector (Zod-validated, native fetch)
 
 examples/
 └── demo-agent/          Reference agent that uses @dejavas/sdk
@@ -176,9 +177,13 @@ SLACK_APPROVALS_CHANNEL=C0123456789
 
 # Optional — wires real HubSpot writes on effect:allow
 HUBSPOT_ACCESS_TOKEN=pat-...
+
+# Optional — wires real Salesforce writes on effect:allow
+SALESFORCE_ACCESS_TOKEN=
+SALESFORCE_INSTANCE_URL=https://yourdomain.my.salesforce.com
 ```
 
-Without `SLACK_*` set, approval cards are silently skipped and `/v1/slack/interactive` returns 503. Without `HUBSPOT_ACCESS_TOKEN`, `effect: allow` actions complete with `status: failed` + `error.code: connector_not_configured` instead of touching HubSpot.
+Without `SLACK_*` set, approval cards are silently skipped and `/v1/slack/interactive` returns 503. Without `HUBSPOT_ACCESS_TOKEN`, hubspot.* `effect: allow` actions complete with `status: failed` + `error.code: connector_not_configured`. Same for Salesforce — both `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` must be set together.
 
 `apps/web/.env.local`:
 
@@ -191,7 +196,7 @@ API_URL=http://localhost:3002
 - **Clerk auth** on management endpoints — currently open to anyone with network access. First thing to harden before any remote deploy.
 - **OAuth per org** — single global HubSpot token; real multi-tenant SaaS needs per-org OAuth.
 - **Web E2E tests** — only API has automated tests (118). Web is gated by typecheck + manual QA.
-- **Salesforce / Gmail / Outreach connectors** — only HubSpot wired so far.
+- **Gmail / Outreach connectors** — only HubSpot and Salesforce wired so far.
 - **Retry / backoff** on connector failures — a transient HubSpot 503 marks the action `failed`; could enqueue and retry via BullMQ.
 
 ## License
