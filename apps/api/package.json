@@ -12,6 +12,7 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
+    "@dejavas/connector-gmail": "workspace:*",
     "@dejavas/connector-hubspot": "workspace:*",
     "@dejavas/connector-salesforce": "workspace:*",
     "@dejavas/db": "workspace:*",

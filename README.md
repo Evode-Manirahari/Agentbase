@@ -26,12 +26,12 @@ Early. The full demoable loop works end-to-end locally; nothing is hardened for 
 
 - **Identity & API keys** — register agents, scoped `dvk_…` tokens (sha256-hashed at rest), idempotent revocation
 - **Policy DSL (YAML + Zod)** — rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, dotted-path conditions, 9 operators (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`)
-- **Connector dispatch** — HubSpot CRM v3 (contacts + deals) and Salesforce REST v60 (Account + Opportunity + Contact), all create/update/get, with structured errors and Zod-validated params
+- **Connector dispatch** — HubSpot CRM v3 (contacts + deals create/update/get), Salesforce REST v60 (Account + Opportunity + Contact create/update/get), and Gmail v1 (`gmail.send`, `gmail.draft.create`, `gmail.draft.send`, `gmail.messages.get`), all with structured errors and Zod-validated params
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
 - **Slack approval cards** — interactive buttons, signed webhook (HMAC + 5-min replay window), per-rule channel routing, two-way consistency (web decisions update the Slack card via `chat.update`)
 - **Audit log** — every state transition recorded with actor type/id
 - **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions, Audit
-- **Tests** — 132 passing across 30 suites in ~3s
+- **Tests** — 153 passing across 35 suites in ~2.5s
 
 ## Quick start
 
@@ -125,7 +125,8 @@ packages/
 
 connectors/
 ├── hubspot/             HubspotConnector (Zod-validated, native fetch)
-└── salesforce/          SalesforceConnector (Zod-validated, native fetch)
+├── salesforce/          SalesforceConnector (Zod-validated, native fetch)
+└── gmail/               GmailConnector (Gmail v1; RFC 2822 + base64url)
 
 examples/
 └── demo-agent/          Reference agent that uses @dejavas/sdk
@@ -181,6 +182,10 @@ HUBSPOT_ACCESS_TOKEN=pat-...
 # Optional — wires real Salesforce writes on effect:allow
 SALESFORCE_ACCESS_TOKEN=
 SALESFORCE_INSTANCE_URL=https://yourdomain.my.salesforce.com
+
+# Optional — wires real Gmail send/draft on effect:allow
+GMAIL_ACCESS_TOKEN=                # OAuth bearer (refresh-token flow not yet wired)
+GMAIL_USER_ID=                     # default 'me'
 ```
 
 Without `SLACK_*` set, approval cards are silently skipped and `/v1/slack/interactive` returns 503. Without `HUBSPOT_ACCESS_TOKEN`, hubspot.* `effect: allow` actions complete with `status: failed` + `error.code: connector_not_configured`. Same for Salesforce — both `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` must be set together.
@@ -196,7 +201,8 @@ API_URL=http://localhost:3002
 - **Clerk auth** on management endpoints — currently open to anyone with network access. First thing to harden before any remote deploy.
 - **OAuth per org** — single global HubSpot token; real multi-tenant SaaS needs per-org OAuth.
 - **Web E2E tests** — only API has automated tests (118). Web is gated by typecheck + manual QA.
-- **Gmail / Outreach connectors** — only HubSpot and Salesforce wired so far.
+- **Outreach / enrichment connectors** — HubSpot, Salesforce, and Gmail wired so far.
+- **Gmail OAuth refresh-token flow** — current Gmail wiring takes a static access token; production needs the refresh-token loop.
 - **Retry / backoff** on connector failures — a transient HubSpot 503 marks the action `failed`; could enqueue and retry via BullMQ.
 
 ## License
