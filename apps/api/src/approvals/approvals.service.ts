@@ -123,7 +123,10 @@ export class ApprovalsService {
           .update(actions)
           .set({ status: 'denied', completedAt: new Date() })
           .where(eq(actions.id, action.id));
-        throw new GoneException('approval expired');
+        // Don't throw inside the tx — that rolls back the state flip we just
+        // made. Signal to the caller via a sentinel branch and throw after
+        // the tx commits.
+        return { branch: 'expired' as const, approval, action, userId: null };
       }
 
       let userId: string | null = null;
@@ -162,6 +165,21 @@ export class ApprovalsService {
         .where(eq(actions.id, action.id));
       return { branch: 'approved' as const, approval, action, userId };
     });
+
+    if (phase1.branch === 'expired') {
+      await this.audit.record({
+        orgId: input.orgId,
+        actorType: 'system',
+        actorId: 'decide_expiry_check',
+        eventType: 'approval.expired',
+        payload: {
+          approvalId: phase1.approval.id,
+          actionId: phase1.action.id,
+          tool: phase1.action.tool,
+        },
+      });
+      throw new GoneException('approval expired');
+    }
 
     if (phase1.branch === 'denied') {
       await this.audit.record({
