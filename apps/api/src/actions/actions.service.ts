@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { desc, eq } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
-import { actions, approvals } from '@dejavas/db';
+import { actions, agents, approvals } from '@dejavas/db';
 import { AuditService } from '../audit/audit.service.js';
 import { PolicyService } from '../policy/policy.service.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
@@ -125,6 +126,41 @@ export class ActionsService {
       status: finalStatus,
       result: storedResult,
       policy_decision: decision,
+    };
+  }
+
+  async listForOrg(orgId: string, limit = 100) {
+    const rows = await this.db
+      .select({
+        id: actions.id,
+        agentId: actions.agentId,
+        agentName: agents.name,
+        tool: actions.tool,
+        params: actions.params,
+        status: actions.status,
+        policyDecision: actions.policyDecision,
+        result: actions.result,
+        createdAt: actions.createdAt,
+        completedAt: actions.completedAt,
+      })
+      .from(actions)
+      .innerJoin(agents, eq(agents.id, actions.agentId))
+      .where(eq(actions.orgId, orgId))
+      .orderBy(desc(actions.createdAt))
+      .limit(limit);
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        agent_id: r.agentId,
+        agent_name: r.agentName,
+        tool: r.tool,
+        params: r.params,
+        status: r.status,
+        policy_decision: r.policyDecision,
+        result: r.result,
+        created_at: r.createdAt.toISOString(),
+        completed_at: r.completedAt?.toISOString() ?? null,
+      })),
     };
   }
 

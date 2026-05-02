@@ -1,5 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
 import { agents, agentApiKeys, orgs } from '@dejavas/db';
@@ -60,5 +60,23 @@ export class AgentsService {
     const row = rows[0];
     if (!row) throw new NotFoundException('agent not found');
     return row;
+  }
+
+  async listForOrg(orgId: string, limit = 100) {
+    return this.db
+      .select({
+        id: agents.id,
+        name: agents.name,
+        description: agents.description,
+        status: agents.status,
+        createdAt: agents.createdAt,
+        revokedAt: agents.revokedAt,
+        keyPrefix: agentApiKeys.keyPrefix,
+      })
+      .from(agents)
+      .leftJoin(agentApiKeys, eq(agentApiKeys.agentId, agents.id))
+      .where(eq(agents.orgId, orgId))
+      .orderBy(desc(agents.createdAt))
+      .limit(limit);
   }
 }

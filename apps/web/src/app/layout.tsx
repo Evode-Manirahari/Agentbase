@@ -1,5 +1,7 @@
+import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
+import { Shell } from '../components/nav';
 
 export const metadata: Metadata = {
   title: 'Dejavas',
@@ -13,16 +15,8 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body
-        style={{
-          margin: 0,
-          fontFamily:
-            'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-          background: '#0a0a0a',
-          color: '#f5f5f5',
-        }}
-      >
-        {children}
+      <body className="antialiased">
+        <Shell>{children}</Shell>
       </body>
     </html>
   );
