@@ -1,0 +1,52 @@
+version: 1
+default: deny
+
+# Demo policy that exercises every Dejavas effect:
+# - allow:           safe reads (Apollo) and most CRM writes
+# - require_approval: high-value deal updates and Outreach enrollment
+# - deny:            anything destructive (e.g. *.delete)
+rules:
+  # Apollo enrichment — read-only, always allow
+  - match: { tool: 'apollo.*' }
+    effect: allow
+    reason: 'enrichment is read-only'
+
+  # Drafting an email is fine — the human still has to send it, and we have
+  # no auto-send rule below
+  - match: { tool: 'gmail.draft.create' }
+    effect: allow
+    reason: 'drafts never leave the outbox without a human'
+
+  # Sending email and creating contacts in CRM — allowed without approval
+  - match: { tool: 'gmail.send' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.create' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.update' }
+    effect: allow
+
+  # High-value deal updates require human approval (>= $10k)
+  - match:
+      tool: 'hubspot.deals.update'
+      when:
+        properties.amount: { gte: 10000 }
+    effect: require_approval
+    approver_role: approver
+    reason: 'high-value deal change'
+    slack_channel: '#critical-approvals'
+
+  # Lower-value deal updates auto-approve
+  - match: { tool: 'hubspot.deals.update' }
+    effect: allow
+
+  # Outreach sequence enrollment always needs sign-off — sales rep should know
+  # which prospects are getting touched
+  - match: { tool: 'outreach.sequences.enroll' }
+    effect: require_approval
+    approver_role: approver
+    reason: 'sequence enrollment touches real prospects'
+
+  # Catch-all delete protection
+  - match: { tool: '*.delete' }
+    effect: deny
+    reason: 'deletes are blocked across the board'
