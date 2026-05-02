@@ -6,6 +6,7 @@ import { AgentsModule } from './agents/agents.module.js';
 import { ActionsModule } from './actions/actions.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { PolicyModule } from './policy/policy.module.js';
+import { ConnectorsModule } from './connectors/connectors.module.js';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { PolicyModule } from './policy/policy.module.js';
     DbModule,
     HealthModule,
     AgentsModule,
+    ConnectorsModule,
     PolicyModule,
     ActionsModule,
     AuditModule,

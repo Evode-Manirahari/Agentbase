@@ -4,10 +4,9 @@ import type { Database } from '@dejavas/db';
 import { actions, approvals } from '@dejavas/db';
 import { AuditService } from '../audit/audit.service.js';
 import { PolicyService } from '../policy/policy.service.js';
-import type {
-  ActionStatus,
-  PolicyDecision,
-} from '@dejavas/shared';
+import { ConnectorRegistry } from '../connectors/connector-registry.js';
+import type { ConnectorResult } from '@dejavas/connector-hubspot';
+import type { ActionStatus, PolicyDecision } from '@dejavas/shared';
 
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -32,6 +31,7 @@ export class ActionsService {
     @Inject(DB) private readonly db: Database,
     private readonly audit: AuditService,
     private readonly policy: PolicyService,
+    private readonly connectors: ConnectorRegistry,
   ) {}
 
   async execute(input: ExecuteInput): Promise<ExecuteOutput> {
@@ -79,20 +79,51 @@ export class ActionsService {
       };
     }
 
-    // effect === 'allow' — connector dispatch lands in the next PR.
-    const stubResult = { stub: true, note: 'connector dispatch not implemented' };
-    const action = await this.recordAction(input, 'executed', decision, stubResult);
+    // effect === 'allow' — dispatch to a connector.
+    const connector = this.connectors.resolve(input.tool);
+    let result: ConnectorResult;
+    if (!connector) {
+      result = {
+        ok: false,
+        error: {
+          code: 'no_connector',
+          message: `no connector resolves tool ${input.tool}`,
+        },
+      };
+    } else {
+      result = await connector.invoke(input.tool, input.params);
+    }
+
+    const finalStatus: ActionStatus = result.ok ? 'executed' : 'failed';
+    const storedResult = result.ok
+      ? { ok: true, data: result.data ?? null }
+      : { ok: false, error: result.error ?? { code: 'unknown', message: 'unknown error' } };
+
+    const action = await this.recordAction(
+      input,
+      finalStatus,
+      decision,
+      storedResult,
+    );
     await this.audit.record({
       orgId: input.orgId,
       actorType: 'agent',
       actorId: input.agentId,
-      eventType: 'action.executed',
-      payload: { actionId: action.id, tool: input.tool, decision },
+      eventType: result.ok ? 'action.executed' : 'action.failed',
+      payload: {
+        actionId: action.id,
+        tool: input.tool,
+        decision,
+        connector: connector?.name ?? null,
+        ok: result.ok,
+        error: result.ok ? null : result.error ?? null,
+      },
     });
+
     return {
       action_id: action.id,
-      status: 'executed',
-      result: stubResult,
+      status: finalStatus,
+      result: storedResult,
       policy_decision: decision,
     };
   }
@@ -114,7 +145,10 @@ export class ActionsService {
         policyDecision: decision as unknown as Record<string, unknown>,
         result,
         idempotencyKey: input.idempotencyKey ?? null,
-        completedAt: status === 'executed' || status === 'denied' ? new Date() : null,
+        completedAt:
+          status === 'executed' || status === 'denied' || status === 'failed'
+            ? new Date()
+            : null,
       })
       .returning();
     if (!created) throw new Error('failed to record action');
