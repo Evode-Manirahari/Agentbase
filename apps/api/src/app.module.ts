@@ -9,6 +9,7 @@ import { PolicyModule } from './policy/policy.module.js';
 import { ConnectorsModule } from './connectors/connectors.module.js';
 import { ApprovalsModule } from './approvals/approvals.module.js';
 import { SlackModule } from './slack/slack.module.js';
+import { QueueModule } from './queue/queue.module.js';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { SlackModule } from './slack/slack.module.js';
     ActionsModule,
     ApprovalsModule,
     SlackModule,
+    QueueModule,
     AuditModule,
   ],
 })
