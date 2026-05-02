@@ -243,6 +243,14 @@ describe('ActionsService.execute', () => {
     const slackEvent = events.find((e) => e.eventType === 'approval.posted_to_slack')!;
     const payload = slackEvent.payload as Record<string, unknown>;
     assert.equal(payload['channel_override_used'], '#critical-approvals');
+
+    // approval row should have been backfilled with slack_channel + slack_ts
+    const apps = await db
+      .select()
+      .from(approvals)
+      .where(eq(approvals.actionId, out.action_id));
+    assert.equal(apps[0]!.slackChannel, 'C123');
+    assert.equal(apps[0]!.slackTs, '1234.5678');
   });
 
   it('allow + connector success: action executed with stored result', async () => {

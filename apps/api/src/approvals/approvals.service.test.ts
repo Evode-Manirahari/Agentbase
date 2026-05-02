@@ -32,6 +32,7 @@ import type { Connector, ConnectorResult } from '@dejavas/connector-hubspot';
 import { ApprovalsService } from './approvals.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { ConnectorRegistry } from '../connectors/connector-registry.js';
+import type { SlackService } from '../slack/slack.service.js';
 
 const DB_URL =
   process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
@@ -51,6 +52,17 @@ class StubRegistry {
         return this.result;
       },
     };
+  }
+}
+
+class StubSlack {
+  updates: { channel: string; ts: string; decision: string }[] = [];
+  buildResolvedBlocks(input: { decision: string }) {
+    return [{ type: 'section', text: { type: 'mrkdwn', text: input.decision } }];
+  }
+  async updateCard(channel: string, ts: string, _blocks: unknown, _text: string) {
+    this.updates.push({ channel, ts, decision: 'unknown' });
+    return true;
   }
 }
 
@@ -124,6 +136,7 @@ describe('ApprovalsService.decide', () => {
       db,
       audit,
       registry as unknown as ConnectorRegistry,
+      new StubSlack() as unknown as SlackService,
     );
   });
 
@@ -263,6 +276,52 @@ describe('ApprovalsService.decide', () => {
     );
   });
 
+  it('approve on a Slack-posted approval calls chat.update with the stored channel+ts', async () => {
+    const { approvalId, actionId } = await seedAction();
+    await db
+      .update(approvals)
+      .set({ slackChannel: 'C123', slackTs: '1700000000.123456' })
+      .where(eq(approvals.id, approvalId));
+
+    const slackStub = new StubSlack();
+    registry.result = { ok: true, data: { updated: true } };
+    const svcWithSlack = new ApprovalsService(
+      db,
+      audit,
+      registry as unknown as ConnectorRegistry,
+      slackStub as unknown as SlackService,
+    );
+
+    const result = await svcWithSlack.decide({
+      approvalId,
+      orgId,
+      decision: 'approve',
+      decidedByEmail: 'alice@dejavas.test',
+    });
+    assert.equal(result.action_status, 'executed');
+
+    assert.equal(slackStub.updates.length, 1);
+    assert.equal(slackStub.updates[0]!.channel, 'C123');
+    assert.equal(slackStub.updates[0]!.ts, '1700000000.123456');
+
+    // sanity: action did transition (no rollback regression)
+    const [ac] = await db.select().from(actions).where(eq(actions.id, actionId));
+    assert.equal(ac!.status, 'executed');
+  });
+
+  it('deny on a non-Slack approval skips chat.update', async () => {
+    const { approvalId } = await seedAction();
+    const slackStub = new StubSlack();
+    const svcWithSlack = new ApprovalsService(
+      db,
+      audit,
+      registry as unknown as ConnectorRegistry,
+      slackStub as unknown as SlackService,
+    );
+    await svcWithSlack.decide({ approvalId, orgId, decision: 'deny' });
+    assert.equal(slackStub.updates.length, 0);
+  });
+
   it("cross-org access: decide on another org's approval throws NotFoundException", async () => {
     const { approvalId } = await seedAction();
 
@@ -308,6 +367,7 @@ describe('ApprovalsService.list / getOne', () => {
       db,
       audit,
       new StubRegistry() as unknown as ConnectorRegistry,
+      new StubSlack() as unknown as SlackService,
     );
   });
 

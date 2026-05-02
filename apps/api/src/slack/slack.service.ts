@@ -81,6 +81,27 @@ export class SlackService {
     }
   }
 
+  async updateCard(
+    channel: string,
+    ts: string,
+    blocks: KnownBlock[],
+    fallbackText: string,
+  ): Promise<boolean> {
+    if (!this.client) return false;
+    try {
+      const res = await this.client.chat.update({
+        channel,
+        ts,
+        text: fallbackText,
+        blocks,
+      });
+      return res.ok === true;
+    } catch (err) {
+      this.log.warn(`chat.update failed: ${(err as Error).message}`);
+      return false;
+    }
+  }
+
   buildResolvedBlocks(input: {
     decision: 'approved' | 'denied' | 'expired';
     decidedByDisplay: string;

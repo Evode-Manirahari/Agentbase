@@ -93,6 +93,10 @@ export class ActionsService {
           channelOverride,
         });
         if (card) {
+          await this.db
+            .update(approvals)
+            .set({ slackChannel: card.channel, slackTs: card.ts })
+            .where(eq(approvals.id, approval.id));
           await this.audit.record({
             orgId: input.orgId,
             actorType: 'system',

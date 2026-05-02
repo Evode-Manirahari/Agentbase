@@ -150,6 +150,8 @@ export const approvals = pgTable(
     decidedByUserId: uuid('decided_by_user_id').references(() => users.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
+    slackChannel: text('slack_channel'),
+    slackTs: text('slack_ts'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

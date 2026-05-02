@@ -11,6 +11,7 @@ import type { Database } from '@dejavas/db';
 import { actions, agents, approvals, users } from '@dejavas/db';
 import { AuditService } from '../audit/audit.service.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
+import { SlackService } from '../slack/slack.service.js';
 import type {
   ActionStatus,
   ApprovalDecisionResponse,
@@ -33,6 +34,7 @@ export class ApprovalsService {
     @Inject(DB) private readonly db: Database,
     private readonly audit: AuditService,
     private readonly connectors: ConnectorRegistry,
+    private readonly slack: SlackService,
   ) {}
 
   async list(orgId: string, limit = 100): Promise<ApprovalListResponse> {
@@ -194,6 +196,15 @@ export class ApprovalsService {
           notes: input.notes ?? null,
         },
       });
+      await this.maybeUpdateSlackCard({
+        approval: phase1.approval,
+        action: phase1.action,
+        decision: 'denied',
+        decidedByDisplay:
+          input.decidedByEmail ?? phase1.approval.decidedByUserId ?? 'web',
+        actionStatus: 'denied',
+        errorCode: null,
+      });
       return {
         approval_id: phase1.approval.id,
         decision: 'denied',
@@ -256,6 +267,16 @@ export class ApprovalsService {
       },
     });
 
+    await this.maybeUpdateSlackCard({
+      approval: phase1.approval,
+      action,
+      decision: 'approved',
+      decidedByDisplay:
+        input.decidedByEmail ?? phase1.userId ?? 'web',
+      actionStatus: finalStatus,
+      errorCode: result.ok ? null : result.error?.code ?? null,
+    });
+
     return {
       approval_id: phase1.approval.id,
       decision: 'approved',
@@ -263,6 +284,33 @@ export class ApprovalsService {
       action_status: finalStatus,
       result: storedResult,
     };
+  }
+
+  private async maybeUpdateSlackCard(input: {
+    approval: { id: string; slackChannel: string | null; slackTs: string | null };
+    action: { tool: string; agentId: string };
+    decision: 'approved' | 'denied';
+    decidedByDisplay: string;
+    actionStatus: ActionStatus;
+    errorCode: string | null;
+  }): Promise<void> {
+    const { slackChannel, slackTs } = input.approval;
+    if (!slackChannel || !slackTs) return;
+    const blocks = this.slack.buildResolvedBlocks({
+      decision: input.decision,
+      decidedByDisplay: input.decidedByDisplay,
+      tool: input.action.tool,
+      agentName: input.action.agentId,
+      actionStatus: input.actionStatus,
+      errorCode: input.errorCode,
+      notes: null,
+    });
+    await this.slack.updateCard(
+      slackChannel,
+      slackTs,
+      blocks,
+      `Approval ${input.decision} via web`,
+    );
   }
 }
 
