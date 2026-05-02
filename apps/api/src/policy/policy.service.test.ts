@@ -1,0 +1,263 @@
+// Integration tests for PolicyService — require Postgres on $DATABASE_URL.
+
+import {
+  describe,
+  it,
+  before,
+  after,
+  beforeEach,
+  afterEach,
+} from 'node:test';
+import { strict as assert } from 'node:assert';
+import { randomUUID } from 'node:crypto';
+import { and, desc, eq } from 'drizzle-orm';
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { BadRequestException } from '@nestjs/common';
+import { schema, orgs, policies } from '@dejavas/db';
+import { PolicyService } from './policy.service.js';
+
+const DB_URL =
+  process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
+
+let client: ReturnType<typeof postgres>;
+let db: ReturnType<typeof drizzle<typeof schema>>;
+
+before(() => {
+  client = postgres(DB_URL, { max: 5 });
+  db = drizzle(client, { schema });
+});
+
+after(async () => {
+  await client.end();
+});
+
+describe('PolicyService.parseAndValidate', () => {
+  let svc: PolicyService;
+  before(() => {
+    svc = new PolicyService(db);
+  });
+
+  it('accepts well-formed YAML matching the schema', () => {
+    const yaml = `
+version: 1
+default: deny
+rules:
+  - match:
+      tool: hubspot.contacts.update
+    effect: allow
+  - match:
+      tool: hubspot.deals.update
+      when:
+        amount: { gt: 1000 }
+    effect: require_approval
+    approver_role: approver
+    slack_channel: "#critical"
+`;
+    const doc = svc.parseAndValidate(yaml);
+    assert.equal(doc.version, 1);
+    assert.equal(doc.default, 'deny');
+    assert.equal(doc.rules.length, 2);
+    assert.equal(doc.rules[1]!.slack_channel, '#critical');
+  });
+
+  it('rejects malformed YAML with BadRequestException', () => {
+    const bad = 'version: 1\nrules:\n  - match: {tool: foo\n  effect: allow';
+    assert.throws(() => svc.parseAndValidate(bad), BadRequestException);
+  });
+
+  it('rejects YAML that fails Zod schema with structured issues', () => {
+    const yaml = `
+version: 1
+default: deny
+rules:
+  - match:
+      tool: ""
+    effect: allow
+`;
+    try {
+      svc.parseAndValidate(yaml);
+      assert.fail('expected BadRequestException');
+    } catch (err) {
+      assert.ok(err instanceof BadRequestException);
+      const body = err.getResponse() as { issues?: { path: unknown[] }[] };
+      assert.ok(Array.isArray(body.issues));
+      assert.ok(body.issues!.length > 0);
+      const paths = body.issues!.map((i) => i.path.join('.'));
+      assert.ok(paths.some((p) => p.includes('rules.0.match.tool')));
+    }
+  });
+
+  it('rejects unknown effect with a Zod issue', () => {
+    const yaml = `
+version: 1
+default: deny
+rules:
+  - match: { tool: foo }
+    effect: maybe
+`;
+    assert.throws(() => svc.parseAndValidate(yaml), BadRequestException);
+  });
+});
+
+describe('PolicyService.getActive / setActive', () => {
+  let orgId: string;
+  let svc: PolicyService;
+
+  beforeEach(async () => {
+    const slug = `pol-${randomUUID().slice(0, 8)}`;
+    const [org] = await db
+      .insert(orgs)
+      .values({ name: 'Test', slug })
+      .returning();
+    orgId = org!.id;
+    svc = new PolicyService(db);
+  });
+
+  afterEach(async () => {
+    if (orgId) await db.delete(orgs).where(eq(orgs.id, orgId));
+  });
+
+  it('getActive returns fallback (allow-all) when no active policy', async () => {
+    const active = await svc.getActive(orgId);
+    assert.equal(active.policy_id, null);
+    assert.equal(active.is_fallback, true);
+    assert.equal(active.document?.default, 'allow');
+    assert.deepEqual(active.document?.rules, []);
+  });
+
+  it('setActive creates the policy, increments version, deactivates previous', async () => {
+    const v1Yaml = `version: 1\ndefault: deny\nrules: []\n`;
+    const v1 = await svc.setActive({ orgId, name: 'first', yaml: v1Yaml });
+    assert.equal(v1.version, 1);
+    assert.equal(v1.is_fallback, false);
+
+    const v2Yaml = `version: 1\ndefault: allow\nrules: []\n`;
+    const v2 = await svc.setActive({ orgId, name: 'second', yaml: v2Yaml });
+    assert.equal(v2.version, 2);
+
+    const all = await db
+      .select()
+      .from(policies)
+      .where(eq(policies.orgId, orgId))
+      .orderBy(desc(policies.version));
+    assert.equal(all.length, 2);
+    assert.equal(all[0]!.version, 2);
+    assert.equal(all[0]!.isActive, true);
+    assert.equal(all[1]!.version, 1);
+    assert.equal(all[1]!.isActive, false);
+
+    const active = await svc.getActive(orgId);
+    assert.equal(active.policy_id, v2.policy_id);
+    assert.equal(active.document?.default, 'allow');
+  });
+
+  it('setActive rejects invalid YAML before any DB write', async () => {
+    await assert.rejects(
+      () =>
+        svc.setActive({
+          orgId,
+          name: 'bad',
+          yaml: 'version: 1\ndefault: deny\nrules:\n  - match: { tool: "" }\n    effect: allow\n',
+        }),
+      BadRequestException,
+    );
+    const rows = await db
+      .select()
+      .from(policies)
+      .where(eq(policies.orgId, orgId));
+    assert.equal(rows.length, 0);
+  });
+
+  it('versions are scoped per org (no cross-talk)', async () => {
+    const slugB = `pol-${randomUUID().slice(0, 8)}`;
+    const [orgB] = await db
+      .insert(orgs)
+      .values({ name: 'Other', slug: slugB })
+      .returning();
+
+    try {
+      await svc.setActive({
+        orgId,
+        name: 'a',
+        yaml: 'version: 1\ndefault: deny\nrules: []\n',
+      });
+      await svc.setActive({
+        orgId,
+        name: 'a',
+        yaml: 'version: 1\ndefault: allow\nrules: []\n',
+      });
+      const orgBPolicy = await svc.setActive({
+        orgId: orgB!.id,
+        name: 'a',
+        yaml: 'version: 1\ndefault: deny\nrules: []\n',
+      });
+      assert.equal(orgBPolicy.version, 1);
+
+      const orgARows = await db
+        .select()
+        .from(policies)
+        .where(and(eq(policies.orgId, orgId)))
+        .orderBy(desc(policies.version));
+      assert.equal(orgARows.length, 2);
+      assert.equal(orgARows[0]!.version, 2);
+    } finally {
+      await db.delete(orgs).where(eq(orgs.id, orgB!.id));
+    }
+  });
+});
+
+describe('PolicyService.evaluate', () => {
+  let orgId: string;
+  let svc: PolicyService;
+
+  beforeEach(async () => {
+    const slug = `pol-${randomUUID().slice(0, 8)}`;
+    const [org] = await db
+      .insert(orgs)
+      .values({ name: 'Test', slug })
+      .returning();
+    orgId = org!.id;
+    svc = new PolicyService(db);
+  });
+
+  afterEach(async () => {
+    if (orgId) await db.delete(orgs).where(eq(orgs.id, orgId));
+  });
+
+  it('uses fallback policy (allow-all) when no active policy is set', async () => {
+    const decision = await svc.evaluate(orgId, {
+      tool: 'random.tool',
+      params: {},
+    });
+    assert.equal(decision.effect, 'allow');
+    assert.equal(decision.fallback, true);
+  });
+
+  it('applies the active policy when one exists', async () => {
+    await svc.setActive({
+      orgId,
+      name: 'eval-test',
+      yaml: `version: 1
+default: deny
+rules:
+  - match: { tool: 'hubspot.contacts.update' }
+    effect: allow
+    reason: "contact updates ok"
+`,
+    });
+    const decision = await svc.evaluate(orgId, {
+      tool: 'hubspot.contacts.update',
+      params: {},
+    });
+    assert.equal(decision.effect, 'allow');
+    assert.equal(decision.fallback, false);
+    assert.equal(decision.reason, 'contact updates ok');
+
+    const denied = await svc.evaluate(orgId, {
+      tool: 'salesforce.opportunity.update',
+      params: {},
+    });
+    assert.equal(denied.effect, 'deny');
+  });
+});
