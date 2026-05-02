@@ -1,6 +1,7 @@
-import { revalidatePath } from 'next/cache';
 import { api } from '../../lib/api';
 import { Card, ErrorBox, H1, StatusPill, Subtitle } from '../../components/nav';
+import { PolicyEditor } from './policy-editor';
+import { setPolicyAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,16 +22,6 @@ rules:
       tool: hubspot.*.delete
     effect: deny
 `;
-
-async function setPolicyAction(formData: FormData) {
-  'use server';
-  const yaml = String(formData.get('yaml') ?? '').trim();
-  const name = String(formData.get('name') ?? 'default').trim() || 'default';
-  if (!yaml) return;
-  await api.policies.setActive({ name, yaml });
-  revalidatePath('/policies');
-  revalidatePath('/');
-}
 
 export default async function PoliciesPage() {
   let policy: Awaited<ReturnType<typeof api.policies.active>> | null = null;
@@ -69,37 +60,11 @@ export default async function PoliciesPage() {
       </div>
 
       <Card className="p-4">
-        <form action={setPolicyAction} className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)] max-w-xs">
-            Policy name
-            <input
-              name="name"
-              defaultValue={initialName}
-              className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-accent)]"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
-            YAML
-            <textarea
-              name="yaml"
-              defaultValue={initialYaml}
-              rows={20}
-              spellCheck={false}
-              className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] mono focus:outline-none focus:border-[var(--color-accent)]"
-            />
-          </label>
-          <div>
-            <button
-              type="submit"
-              className="px-4 py-2 rounded-md text-sm font-medium bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:opacity-90"
-            >
-              Save and activate
-            </button>
-            <span className="ml-3 text-xs text-[var(--color-muted)]">
-              Saving creates a new version and deactivates the previous active policy.
-            </span>
-          </div>
-        </form>
+        <PolicyEditor
+          initialName={initialName}
+          initialYaml={initialYaml}
+          action={setPolicyAction}
+        />
       </Card>
     </div>
   );
