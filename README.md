@@ -78,6 +78,29 @@ pnpm --filter '@dejavas/api' dev
 pnpm --filter '@dejavas/web' dev
 ```
 
+### Deploy to Fly.io
+
+Two Fly apps (api + web) wired by setting `API_URL` on the web app to point at the api app's `.fly.dev` URL. Configs are in `infra/fly.api.toml` and `infra/fly.web.toml` — edit the `app =` placeholders, then:
+
+```bash
+# API
+fly apps create dejavas-api-CHANGEME --config infra/fly.api.toml
+fly postgres create --name dejavas-pg-CHANGEME --region iad
+fly postgres attach dejavas-pg-CHANGEME --app dejavas-api-CHANGEME       # sets DATABASE_URL
+fly redis create --name dejavas-redis-CHANGEME --region iad
+fly secrets set REDIS_URL=redis://... --config infra/fly.api.toml
+fly deploy --config infra/fly.api.toml --remote-only
+
+# Web (after the API is live)
+fly apps create dejavas-web-CHANGEME --config infra/fly.web.toml
+fly secrets set API_URL=https://dejavas-api-CHANGEME.fly.dev --config infra/fly.web.toml
+fly deploy --config infra/fly.web.toml --remote-only
+```
+
+Both Fly configs use `auto_stop_machines = "stop"` so you only pay for active traffic, and `min_machines_running = 0` so idle apps cost ~0. The api's `[[http_service.checks]]` hits `/health` every 30s.
+
+To plug in real connectors after deploy, just `fly secrets set` more env vars (HubSpot / Salesforce / Gmail / Outreach / Apollo / Slack tokens) — the api restarts and picks them up. Each connector independently degrades to `connector_not_configured` when its tokens are absent.
+
 ## Smoke-test the loop
 
 ```bash
