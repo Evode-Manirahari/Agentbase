@@ -12,6 +12,7 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
+    "@dejavas/connector-apollo": "workspace:*",
     "@dejavas/connector-gmail": "workspace:*",
     "@dejavas/connector-hubspot": "workspace:*",
     "@dejavas/connector-outreach": "workspace:*",

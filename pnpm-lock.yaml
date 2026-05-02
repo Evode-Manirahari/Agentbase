@@ -17,6 +17,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@dejavas/connector-apollo':
+        specifier: workspace:*
+        version: link:../../connectors/apollo
       '@dejavas/connector-gmail':
         specifier: workspace:*
         version: link:../../connectors/gmail
@@ -130,6 +133,16 @@ importers:
       tailwindcss:
         specifier: ^4.0.0
         version: 4.2.4
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  connectors/apollo:
+    dependencies:
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
