@@ -30,4 +30,4 @@ CMD ["pnpm", "--filter", "@dejavas/api", "exec", \
 # Container-level health probe: hit the API's /health which already verifies
 # the Postgres connection.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -q -O - http://localhost:3002/health | grep -q '"status":"ok"' || exit 1
+  CMD wget -q -O - http://127.0.0.1:3002/health | grep -q '"status":"ok"' || exit 1

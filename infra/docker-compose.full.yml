@@ -1,0 +1,115 @@
+# Full-stack compose — postgres + redis + migrate + api + web in one shot.
+# Use for: demoing the product, integration testing, single-command "make
+# this run on a fresh machine."
+#
+# For day-to-day development (where you want hot-reload on api + web),
+# use infra/docker-compose.yml instead and run pnpm --filter ... dev locally.
+#
+# Run from the repo root:
+#   docker compose -f infra/docker-compose.full.yml up --build
+#
+# Then open http://localhost:3000
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dejavas-full-postgres
+    environment:
+      POSTGRES_USER: dejavas
+      POSTGRES_PASSWORD: dejavas
+      POSTGRES_DB: dejavas
+    ports:
+      - "5433:5432"
+    volumes:
+      - dejavas-full-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dejavas -d dejavas"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: dejavas-full-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot job: runs drizzle-kit push --force, then exits successfully.
+  # Re-uses the API image so we don't have to maintain a parallel one.
+  migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: dejavas-full-migrate
+    environment:
+      DATABASE_URL: postgresql://dejavas:dejavas@postgres:5432/dejavas
+    command:
+      - "pnpm"
+      - "--filter"
+      - "@dejavas/db"
+      - "exec"
+      - "drizzle-kit"
+      - "push"
+      - "--force"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: dejavas-full-api
+    ports:
+      - "3002:3002"
+    environment:
+      DATABASE_URL: postgresql://dejavas:dejavas@postgres:5432/dejavas
+      REDIS_URL: redis://redis:6379
+      PORT: 3002
+      NODE_ENV: production
+      # Optional credentials — uncomment / fill via .env, OR set them in
+      # your shell before `docker compose up`. Without these, connector
+      # invocations cleanly return connector_not_configured (per-connector
+      # graceful degradation), and Slack inbound returns 503.
+      # HUBSPOT_ACCESS_TOKEN: ${HUBSPOT_ACCESS_TOKEN:-}
+      # SALESFORCE_ACCESS_TOKEN: ${SALESFORCE_ACCESS_TOKEN:-}
+      # SALESFORCE_INSTANCE_URL: ${SALESFORCE_INSTANCE_URL:-}
+      # GMAIL_ACCESS_TOKEN: ${GMAIL_ACCESS_TOKEN:-}
+      # GMAIL_USER_ID: ${GMAIL_USER_ID:-}
+      # OUTREACH_ACCESS_TOKEN: ${OUTREACH_ACCESS_TOKEN:-}
+      # APOLLO_API_KEY: ${APOLLO_API_KEY:-}
+      # SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      # SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      # SLACK_APPROVALS_CHANNEL: ${SLACK_APPROVALS_CHANNEL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    container_name: dejavas-full-web
+    ports:
+      - "3000:3000"
+    environment:
+      # Server-side fetches go through the docker network to the api service
+      API_URL: http://api:3002
+      PORT: 3000
+      NODE_ENV: production
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  dejavas-full-pg:

@@ -35,11 +35,30 @@ Early. The full demoable loop works end-to-end locally; nothing is hardened for 
 
 ## Quick start
 
-Requires Docker, Node 22+, pnpm 10+.
+### Demo mode — single command
+
+Requires Docker.
 
 ```bash
 git clone https://github.com/Evode-Manirahari/Agentbase
 cd Agentbase
+docker compose -f infra/docker-compose.full.yml up --build
+```
+
+Brings up Postgres + Redis + the schema migration + API on :3002 + web on :3000 with health checks. Open http://localhost:3000.
+
+To use real connectors, set the relevant env vars in your shell before `docker compose up` (or uncomment the lines in `infra/docker-compose.full.yml`):
+
+```bash
+HUBSPOT_ACCESS_TOKEN=pat-... SLACK_BOT_TOKEN=xoxb-... \
+  docker compose -f infra/docker-compose.full.yml up --build
+```
+
+### Dev mode — hot reload
+
+Requires Docker, Node 22+, pnpm 10+.
+
+```bash
 pnpm install
 
 # Postgres + Redis
@@ -58,8 +77,6 @@ pnpm --filter '@dejavas/api' dev
 # Web on :3000 (in another terminal)
 pnpm --filter '@dejavas/web' dev
 ```
-
-Open http://localhost:3000.
 
 ## Smoke-test the loop
 
