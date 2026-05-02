@@ -1,0 +1,27 @@
+node_modules
+**/node_modules
+.git
+.github
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+
+# env / secrets
+.env
+**/.env
+**/.env.local
+**/.env.*.local
+
+# editor / os
+.DS_Store
+.vscode
+.idea
+
+# docs (optional — keep README for context)
+infra
+examples/demo-agent/setup.sh
+
+# build artifacts
+*.log
