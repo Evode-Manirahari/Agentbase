@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { SignedIn, UserButton } from '@clerk/nextjs';
 
 const items = [
   { href: '/', label: 'Overview' },
@@ -9,6 +10,8 @@ const items = [
   { href: '/actions', label: 'Actions' },
   { href: '/audit', label: 'Audit' },
 ] as const;
+
+const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 export function Shell({ children }: { children: ReactNode }) {
   return (
@@ -27,8 +30,22 @@ export function Shell({ children }: { children: ReactNode }) {
             {it.label}
           </Link>
         ))}
-        <div className="mt-auto text-xs text-[var(--color-muted)] px-2">
-          local · {process.env.API_URL ?? 'http://localhost:3002'}
+        <div className="mt-auto flex flex-col gap-2 px-2 pt-3 border-t border-[var(--color-border)]">
+          {clerkEnabled ? (
+            <SignedIn>
+              <div className="flex items-center gap-2 text-xs text-[var(--color-muted)]">
+                <UserButton afterSignOutUrl="/sign-in" />
+                <span>signed in</span>
+              </div>
+            </SignedIn>
+          ) : (
+            <span className="text-xs text-amber-400 mono">
+              dev mode (no auth)
+            </span>
+          )}
+          <span className="text-xs text-[var(--color-muted)]">
+            {process.env.API_URL ?? 'http://localhost:3002'}
+          </span>
         </div>
       </aside>
       <main className="flex-1 p-8 overflow-x-auto">{children}</main>

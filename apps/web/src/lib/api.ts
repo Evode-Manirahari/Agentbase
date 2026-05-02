@@ -1,4 +1,22 @@
+import { auth } from '@clerk/nextjs/server';
+
 const BASE_URL = process.env.API_URL ?? 'http://localhost:3002';
+const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+// Forwards the signed-in user's Clerk session JWT to the API. The API's
+// ClerkAuthGuard validates it via @clerk/backend's verifyToken. In dev mode
+// (no Clerk keys), this returns null and the request goes through with no
+// Authorization header — the API's ClerkAuthGuard is also in dev-mode
+// pass-through, so the loop closes.
+async function getAuthToken(): Promise<string | null> {
+  if (!clerkEnabled) return null;
+  try {
+    const a = await auth();
+    return (await a.getToken()) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 async function req<T>(
   path: string,
@@ -8,6 +26,10 @@ async function req<T>(
   const headers = new Headers(init.headers);
   if (init.body && !headers.has('content-type')) {
     headers.set('content-type', 'application/json');
+  }
+  const token = await getAuthToken();
+  if (token && !headers.has('authorization')) {
+    headers.set('authorization', `Bearer ${token}`);
   }
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
