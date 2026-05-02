@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { HubspotConnector, type Connector } from '@dejavas/connector-hubspot';
 import { SalesforceConnector } from '@dejavas/connector-salesforce';
 import { GmailConnector } from '@dejavas/connector-gmail';
+import { OutreachConnector } from '@dejavas/connector-outreach';
 
 @Injectable()
 export class ConnectorRegistry {
@@ -14,6 +15,7 @@ export class ConnectorRegistry {
     const sfInstanceUrl = config.get<string>('SALESFORCE_INSTANCE_URL');
     const gmailToken = config.get<string>('GMAIL_ACCESS_TOKEN');
     const gmailUserId = config.get<string>('GMAIL_USER_ID');
+    const outreachToken = config.get<string>('OUTREACH_ACCESS_TOKEN');
     this.connectors = [
       new HubspotConnector({
         accessToken: hubspotToken && hubspotToken.length > 0 ? hubspotToken : null,
@@ -25,6 +27,9 @@ export class ConnectorRegistry {
       new GmailConnector({
         accessToken: gmailToken && gmailToken.length > 0 ? gmailToken : null,
         userId: gmailUserId && gmailUserId.length > 0 ? gmailUserId : null,
+      }),
+      new OutreachConnector({
+        accessToken: outreachToken && outreachToken.length > 0 ? outreachToken : null,
       }),
     ];
   }
