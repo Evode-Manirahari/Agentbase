@@ -7,6 +7,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { PolicyService } from '../policy/policy.service.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
 import { SlackService } from '../slack/slack.service.js';
+import { RateLimitService } from './rate-limit.service.js';
 import type { ConnectorResult } from '@dejavas/connector-hubspot';
 import type { ActionStatus, PolicyDecision } from '@dejavas/shared';
 
@@ -37,13 +38,15 @@ export class ActionsService {
     private readonly policy: PolicyService,
     private readonly connectors: ConnectorRegistry,
     private readonly slack: SlackService,
+    private readonly rateLimit: RateLimitService,
   ) {}
 
   async execute(input: ExecuteInput): Promise<ExecuteOutput> {
     // Idempotency: if this (org, agent, key) tuple was already processed,
     // return the stored outcome instead of re-evaluating policy and re-calling
     // the connector. Agents that retry on network errors get exactly-one
-    // CRM/email side effect for a given key.
+    // CRM/email side effect for a given key. Idempotent replays bypass the
+    // rate limiter — the original request already paid the cost.
     if (input.idempotencyKey) {
       const cached = await this.findByIdempotencyKey(
         input.orgId,
@@ -56,6 +59,52 @@ export class ActionsService {
         );
         return cached;
       }
+    }
+
+    // Rate limit gate: block runaway agents before they reach the connector.
+    const rl = await this.rateLimit.check({
+      orgId: input.orgId,
+      agentId: input.agentId,
+      tool: input.tool,
+    });
+    if (!rl.ok) {
+      const decision: PolicyDecision = {
+        effect: 'allow',
+        reason: null,
+        rule_index: null,
+        rule_matched: null,
+        approver_role: null,
+        policy_id: null,
+        fallback: false,
+      };
+      const storedResult = {
+        ok: false,
+        error: {
+          code: 'rate_limited',
+          message: `${rl.scope}-scope limit of ${rl.limit}/min exceeded`,
+          retry_after_sec: rl.retry_after_sec,
+          scope: rl.scope,
+        },
+      };
+      const action = await this.recordAction(input, 'failed', decision, storedResult);
+      await this.audit.record({
+        orgId: input.orgId,
+        actorType: 'agent',
+        actorId: input.agentId,
+        eventType: 'action.rate_limited',
+        payload: {
+          actionId: action.id,
+          tool: input.tool,
+          scope: rl.scope,
+          limit: rl.limit,
+        },
+      });
+      return {
+        action_id: action.id,
+        status: 'failed',
+        result: storedResult,
+        policy_decision: decision,
+      };
     }
 
     const decision = await this.policy.evaluate(input.orgId, {

@@ -29,6 +29,10 @@ import { AuditService } from '../audit/audit.service.js';
 import type { PolicyService } from '../policy/policy.service.js';
 import type { ConnectorRegistry } from '../connectors/connector-registry.js';
 import type { SlackService } from '../slack/slack.service.js';
+import type {
+  RateLimitResult,
+  RateLimitService,
+} from './rate-limit.service.js';
 
 const DB_URL =
   process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
@@ -95,6 +99,19 @@ class StubSlack {
   }
 }
 
+class StubRateLimit {
+  result: RateLimitResult = { ok: true };
+  checks: Array<{ orgId: string; agentId: string; tool: string }> = [];
+  async check(input: {
+    orgId: string;
+    agentId: string;
+    tool: string;
+  }): Promise<RateLimitResult> {
+    this.checks.push(input);
+    return this.result;
+  }
+}
+
 let client: ReturnType<typeof postgres>;
 let db: ReturnType<typeof drizzle<typeof schema>>;
 let audit: AuditService;
@@ -115,6 +132,7 @@ describe('ActionsService.execute', () => {
   let policy: StubPolicy;
   let registry: StubRegistry;
   let slack: StubSlack;
+  let rateLimit: StubRateLimit;
   let svc: ActionsService;
 
   beforeEach(async () => {
@@ -133,12 +151,14 @@ describe('ActionsService.execute', () => {
     policy = new StubPolicy();
     registry = new StubRegistry();
     slack = new StubSlack();
+    rateLimit = new StubRateLimit();
     svc = new ActionsService(
       db,
       audit,
       policy as unknown as PolicyService,
       registry as unknown as ConnectorRegistry,
       slack as unknown as SlackService,
+      rateLimit as unknown as RateLimitService,
     );
   });
 
@@ -453,6 +473,112 @@ describe('ActionsService.execute', () => {
     await execute('t.t', { v: 3 });
     assert.equal(registry.invocations.length, 3);
   });
+
+  it('rate-limited: connector not invoked, action persisted as failed with rate_limited code', async () => {
+    rateLimit.result = {
+      ok: false,
+      scope: 'tool',
+      limit: 60,
+      retry_after_sec: 60,
+    };
+    policy.decision = makeDecision({ effect: 'allow' });
+
+    const out = await execute('hubspot.contacts.update', { id: 'c1' });
+
+    assert.equal(out.status, 'failed');
+    const result = out.result as {
+      ok: boolean;
+      error: { code: string; scope: string; retry_after_sec: number };
+    };
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, 'rate_limited');
+    assert.equal(result.error.scope, 'tool');
+    assert.equal(result.error.retry_after_sec, 60);
+
+    // Connector never called.
+    assert.equal(registry.invocations.length, 0);
+
+    // Audit log entry recorded.
+    const events = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.orgId, orgId));
+    assert.equal(events.length, 1);
+    assert.equal(events[0]!.eventType, 'action.rate_limited');
+    const payload = events[0]!.payload as { scope: string; limit: number };
+    assert.equal(payload.scope, 'tool');
+    assert.equal(payload.limit, 60);
+
+    // Persisted row carries the rate_limited error so ops can audit later.
+    const [row] = await db
+      .select()
+      .from(actions)
+      .where(eq(actions.id, out.action_id));
+    assert.equal(row!.status, 'failed');
+    const stored = row!.result as { error: { code: string } };
+    assert.equal(stored.error.code, 'rate_limited');
+  });
+
+  it('rate-limited: agent-scope blocks even when tool-scope allows', async () => {
+    rateLimit.result = {
+      ok: false,
+      scope: 'agent',
+      limit: 600,
+      retry_after_sec: 60,
+    };
+    policy.decision = makeDecision({ effect: 'allow' });
+
+    const out = await execute('any.tool', {});
+    const result = out.result as { error: { scope: string; message: string } };
+    assert.equal(result.error.scope, 'agent');
+    assert.match(result.error.message, /agent-scope limit of 600/);
+  });
+
+  it('rate-limit check happens after idempotency lookup: cached request bypasses limiter', async () => {
+    policy.decision = makeDecision({ effect: 'allow' });
+    // First request: limiter says ok, executes.
+    rateLimit.result = { ok: true };
+    const first = await svc.execute({
+      orgId,
+      agentId,
+      tool: 't.t',
+      params: {},
+      idempotencyKey: 'idem-bypass',
+    });
+    assert.equal(first.status, 'executed');
+    const checksAfterFirst = rateLimit.checks.length;
+
+    // Limiter now blocks. But the idempotent retry should hit the cache and
+    // never reach the limiter — otherwise a flaky network on the agent side
+    // would cause its retried request to be falsely throttled.
+    rateLimit.result = {
+      ok: false,
+      scope: 'tool',
+      limit: 60,
+      retry_after_sec: 60,
+    };
+    const second = await svc.execute({
+      orgId,
+      agentId,
+      tool: 't.t',
+      params: {},
+      idempotencyKey: 'idem-bypass',
+    });
+    assert.equal(second.action_id, first.action_id);
+    assert.equal(second.status, 'executed');
+    // Limiter was NOT called for the cached path.
+    assert.equal(rateLimit.checks.length, checksAfterFirst);
+  });
+
+  it('rate-limit ok: passes through to policy and connector unchanged', async () => {
+    rateLimit.result = { ok: true };
+    policy.decision = makeDecision({ effect: 'allow' });
+    const out = await execute('t.t', {});
+    assert.equal(out.status, 'executed');
+    assert.equal(rateLimit.checks.length, 1);
+    assert.equal(rateLimit.checks[0]!.tool, 't.t');
+    assert.equal(registry.invocations.length, 1);
+  });
 });
 
 describe('ActionsService.listForOrg', () => {
@@ -478,6 +604,7 @@ describe('ActionsService.listForOrg', () => {
       new StubPolicy() as unknown as PolicyService,
       new StubRegistry() as unknown as ConnectorRegistry,
       new StubSlack() as unknown as SlackService,
+      new StubRateLimit() as unknown as RateLimitService,
     );
   });
 
