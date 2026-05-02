@@ -116,3 +116,44 @@ export const ActivePolicyResponse = z.object({
   is_fallback: z.boolean(),
 });
 export type ActivePolicyResponse = z.infer<typeof ActivePolicyResponse>;
+
+export const ApprovalDecisionAction = z.enum(['approve', 'deny']);
+export type ApprovalDecisionAction = z.infer<typeof ApprovalDecisionAction>;
+
+export const ApprovalDecisionRequest = z.object({
+  decision: ApprovalDecisionAction,
+  decided_by_email: z.string().email().optional(),
+  notes: z.string().max(1000).optional(),
+});
+export type ApprovalDecisionRequest = z.infer<typeof ApprovalDecisionRequest>;
+
+export const ApprovalView = z.object({
+  approval_id: z.string().uuid(),
+  action_id: z.string().uuid(),
+  agent_id: z.string().uuid(),
+  agent_name: z.string(),
+  tool: z.string(),
+  params: z.record(z.unknown()),
+  policy_decision: PolicyDecision.nullable(),
+  required_role: UserRole,
+  decision: ApprovalDecision,
+  expires_at: z.string().datetime().nullable(),
+  created_at: z.string().datetime(),
+  decided_at: z.string().datetime().nullable(),
+  decided_by_email: z.string().email().nullable(),
+});
+export type ApprovalView = z.infer<typeof ApprovalView>;
+
+export const ApprovalListResponse = z.object({
+  items: z.array(ApprovalView),
+});
+export type ApprovalListResponse = z.infer<typeof ApprovalListResponse>;
+
+export const ApprovalDecisionResponse = z.object({
+  approval_id: z.string().uuid(),
+  decision: ApprovalDecision,
+  action_id: z.string().uuid(),
+  action_status: ActionStatus,
+  result: z.unknown().nullable(),
+});
+export type ApprovalDecisionResponse = z.infer<typeof ApprovalDecisionResponse>;

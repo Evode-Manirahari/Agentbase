@@ -7,6 +7,7 @@ import { ActionsModule } from './actions/actions.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { PolicyModule } from './policy/policy.module.js';
 import { ConnectorsModule } from './connectors/connectors.module.js';
+import { ApprovalsModule } from './approvals/approvals.module.js';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ConnectorsModule } from './connectors/connectors.module.js';
     ConnectorsModule,
     PolicyModule,
     ActionsModule,
+    ApprovalsModule,
     AuditModule,
   ],
 })
