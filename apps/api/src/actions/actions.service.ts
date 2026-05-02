@@ -6,6 +6,7 @@ import { actions, agents, approvals } from '@dejavas/db';
 import { AuditService } from '../audit/audit.service.js';
 import { PolicyService } from '../policy/policy.service.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
+import { SlackService } from '../slack/slack.service.js';
 import type { ConnectorResult } from '@dejavas/connector-hubspot';
 import type { ActionStatus, PolicyDecision } from '@dejavas/shared';
 
@@ -33,6 +34,7 @@ export class ActionsService {
     private readonly audit: AuditService,
     private readonly policy: PolicyService,
     private readonly connectors: ConnectorRegistry,
+    private readonly slack: SlackService,
   ) {}
 
   async execute(input: ExecuteInput): Promise<ExecuteOutput> {
@@ -60,12 +62,16 @@ export class ActionsService {
         decision,
         null,
       );
-      await this.db.insert(approvals).values({
-        actionId: action.id,
-        requiredRole: decision.approver_role ?? 'approver',
-        decision: 'pending',
-        expiresAt: new Date(Date.now() + APPROVAL_TTL_MS),
-      });
+      const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS);
+      const [approval] = await this.db
+        .insert(approvals)
+        .values({
+          actionId: action.id,
+          requiredRole: decision.approver_role ?? 'approver',
+          decision: 'pending',
+          expiresAt,
+        })
+        .returning();
       await this.audit.record({
         orgId: input.orgId,
         actorType: 'agent',
@@ -73,6 +79,33 @@ export class ActionsService {
         eventType: 'action.awaiting_approval',
         payload: { actionId: action.id, tool: input.tool, decision },
       });
+
+      if (approval && this.slack.isConfigured()) {
+        const agentName = await this.lookupAgentName(input.agentId);
+        const card = await this.slack.postApprovalCard({
+          approvalId: approval.id,
+          agentName,
+          tool: input.tool,
+          params: input.params,
+          reason: decision.reason ?? null,
+          expiresAt,
+        });
+        if (card) {
+          await this.audit.record({
+            orgId: input.orgId,
+            actorType: 'system',
+            actorId: 'slack',
+            eventType: 'approval.posted_to_slack',
+            payload: {
+              approvalId: approval.id,
+              actionId: action.id,
+              channel: card.channel,
+              ts: card.ts,
+            },
+          });
+        }
+      }
+
       return {
         action_id: action.id,
         status: 'awaiting_approval',
@@ -127,6 +160,15 @@ export class ActionsService {
       result: storedResult,
       policy_decision: decision,
     };
+  }
+
+  private async lookupAgentName(agentId: string): Promise<string> {
+    const rows = await this.db
+      .select({ name: agents.name })
+      .from(agents)
+      .where(eq(agents.id, agentId))
+      .limit(1);
+    return rows[0]?.name ?? agentId;
   }
 
   async listForOrg(orgId: string, limit = 100) {

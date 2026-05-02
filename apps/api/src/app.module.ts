@@ -8,6 +8,7 @@ import { AuditModule } from './audit/audit.module.js';
 import { PolicyModule } from './policy/policy.module.js';
 import { ConnectorsModule } from './connectors/connectors.module.js';
 import { ApprovalsModule } from './approvals/approvals.module.js';
+import { SlackModule } from './slack/slack.module.js';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ApprovalsModule } from './approvals/approvals.module.js';
     PolicyModule,
     ActionsModule,
     ApprovalsModule,
+    SlackModule,
     AuditModule,
   ],
 })

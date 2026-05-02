@@ -11,7 +11,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ logger: false, trustProxy: true }),
-    { bufferLogs: true },
+    { bufferLogs: true, rawBody: true },
   );
 
   await app.register(helmet as any);
