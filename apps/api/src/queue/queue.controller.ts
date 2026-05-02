@@ -1,10 +1,12 @@
-import { Controller, Get, Post } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import type { Queue } from 'bullmq';
 import { ExpiryProcessor } from './expiry.processor.js';
 import { QUEUE } from './queue.tokens.js';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 
 @Controller('v1/queue')
+@UseGuards(ClerkAuthGuard)
 export class QueueController {
   constructor(
     @Inject(QUEUE) private readonly queue: Queue,

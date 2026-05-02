@@ -1,8 +1,10 @@
-import { Controller, forwardRef, Get, Inject, Query } from '@nestjs/common';
+import { Controller, forwardRef, Get, Inject, Query, UseGuards } from '@nestjs/common';
 import { AuditService } from './audit.service.js';
 import { AgentsService } from '../agents/agents.service.js';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 
 @Controller('v1/audit')
+@UseGuards(ClerkAuthGuard)
 export class AuditController {
   constructor(
     private readonly audit: AuditService,

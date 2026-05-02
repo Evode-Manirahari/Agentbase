@@ -188,7 +188,7 @@ infra/
 | Validation | Zod (shared API ↔ SDK ↔ web) |
 | Tests | `node:test` via @swc-node/register |
 | Agent auth | sha256-hashed API keys (`dvk_…` prefix) |
-| Human auth | Clerk (planned, not yet wired) |
+| Human auth | Clerk JWT verification on the API (frontend wiring is next) |
 | Build | pnpm workspaces + Turborepo |
 
 ## Development
@@ -246,9 +246,9 @@ API_URL=http://localhost:3002
 
 ## What's deliberately NOT done yet
 
-- **Clerk auth** on management endpoints — currently open to anyone with network access. First thing to harden before any remote deploy.
-- **OAuth per org** — single global HubSpot token; real multi-tenant SaaS needs per-org OAuth.
-- **Web E2E tests** — only API has automated tests (118). Web is gated by typecheck + manual QA.
+- **Web Clerk integration** — backend now verifies Clerk session tokens via @clerk/backend on every management endpoint, but the Next.js dashboard still hits the API without one. Set `CLERK_SECRET_KEY` (and the frontend bits — ClerkProvider + middleware + token forwarding in `apps/web/src/lib/api.ts`) before any non-localhost deploy. With `CLERK_SECRET_KEY` unset, the guard logs a warning at boot and lets every request through — that's what local dev uses.
+- **OAuth per org** — single global HubSpot/Salesforce/Gmail/Outreach token; real multi-tenant SaaS needs per-org OAuth.
+- **Web E2E tests** — only API has automated tests (200+). Web is gated by typecheck + manual QA.
 - **OAuth refresh-token flow** — Gmail and Outreach both take a static access token currently; production needs the refresh-token loop on both.
 - **More connectors** — five wired (HubSpot, Salesforce, Gmail, Outreach, Apollo). Clearbit, ZoomInfo, Salesloft, LinkedIn Sales Navigator are obvious next adds.
 - **Retry / backoff** on connector failures — a transient HubSpot 503 marks the action `failed`; could enqueue and retry via BullMQ.

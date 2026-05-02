@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
 import { ZodValidationPipe } from 'nestjs-zod';
@@ -15,6 +16,7 @@ import {
   type RegisterAgentResponse,
 } from '@dejavas/shared';
 import { AgentsService } from './agents.service.js';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 
 const RevokeAgentRequest = z.object({
   reason: z.string().max(1000).optional(),
@@ -23,6 +25,7 @@ const RevokeAgentRequest = z.object({
 type RevokeAgentRequest = z.infer<typeof RevokeAgentRequest>;
 
 @Controller('v1/agents')
+@UseGuards(ClerkAuthGuard)
 export class AgentsController {
   constructor(private readonly agents: AgentsService) {}
 

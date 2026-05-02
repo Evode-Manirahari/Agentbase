@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put } from '@nestjs/common';
+import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
 import { ZodValidationPipe } from 'nestjs-zod';
 import {
   SetActivePolicyRequest,
@@ -7,8 +7,10 @@ import {
 } from '@dejavas/shared';
 import { PolicyService } from './policy.service.js';
 import { AgentsService } from '../agents/agents.service.js';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 
 @Controller('v1/policies')
+@UseGuards(ClerkAuthGuard)
 export class PolicyController {
   constructor(
     private readonly policy: PolicyService,

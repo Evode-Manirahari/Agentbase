@@ -7,6 +7,7 @@ import {
   type ExecuteActionResponse,
 } from '@dejavas/shared';
 import { ApiKeyGuard } from '../auth/api-key.guard.js';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { ActionsService } from './actions.service.js';
 import { AgentsService } from '../agents/agents.service.js';
 
@@ -18,6 +19,7 @@ export class ActionsController {
   ) {}
 
   @Get()
+  @UseGuards(ClerkAuthGuard)
   async list(@Query('limit') limit?: string) {
     const orgId = await this.agents.ensureDefaultOrg();
     const n = Math.min(Math.max(Number(limit ?? 100), 1), 500);

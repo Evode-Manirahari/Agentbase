@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { ZodValidationPipe } from 'nestjs-zod';
 import {
   ApprovalDecisionRequest,
@@ -9,8 +9,10 @@ import {
 } from '@dejavas/shared';
 import { ApprovalsService } from './approvals.service.js';
 import { AgentsService } from '../agents/agents.service.js';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 
 @Controller('v1/approvals')
+@UseGuards(ClerkAuthGuard)
 export class ApprovalsController {
   constructor(
     private readonly approvals: ApprovalsService,
