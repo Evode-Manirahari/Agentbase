@@ -20,6 +20,9 @@ importers:
       '@dejavas/connector-hubspot':
         specifier: workspace:*
         version: link:../../connectors/hubspot
+      '@dejavas/connector-salesforce':
+        specifier: workspace:*
+        version: link:../../connectors/salesforce
       '@dejavas/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -126,6 +129,16 @@ importers:
         version: 5.9.3
 
   connectors/hubspot:
+    dependencies:
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  connectors/salesforce:
     dependencies:
       zod:
         specifier: ^3.24.1

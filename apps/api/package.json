@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@dejavas/connector-hubspot": "workspace:*",
+    "@dejavas/connector-salesforce": "workspace:*",
     "@dejavas/db": "workspace:*",
     "@dejavas/shared": "workspace:*",
     "@fastify/helmet": "^11.1.1",
