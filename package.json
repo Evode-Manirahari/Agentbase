@@ -1,0 +1,21 @@
+{
+  "name": "dejavas",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Dejavas — secure action layer for AI sales agents (repo: Agentbase).",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}
