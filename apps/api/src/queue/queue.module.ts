@@ -42,7 +42,7 @@ const SWEEP_INTERVAL_MS = 60_000;
         new Queue(QUEUE_NAME, { connection }),
     },
   ],
-  exports: [QUEUE, ExpiryProcessor],
+  exports: [QUEUE, REDIS_CONNECTION, ExpiryProcessor],
 })
 export class QueueModule implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(QueueModule.name);
