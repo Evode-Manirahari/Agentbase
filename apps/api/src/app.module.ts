@@ -11,6 +11,7 @@ import { ApprovalsModule } from './approvals/approvals.module.js';
 import { SlackModule } from './slack/slack.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { WebhookModule } from './webhooks/webhook.module.js';
+import { MetricsModule } from './metrics/metrics.module.js';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { WebhookModule } from './webhooks/webhook.module.js';
     WebhookModule,
     QueueModule,
     AuditModule,
+    MetricsModule,
   ],
 })
 export class AppModule {}

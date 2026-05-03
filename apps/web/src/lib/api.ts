@@ -103,6 +103,21 @@ export interface ActivePolicy {
   is_fallback: boolean;
 }
 
+export interface MetricsOverview {
+  window_hours: number;
+  total: number;
+  by_status: Record<
+    'pending' | 'awaiting_approval' | 'approved' | 'denied' | 'executed' | 'failed',
+    number
+  >;
+  deny_rate: number;
+  failure_rate: number;
+  rate_limited_count: number;
+  top_tools: { tool: string; count: number }[];
+  top_agents: { agent_id: string; agent_name: string; count: number }[];
+  generated_at: string;
+}
+
 export interface WebhookSubscriptionRow {
   id: string;
   name: string;
@@ -181,6 +196,10 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify({ name: body.name ?? 'default', yaml: body.yaml }),
       }),
+  },
+  metrics: {
+    overview: (windowHours = 24) =>
+      req<MetricsOverview>(`/v1/metrics/overview?window_hours=${windowHours}`),
   },
   webhooks: {
     list: () => req<{ items: WebhookSubscriptionRow[] }>(`/v1/webhooks`),
