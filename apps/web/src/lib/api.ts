@@ -125,6 +125,13 @@ export const api = {
   },
   actions: {
     list: (limit = 100) => req<{ items: ActionRow[] }>(`/v1/actions?limit=${limit}`),
+    retry: (actionId: string) =>
+      req<{
+        action_id: string;
+        status: ActionRow['status'];
+        result?: Record<string, unknown>;
+        policy_decision: unknown;
+      }>(`/v1/actions/${actionId}/retry`, { method: 'POST' }),
   },
   approvals: {
     list: () => req<{ items: ApprovalRow[] }>(`/v1/approvals`),

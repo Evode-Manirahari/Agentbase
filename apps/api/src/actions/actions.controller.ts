@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ZodValidationPipe } from 'nestjs-zod';
 import type { FastifyRequest } from 'fastify';
 import {
@@ -41,5 +50,16 @@ export class ActionsController {
       params: body.params,
       idempotencyKey: body.idempotency_key,
     });
+  }
+
+  @Post(':id/retry')
+  @UseGuards(ClerkAuthGuard)
+  async retry(
+    @Req() req: FastifyRequest,
+    @Param('id') id: string,
+  ): Promise<ExecuteActionResponse> {
+    const orgId = await this.agents.ensureDefaultOrg();
+    const operatorId = req.clerkUser?.userId ?? 'dev-mode-operator';
+    return this.actions.retry({ orgId, actionId: id, operatorId });
   }
 }

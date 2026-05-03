@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
@@ -233,6 +239,133 @@ export class ActionsService {
     return {
       action_id: action.id,
       status: finalStatus,
+      result: storedResult,
+      policy_decision: decision,
+    };
+  }
+
+  // Operator-initiated retry of a previously-failed action. Re-uses the stored
+  // policy decision (operators are explicitly vouching for the retry; if they
+  // wanted re-evaluation they'd change the policy first). Re-checks the rate
+  // limit so retries can't bypass throttling. Updates the row in place — the
+  // audit log is the history of attempts, the action row is the current state.
+  async retry(input: {
+    orgId: string;
+    actionId: string;
+    operatorId: string;
+  }): Promise<ExecuteOutput> {
+    const [original] = await this.db
+      .select()
+      .from(actions)
+      .where(
+        and(eq(actions.id, input.actionId), eq(actions.orgId, input.orgId)),
+      )
+      .limit(1);
+    if (!original) {
+      throw new NotFoundException(`action ${input.actionId} not found`);
+    }
+    if (original.status !== 'failed') {
+      throw new ConflictException(
+        `cannot retry action with status='${original.status}' — only 'failed' is retryable`,
+      );
+    }
+    const decision =
+      (original.policyDecision as unknown as PolicyDecision | null) ?? null;
+    if (!decision || decision.effect !== 'allow') {
+      throw new ConflictException(
+        `cannot retry: original policy decision was '${decision?.effect ?? 'null'}' — change the policy and have the agent re-attempt`,
+      );
+    }
+
+    const rl = await this.rateLimit.check({
+      orgId: input.orgId,
+      agentId: original.agentId,
+      tool: original.tool,
+    });
+    if (!rl.ok) {
+      const errorResult = {
+        ok: false,
+        error: {
+          code: 'rate_limited',
+          message: `${rl.scope}-scope limit of ${rl.limit}/min exceeded`,
+          retry_after_sec: rl.retry_after_sec,
+          scope: rl.scope,
+        },
+      };
+      await this.db
+        .update(actions)
+        .set({ result: errorResult, completedAt: new Date() })
+        .where(eq(actions.id, input.actionId));
+      await this.audit.record({
+        orgId: input.orgId,
+        actorType: 'user',
+        actorId: input.operatorId,
+        eventType: 'action.retried_rate_limited',
+        payload: {
+          actionId: input.actionId,
+          tool: original.tool,
+          scope: rl.scope,
+          limit: rl.limit,
+        },
+      });
+      return {
+        action_id: input.actionId,
+        status: 'failed',
+        result: errorResult,
+        policy_decision: decision,
+      };
+    }
+
+    const connector = this.connectors.resolve(original.tool);
+    let result: ConnectorResult;
+    if (!connector) {
+      result = {
+        ok: false,
+        error: {
+          code: 'no_connector',
+          message: `no connector resolves tool ${original.tool}`,
+        },
+      };
+    } else {
+      result = await connector.invoke(
+        original.tool,
+        original.params as Record<string, unknown>,
+      );
+    }
+
+    const newStatus: ActionStatus = result.ok ? 'executed' : 'failed';
+    const storedResult = result.ok
+      ? { ok: true, data: result.data ?? null }
+      : { ok: false, error: result.error ?? { code: 'unknown', message: 'unknown error' } };
+
+    await this.db
+      .update(actions)
+      .set({
+        status: newStatus,
+        result: storedResult,
+        completedAt: new Date(),
+      })
+      .where(eq(actions.id, input.actionId));
+
+    await this.audit.record({
+      orgId: input.orgId,
+      actorType: 'user',
+      actorId: input.operatorId,
+      eventType: 'action.retried',
+      payload: {
+        actionId: input.actionId,
+        tool: original.tool,
+        previous_status: 'failed',
+        new_status: newStatus,
+        connector: connector?.name ?? null,
+        ok: result.ok,
+        error: result.ok ? null : result.error ?? null,
+      },
+    });
+
+    return {
+      action_id: input.actionId,
+      status: newStatus,
       result: storedResult,
       policy_decision: decision,
     };

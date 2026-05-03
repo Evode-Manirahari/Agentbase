@@ -579,6 +579,160 @@ describe('ActionsService.execute', () => {
     assert.equal(rateLimit.checks[0]!.tool, 't.t');
     assert.equal(registry.invocations.length, 1);
   });
+
+  it('retry: failed action becomes executed when connector now succeeds', async () => {
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.result = {
+      ok: false,
+      error: { code: 'http_503', message: 'upstream down' },
+    };
+    const first = await execute('hubspot.contacts.update', { id: 'c1' });
+    assert.equal(first.status, 'failed');
+
+    // Connector now recovers.
+    registry.result = { ok: true, data: { id: 'c1', updated: true } };
+
+    const retried = await svc.retry({
+      orgId,
+      actionId: first.action_id,
+      operatorId: 'user_op_1',
+    });
+    assert.equal(retried.status, 'executed');
+    assert.equal(retried.action_id, first.action_id);
+    assert.deepEqual(
+      (retried.result as { data: unknown }).data,
+      { id: 'c1', updated: true },
+    );
+
+    // Same row updated in place — no duplicate action.
+    const rows = await db
+      .select()
+      .from(actions)
+      .where(eq(actions.orgId, orgId));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.status, 'executed');
+
+    // Connector was called twice (original + retry).
+    assert.equal(registry.invocations.length, 2);
+    assert.equal(registry.invocations[0]!.params.id, 'c1');
+    assert.equal(registry.invocations[1]!.params.id, 'c1');
+
+    // Audit log carries the retry event with operator identity.
+    const events = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.orgId, orgId));
+    const retryEvent = events.find((e) => e.eventType === 'action.retried')!;
+    assert.equal(retryEvent.actorType, 'user');
+    assert.equal(retryEvent.actorId, 'user_op_1');
+    const payload = retryEvent.payload as {
+      previous_status: string;
+      new_status: string;
+    };
+    assert.equal(payload.previous_status, 'failed');
+    assert.equal(payload.new_status, 'executed');
+  });
+
+  it('retry: 404 if action does not exist', async () => {
+    await assert.rejects(
+      svc.retry({
+        orgId,
+        actionId: '00000000-0000-0000-0000-000000000000',
+        operatorId: 'op',
+      }),
+      /not found/i,
+    );
+  });
+
+  it('retry: 409 when status is not failed (executed cannot be retried)', async () => {
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.result = { ok: true, data: {} };
+    const out = await execute('t.t', {});
+    assert.equal(out.status, 'executed');
+
+    await assert.rejects(
+      svc.retry({ orgId, actionId: out.action_id, operatorId: 'op' }),
+      /only 'failed' is retryable/,
+    );
+  });
+
+  it('retry: 409 when original decision was deny — operator must change policy', async () => {
+    policy.decision = makeDecision({ effect: 'deny', reason: 'forbidden' });
+    const out = await execute('t.t', {});
+    assert.equal(out.status, 'denied');
+    // Manually flip status to failed to simulate a hypothetical edge case
+    // where a deny somehow ended up persisted as failed. The retry should
+    // still refuse based on the stored decision.
+    await db
+      .update(actions)
+      .set({ status: 'failed' })
+      .where(eq(actions.id, out.action_id));
+
+    await assert.rejects(
+      svc.retry({ orgId, actionId: out.action_id, operatorId: 'op' }),
+      /policy decision was 'deny'/,
+    );
+  });
+
+  it('retry: respects rate limiter, marks rate_limited without invoking connector', async () => {
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.result = {
+      ok: false,
+      error: { code: 'http_503', message: 'upstream down' },
+    };
+    const first = await execute('t.t', {});
+    assert.equal(first.status, 'failed');
+    assert.equal(registry.invocations.length, 1);
+
+    rateLimit.result = {
+      ok: false,
+      scope: 'tool',
+      limit: 60,
+      retry_after_sec: 60,
+    };
+    const retried = await svc.retry({
+      orgId,
+      actionId: first.action_id,
+      operatorId: 'op',
+    });
+    assert.equal(retried.status, 'failed');
+    const result = retried.result as { error: { code: string } };
+    assert.equal(result.error.code, 'rate_limited');
+    // Connector NOT invoked again.
+    assert.equal(registry.invocations.length, 1);
+
+    const events = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.orgId, orgId));
+    const retryEvent = events.find(
+      (e) => e.eventType === 'action.retried_rate_limited',
+    );
+    assert.ok(retryEvent, 'retry rate-limited event should be audited');
+  });
+
+  it('retry: connector still failing leaves action as failed with new error', async () => {
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.result = {
+      ok: false,
+      error: { code: 'http_503', message: 'upstream down' },
+    };
+    const first = await execute('t.t', {});
+
+    registry.result = {
+      ok: false,
+      error: { code: 'http_502', message: 'bad gateway' },
+    };
+    const retried = await svc.retry({
+      orgId,
+      actionId: first.action_id,
+      operatorId: 'op',
+    });
+    assert.equal(retried.status, 'failed');
+    const result = retried.result as { error: { code: string } };
+    // The retry's error code is now persisted (overwrites the original).
+    assert.equal(result.error.code, 'http_502');
+  });
 });
 
 describe('ActionsService.listForOrg', () => {
