@@ -78,6 +78,45 @@ test.describe('type-to-confirm revoke', () => {
   });
 });
 
+test.describe('webhooks: create + lifecycle', () => {
+  test('create reveals secret once, then enable/disable + delete work', async ({
+    page,
+  }) => {
+    const name = `e2e-wh-${STAMP()}`;
+    const url = `https://example.test/${STAMP()}`;
+
+    await page.goto('/webhooks');
+    await expect(page.getByRole('heading', { name: 'Webhooks' })).toBeVisible();
+
+    await page.getByPlaceholder('pagerduty-prod').fill(name);
+    await page.getByPlaceholder('https://hooks.example.com/incoming').fill(url);
+    // Default checkboxes (action.failed + approval.expired) satisfy "at least one event"
+    await page.getByRole('button', { name: 'Create webhook' }).click();
+
+    // Reveal-secret-once banner
+    const banner = page.locator('text=/Webhook .* created/').first();
+    await expect(banner).toBeVisible({ timeout: 20_000 });
+    const secret = page.locator('code').filter({ hasText: /^dws_/ }).first();
+    await expect(secret).toBeVisible();
+    await page.getByRole('button', { name: 'Dismiss' }).click();
+    await expect(banner).toBeHidden();
+
+    const row = page.locator(`tr:has-text("${name}")`).first();
+    await expect(row).toBeVisible();
+
+    // Toggle disable
+    await row.getByRole('button', { name: 'Disable' }).click();
+    await expect(row.getByRole('button', { name: 'Enable' })).toBeVisible();
+    // Re-enable
+    await row.getByRole('button', { name: 'Enable' }).click();
+    await expect(row.getByRole('button', { name: 'Disable' })).toBeVisible();
+
+    // Delete
+    await row.getByRole('button', { name: 'Delete' }).click();
+    await expect(page.locator(`tr:has-text("${name}")`)).toHaveCount(0);
+  });
+});
+
 test.describe('policy editor', () => {
   test('saves a new policy version and the active-version stat increments', async ({
     page,

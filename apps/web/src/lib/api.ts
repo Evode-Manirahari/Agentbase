@@ -103,6 +103,27 @@ export interface ActivePolicy {
   is_fallback: boolean;
 }
 
+export interface WebhookSubscriptionRow {
+  id: string;
+  name: string;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  last_delivery_at: string | null;
+  last_delivery_status: string | null;
+  created_at: string;
+}
+
+export interface WebhookSubscriptionCreated {
+  id: string;
+  name: string;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  secret: string;
+  created_at: string;
+}
+
 export const api = {
   agents: {
     list: () => req<{ items: AgentRow[] }>(`/v1/agents`),
@@ -160,5 +181,23 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify({ name: body.name ?? 'default', yaml: body.yaml }),
       }),
+  },
+  webhooks: {
+    list: () => req<{ items: WebhookSubscriptionRow[] }>(`/v1/webhooks`),
+    create: (body: { name: string; url: string; events: string[] }) =>
+      req<WebhookSubscriptionCreated>(`/v1/webhooks`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    update: (
+      id: string,
+      patch: { enabled?: boolean; events?: string[]; url?: string; name?: string },
+    ) =>
+      req<{ ok: true }>(`/v1/webhooks/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+    remove: (id: string) =>
+      req<void>(`/v1/webhooks/${id}`, { method: 'DELETE' }),
   },
 };

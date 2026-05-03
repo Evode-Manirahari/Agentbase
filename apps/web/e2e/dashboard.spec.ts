@@ -5,13 +5,14 @@ test.describe('dashboard renders every route', () => {
     await page.goto('/');
     await expect(page).toHaveTitle('Dejavas');
     await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
-    // Sidebar navigation lists all six routes
+    // Sidebar navigation lists every route
     for (const label of [
       'Overview',
       'Agents',
       'Policies',
       'Approvals',
       'Actions',
+      'Webhooks',
       'Audit',
     ]) {
       await expect(page.getByRole('link', { name: label })).toBeVisible();
@@ -38,6 +39,13 @@ test.describe('dashboard renders every route', () => {
   test('audit page renders', async ({ page }) => {
     await page.goto('/audit');
     await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible();
+  });
+
+  test('webhooks page renders create form', async ({ page }) => {
+    await page.goto('/webhooks');
+    await expect(page.getByRole('heading', { name: 'Webhooks' })).toBeVisible();
+    await expect(page.getByPlaceholder('pagerduty-prod')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create webhook' })).toBeVisible();
   });
 });
 

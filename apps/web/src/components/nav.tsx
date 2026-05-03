@@ -8,6 +8,7 @@ const items = [
   { href: '/policies', label: 'Policies' },
   { href: '/approvals', label: 'Approvals' },
   { href: '/actions', label: 'Actions' },
+  { href: '/webhooks', label: 'Webhooks' },
   { href: '/audit', label: 'Audit' },
 ] as const;
 
