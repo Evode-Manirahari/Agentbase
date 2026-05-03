@@ -2,26 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { api, type WebhookSubscriptionCreated } from '../../lib/api';
+import { KNOWN_EVENTS } from './events';
 
 export type CreateState =
   | { status: 'idle' }
   | { status: 'success'; subscription: WebhookSubscriptionCreated }
   | { status: 'error'; message: string };
-
-const KNOWN_EVENTS = [
-  'action.executed',
-  'action.failed',
-  'action.denied',
-  'action.awaiting_approval',
-  'action.rate_limited',
-  'action.retried',
-  'action.retried_rate_limited',
-  'approval.posted_to_slack',
-  'approval.approved',
-  'approval.denied',
-  'approval.expired',
-  'agent.revoked',
-] as const;
 
 export async function createWebhookAction(
   _prev: CreateState,
@@ -73,5 +59,3 @@ export async function removeWebhookAction(formData: FormData) {
   await api.webhooks.remove(id);
   revalidatePath('/webhooks');
 }
-
-export { KNOWN_EVENTS };

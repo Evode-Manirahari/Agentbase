@@ -1,11 +1,8 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import {
-  createWebhookAction,
-  KNOWN_EVENTS,
-  type CreateState,
-} from './actions';
+import { createWebhookAction, type CreateState } from './actions';
+import { KNOWN_EVENTS } from './events';
 
 const initialState: CreateState = { status: 'idle' };
 
