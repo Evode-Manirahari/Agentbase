@@ -177,6 +177,29 @@ export const auditLog = pgTable(
   }),
 );
 
+export const webhookSubscriptions = pgTable(
+  'webhook_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    url: text('url').notNull(),
+    secret: text('secret').notNull(),
+    events: jsonb('events').$type<string[]>().notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastDeliveryAt: timestamp('last_delivery_at', { withTimezone: true }),
+    lastDeliveryStatus: text('last_delivery_status'),
+  },
+  (t) => ({
+    orgIdx: index('webhook_subs_org_idx').on(t.orgId),
+  }),
+);
+
 export type Org = typeof orgs.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Agent = typeof agents.$inferSelect;
@@ -185,3 +208,4 @@ export type Policy = typeof policies.$inferSelect;
 export type Action = typeof actions.$inferSelect;
 export type Approval = typeof approvals.$inferSelect;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
+export type WebhookSubscription = typeof webhookSubscriptions.$inferSelect;

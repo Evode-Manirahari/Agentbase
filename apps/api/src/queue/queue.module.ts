@@ -5,6 +5,7 @@ import {
   Module,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue, Worker } from 'bullmq';
@@ -18,6 +19,11 @@ import {
   REDIS_CONNECTION,
 } from './queue.tokens.js';
 import { AuditModule } from '../audit/audit.module.js';
+import {
+  WebhookService,
+  WEBHOOK_DELIVER_JOB,
+  type DeliverJobData,
+} from '../webhooks/webhook.service.js';
 
 const SWEEP_INTERVAL_MS = 60_000;
 
@@ -52,6 +58,10 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
     @Inject(QUEUE) private readonly queue: Queue,
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly processor: ExpiryProcessor,
+    // Optional so the queue can boot in test contexts that don't include
+    // the webhook module. In production WebhookModule is @Global and will
+    // always be wired.
+    @Optional() private readonly webhooks?: WebhookService,
   ) {}
 
   async onModuleInit() {
@@ -74,6 +84,12 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
       async (job) => {
         if (job.name === EXPIRY_JOB) {
           return this.processor.sweep();
+        }
+        if (job.name === WEBHOOK_DELIVER_JOB) {
+          if (!this.webhooks) {
+            return { skipped: true, reason: 'webhook service not wired' };
+          }
+          return this.webhooks.deliver(job.data as DeliverJobData);
         }
         return { skipped: true, reason: `unknown job ${job.name}` };
       },

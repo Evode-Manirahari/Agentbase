@@ -10,6 +10,7 @@ import { ConnectorsModule } from './connectors/connectors.module.js';
 import { ApprovalsModule } from './approvals/approvals.module.js';
 import { SlackModule } from './slack/slack.module.js';
 import { QueueModule } from './queue/queue.module.js';
+import { WebhookModule } from './webhooks/webhook.module.js';
 
 @Module({
   imports: [
@@ -22,6 +23,9 @@ import { QueueModule } from './queue/queue.module.js';
     ActionsModule,
     ApprovalsModule,
     SlackModule,
+    // WebhookModule must come before QueueModule so WebhookService is
+    // available when QueueModule.onModuleInit boots the worker.
+    WebhookModule,
     QueueModule,
     AuditModule,
   ],
