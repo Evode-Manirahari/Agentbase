@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, type SQL } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
 import { auditLog } from '@dejavas/db';
@@ -11,6 +11,13 @@ export interface AuditEvent {
   actorId: string;
   eventType: string;
   payload: Record<string, unknown>;
+}
+
+export interface AuditFilter {
+  actorType?: string | undefined;
+  eventType?: string | undefined;
+  since?: Date | undefined;
+  until?: Date | undefined;
 }
 
 @Injectable()
@@ -51,12 +58,28 @@ export class AuditService {
     }
   }
 
-  async listForOrg(orgId: string, limit = 100) {
+  async listForOrg(orgId: string, limit = 100, filter: AuditFilter = {}) {
+    const conds: SQL[] = [eq(auditLog.orgId, orgId)];
+    if (filter.actorType) conds.push(eq(auditLog.actorType, filter.actorType));
+    if (filter.eventType) conds.push(eq(auditLog.eventType, filter.eventType));
+    if (filter.since) conds.push(gte(auditLog.createdAt, filter.since));
+    if (filter.until) conds.push(lte(auditLog.createdAt, filter.until));
     return this.db
       .select()
       .from(auditLog)
-      .where(eq(auditLog.orgId, orgId))
+      .where(and(...conds))
       .orderBy(desc(auditLog.createdAt))
       .limit(limit);
+  }
+
+  // Distinct event types this org has produced — used by the audit page to
+  // populate the filter dropdown without hardcoding the list.
+  async listEventTypes(orgId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectDistinct({ eventType: auditLog.eventType })
+      .from(auditLog)
+      .where(eq(auditLog.orgId, orgId))
+      .orderBy(auditLog.eventType);
+    return rows.map((r) => r.eventType);
   }
 }

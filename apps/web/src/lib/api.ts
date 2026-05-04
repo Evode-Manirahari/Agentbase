@@ -187,7 +187,24 @@ export const api = {
       }),
   },
   audit: {
-    list: (limit = 100) => req<{ items: AuditRow[] }>(`/v1/audit?limit=${limit}`),
+    list: (
+      params: {
+        limit?: number;
+        actor_type?: string;
+        event_type?: string;
+        since?: string;
+        until?: string;
+      } = {},
+    ) => {
+      const qs = new URLSearchParams();
+      qs.set('limit', String(params.limit ?? 100));
+      if (params.actor_type) qs.set('actor_type', params.actor_type);
+      if (params.event_type) qs.set('event_type', params.event_type);
+      if (params.since) qs.set('since', params.since);
+      if (params.until) qs.set('until', params.until);
+      return req<{ items: AuditRow[] }>(`/v1/audit?${qs.toString()}`);
+    },
+    eventTypes: () => req<{ items: string[] }>(`/v1/audit/event-types`),
   },
   policies: {
     active: () => req<ActivePolicy>(`/v1/policies/active`),
