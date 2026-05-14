@@ -30,9 +30,12 @@ class FakeConfig {
   }
 }
 
+const TEST_KEY =
+  'hex:0000000000000000000000000000000000000000000000000000000000000000';
+
 function config(env: Record<string, string | undefined> = {}) {
   return new FakeConfig({
-    CONNECTOR_CREDENTIALS_KEY: 'connector-test-key',
+    CONNECTOR_CREDENTIALS_KEY: TEST_KEY,
     ...env,
   }) as unknown as ConfigService;
 }
