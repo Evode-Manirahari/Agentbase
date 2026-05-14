@@ -14,12 +14,13 @@ import {
   randomBytes,
   timingSafeEqual,
 } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
 import {
   connectorCredentials,
+  oauthStates,
   type ConnectorCredential,
   type EncryptedConnectorConfig,
 } from '@dejavas/db';
@@ -345,10 +346,10 @@ export class ConnectorCredentialsService {
     return Boolean(this.hubspotClientId() && this.hubspotClientSecret());
   }
 
-  startHubspotOAuth(input: {
+  async startHubspotOAuth(input: {
     orgId: string;
     actorId: string;
-  }): { authorization_url: string; expires_at: string; redirect_uri: string; scopes: string[] } {
+  }): Promise<{ authorization_url: string; expires_at: string; redirect_uri: string; scopes: string[] }> {
     const clientId = this.hubspotClientId();
     const clientSecret = this.hubspotClientSecret();
     if (!clientId || !clientSecret) {
@@ -357,16 +358,30 @@ export class ConnectorCredentialsService {
       );
     }
 
-    const expiresAt = Date.now() + HUBSPOT_OAUTH_STATE_TTL_MS;
+    const expiresAtMs = Date.now() + HUBSPOT_OAUTH_STATE_TTL_MS;
+    const expiresAt = new Date(expiresAtMs);
     const scopes = this.hubspotScopes();
     const redirectUri = this.hubspotRedirectUri();
+    const nonce = randomBytes(32).toString('base64url');
+
+    await this.db
+      .delete(oauthStates)
+      .where(lt(oauthStates.expiresAt, new Date(Date.now() - HUBSPOT_OAUTH_STATE_TTL_MS)));
+    await this.db.insert(oauthStates).values({
+      nonce,
+      provider: 'hubspot',
+      orgId: input.orgId,
+      actorId: input.actorId,
+      expiresAt,
+    });
+
     const state = this.signOAuthState({
       v: 1,
       provider: 'hubspot',
       orgId: input.orgId,
       actorId: input.actorId,
-      exp: expiresAt,
-      nonce: randomBytes(16).toString('base64url'),
+      exp: expiresAtMs,
+      nonce,
     });
     const url = new URL(HUBSPOT_AUTHORIZE_URL);
     url.searchParams.set('client_id', clientId);
@@ -376,7 +391,7 @@ export class ConnectorCredentialsService {
 
     return {
       authorization_url: url.toString(),
-      expires_at: new Date(expiresAt).toISOString(),
+      expires_at: expiresAt.toISOString(),
       redirect_uri: redirectUri,
       scopes,
     };
@@ -386,7 +401,7 @@ export class ConnectorCredentialsService {
     code: string;
     state: string;
   }): Promise<ConnectorStatus> {
-    const state = this.verifyOAuthState(input.state);
+    const state = await this.verifyOAuthState(input.state);
     const token = await this.requestHubspotToken({
       grant_type: 'authorization_code',
       code: input.code,
@@ -507,6 +522,13 @@ export class ConnectorCredentialsService {
       );
     }
 
+    if (input.grant_type === 'authorization_code' && !nonEmpty(input.code)) {
+      throw new BadRequestException('authorization_code grant requires a non-empty code');
+    }
+    if (input.grant_type === 'refresh_token' && !nonEmpty(input.refresh_token)) {
+      throw new BadRequestException('refresh_token grant requires a non-empty refresh_token');
+    }
+
     const body = new URLSearchParams({
       grant_type: input.grant_type,
       client_id: clientId,
@@ -572,8 +594,10 @@ export class ConnectorCredentialsService {
     return `${data}.${sig}`;
   }
 
-  private verifyOAuthState(state: string): HubspotOAuthState {
-    const [data, sig] = state.split('.');
+  private async verifyOAuthState(state: string): Promise<HubspotOAuthState> {
+    const parts = state.split('.');
+    if (parts.length !== 2) throw new BadRequestException('invalid OAuth state');
+    const [data, sig] = parts;
     if (!data || !sig) throw new BadRequestException('invalid OAuth state');
     const expected = createHmac('sha256', this.key()).update(data).digest('base64url');
     const actualBuffer = Buffer.from(sig);
@@ -596,6 +620,26 @@ export class ConnectorCredentialsService {
     }
     if (payload.exp < Date.now()) {
       throw new BadRequestException('expired OAuth state');
+    }
+
+    const consumed = await this.db
+      .delete(oauthStates)
+      .where(
+        and(
+          eq(oauthStates.nonce, payload.nonce),
+          eq(oauthStates.provider, payload.provider),
+        ),
+      )
+      .returning();
+    const row = consumed[0];
+    if (!row) {
+      throw new BadRequestException('OAuth state already used or unknown');
+    }
+    if (row.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('expired OAuth state');
+    }
+    if (row.orgId !== payload.orgId || row.actorId !== payload.actorId) {
+      throw new BadRequestException('OAuth state binding mismatch');
     }
     return payload;
   }
@@ -621,9 +665,16 @@ export class ConnectorCredentialsService {
 
     const base =
       nonEmpty(this.config.get<string>('API_PUBLIC_URL')) ??
-      nonEmpty(this.config.get<string>('PUBLIC_BASE_URL')) ??
-      `http://localhost:${nonEmpty(this.config.get<string>('PORT')) ?? '3002'}`;
-    return `${base.replace(/\/$/, '')}/v1/connectors/hubspot/oauth/callback`;
+      nonEmpty(this.config.get<string>('PUBLIC_BASE_URL'));
+    if (base) return `${base.replace(/\/$/, '')}/v1/connectors/hubspot/oauth/callback`;
+
+    if (this.config.get<string>('NODE_ENV') === 'production') {
+      throw new InternalServerErrorException(
+        'HUBSPOT_REDIRECT_URI or API_PUBLIC_URL must be set in production',
+      );
+    }
+    const port = nonEmpty(this.config.get<string>('PORT')) ?? '3002';
+    return `http://localhost:${port}/v1/connectors/hubspot/oauth/callback`;
   }
 
   private encrypt(value: unknown): EncryptedConnectorConfig {
@@ -645,42 +696,65 @@ export class ConnectorCredentialsService {
     if (encrypted.v !== 1 || encrypted.alg !== 'aes-256-gcm') {
       throw new InternalServerErrorException('unsupported connector credential envelope');
     }
-    const decipher = createDecipheriv(
-      'aes-256-gcm',
-      this.key(),
-      Buffer.from(encrypted.iv, 'base64url'),
-    );
-    decipher.setAuthTag(Buffer.from(encrypted.tag, 'base64url'));
+    const iv = Buffer.from(encrypted.iv, 'base64url');
+    if (iv.length !== 12) {
+      throw new InternalServerErrorException('connector credential envelope has invalid IV length');
+    }
+    const tag = Buffer.from(encrypted.tag, 'base64url');
+    if (tag.length !== 16) {
+      throw new InternalServerErrorException('connector credential envelope has invalid auth tag length');
+    }
+    const decipher = createDecipheriv('aes-256-gcm', this.key(), iv);
+    decipher.setAuthTag(tag);
     const plaintext = Buffer.concat([
       decipher.update(Buffer.from(encrypted.ciphertext, 'base64url')),
       decipher.final(),
     ]);
-    return JSON.parse(plaintext.toString('utf8')) as Record<string, unknown>;
+    const parsed = JSON.parse(plaintext.toString('utf8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new InternalServerErrorException('connector credential payload is not an object');
+    }
+    return parsed as Record<string, unknown>;
   }
 
   private key(): Buffer {
     const raw = nonEmpty(this.config.get<string>('CONNECTOR_CREDENTIALS_KEY'));
-    if (!raw && this.config.get<string>('NODE_ENV') === 'production') {
-      throw new InternalServerErrorException(
-        'CONNECTOR_CREDENTIALS_KEY must be set before storing connector credentials in production',
-      );
-    }
+    const env = nonEmpty(this.config.get<string>('NODE_ENV'));
+    const isTest = env === 'test';
+
     if (!raw) {
-      this.log.warn(
-        'CONNECTOR_CREDENTIALS_KEY not set — using local development encryption key',
+      if (!isTest) {
+        throw new InternalServerErrorException(
+          'CONNECTOR_CREDENTIALS_KEY must be set. Use `openssl rand -base64 32` and pass as `base64:...` (or `hex:...`).',
+        );
+      }
+      return createHash('sha256').update('dejavas-test-key').digest();
+    }
+
+    if (raw.startsWith('base64:')) {
+      const key = Buffer.from(raw.slice('base64:'.length), 'base64');
+      if (key.length !== 32) {
+        throw new InternalServerErrorException(
+          `CONNECTOR_CREDENTIALS_KEY base64 payload must decode to 32 bytes (got ${key.length})`,
+        );
+      }
+      return key;
+    }
+    if (raw.startsWith('hex:')) {
+      const key = Buffer.from(raw.slice('hex:'.length), 'hex');
+      if (key.length !== 32) {
+        throw new InternalServerErrorException(
+          `CONNECTOR_CREDENTIALS_KEY hex payload must decode to 32 bytes (got ${key.length})`,
+        );
+      }
+      return key;
+    }
+    if (!isTest) {
+      throw new InternalServerErrorException(
+        'CONNECTOR_CREDENTIALS_KEY must be prefixed with `base64:` or `hex:` (refusing to silently hash an arbitrary string)',
       );
     }
-    if (raw?.startsWith('base64:')) {
-      const key = Buffer.from(raw.slice('base64:'.length), 'base64');
-      if (key.length === 32) return key;
-    }
-    if (raw?.startsWith('hex:')) {
-      const key = Buffer.from(raw.slice('hex:'.length), 'hex');
-      if (key.length === 32) return key;
-    }
-    return createHash('sha256')
-      .update(raw ?? 'dejavas-local-dev-connector-credentials-key')
-      .digest();
+    return createHash('sha256').update(raw).digest();
   }
 }
 
@@ -688,25 +762,32 @@ function normalizeConfig(
   provider: ConnectorProviderT,
   raw: Record<string, unknown>,
 ): ConnectorConfig {
+  const parsed = CredentialSchemas[provider].safeParse(raw);
+  if (!parsed.success) {
+    throw new InternalServerErrorException(
+      `stored ${provider} credential payload failed schema validation — credential row may be corrupt or from an older schema`,
+    );
+  }
+  const data = parsed.data as Record<string, unknown>;
   switch (provider) {
     case 'hubspot':
-      return { provider, accessToken: String(raw.access_token) };
+      return { provider, accessToken: String(data.access_token) };
     case 'salesforce':
       return {
         provider,
-        accessToken: String(raw.access_token),
-        instanceUrl: String(raw.instance_url),
+        accessToken: String(data.access_token),
+        instanceUrl: String(data.instance_url),
       };
     case 'gmail':
       return {
         provider,
-        accessToken: String(raw.access_token),
-        userId: typeof raw.user_id === 'string' ? raw.user_id : null,
+        accessToken: String(data.access_token),
+        userId: typeof data.user_id === 'string' ? data.user_id : null,
       };
     case 'outreach':
-      return { provider, accessToken: String(raw.access_token) };
+      return { provider, accessToken: String(data.access_token) };
     case 'apollo':
-      return { provider, apiKey: String(raw.api_key) };
+      return { provider, apiKey: String(data.api_key) };
   }
 }
 

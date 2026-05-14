@@ -190,7 +190,7 @@ describe('ConnectorCredentialsService', () => {
       }),
     );
 
-    const out = svc.startHubspotOAuth({ orgId, actorId: 'operator-1' });
+    const out = await svc.startHubspotOAuth({ orgId, actorId: 'operator-1' });
     const url = new URL(out.authorization_url);
 
     assert.equal(url.origin + url.pathname, 'https://app.hubspot.com/oauth/authorize');
@@ -216,7 +216,7 @@ describe('ConnectorCredentialsService', () => {
       }),
     );
     const state = new URL(
-      svc.startHubspotOAuth({ orgId, actorId: 'operator-1' }).authorization_url,
+      (await svc.startHubspotOAuth({ orgId, actorId: 'operator-1' })).authorization_url,
     ).searchParams.get('state')!;
     const mock = mockFetch([
       {
@@ -286,7 +286,7 @@ describe('ConnectorCredentialsService', () => {
       }),
     );
     const state = new URL(
-      svc.startHubspotOAuth({ orgId, actorId: 'operator-1' }).authorization_url,
+      (await svc.startHubspotOAuth({ orgId, actorId: 'operator-1' })).authorization_url,
     ).searchParams.get('state')!;
     const mock = mockFetch([
       {

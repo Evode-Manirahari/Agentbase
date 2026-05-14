@@ -239,6 +239,23 @@ export const connectorCredentials = pgTable(
   }),
 );
 
+export const oauthStates = pgTable(
+  'oauth_states',
+  {
+    nonce: text('nonce').primaryKey(),
+    provider: connectorProvider('provider').notNull(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    actorId: text('actor_id').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    expiresAtIdx: index('oauth_states_expires_at_idx').on(t.expiresAt),
+  }),
+);
+
 export type Org = typeof orgs.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Agent = typeof agents.$inferSelect;
@@ -249,3 +266,4 @@ export type Approval = typeof approvals.$inferSelect;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type WebhookSubscription = typeof webhookSubscriptions.$inferSelect;
 export type ConnectorCredential = typeof connectorCredentials.$inferSelect;
+export type OAuthState = typeof oauthStates.$inferSelect;

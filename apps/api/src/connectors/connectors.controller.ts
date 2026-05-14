@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  InternalServerErrorException,
   Param,
   Put,
   Post,
@@ -23,6 +24,8 @@ import {
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { ConnectorCredentialsService } from './connector-credentials.service.js';
+
+const REDIRECT_MESSAGE_MAX = 200;
 
 @Controller('v1/connectors')
 export class ConnectorsController {
@@ -59,7 +62,7 @@ export class ConnectorsController {
       const url = new URL('/connectors', this.dashboardBaseUrl());
       url.searchParams.set('provider', 'hubspot');
       url.searchParams.set('oauth', status);
-      if (message) url.searchParams.set('message', message);
+      if (message) url.searchParams.set('message', sanitizeRedirectMessage(message));
       return reply.redirect(url.toString());
     };
 
@@ -113,10 +116,28 @@ export class ConnectorsController {
   }
 
   private dashboardBaseUrl(): string {
-    return (
-      this.config.get<string>('DASHBOARD_URL') ??
-      this.config.get<string>('WEB_URL') ??
-      'http://localhost:3000'
-    ).replace(/\/$/, '');
+    const explicit =
+      this.config.get<string>('DASHBOARD_URL') ?? this.config.get<string>('WEB_URL');
+    if (explicit && explicit.trim().length > 0) return explicit.replace(/\/$/, '');
+    if (this.config.get<string>('NODE_ENV') === 'production') {
+      throw new InternalServerErrorException(
+        'DASHBOARD_URL or WEB_URL must be set in production',
+      );
+    }
+    return 'http://localhost:3000';
   }
+}
+
+function sanitizeRedirectMessage(raw: string): string {
+  let out = '';
+  for (const ch of raw) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f) {
+      if (out.length === 0 || out.endsWith(' ')) continue;
+      out += ' ';
+    } else {
+      out += ch;
+    }
+  }
+  return out.trim().slice(0, REDIRECT_MESSAGE_MAX);
 }
