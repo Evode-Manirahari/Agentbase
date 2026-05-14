@@ -96,18 +96,48 @@ async function main() {
     params: { domain },
   });
 
-  // 3. Write the contact to HubSpot CRM (write, but typically allowed)
-  await step('Create the contact in HubSpot CRM', {
-    tool: 'hubspot.contacts.create',
+  // 3. Check whether the lead already exists in HubSpot.
+  await step('Search for the contact in HubSpot CRM', {
+    tool: 'hubspot.contacts.search',
     params: {
-      properties: {
+      query: email,
+      properties: ['email', 'firstname', 'lastname', 'company'],
+      limit: 5,
+    },
+  });
+
+  // 4. Create/update the contact, create a deal, associate both records, and
+  // add a timeline note as one mediated workflow action.
+  await step('Create HubSpot contact + deal workflow', {
+    tool: 'hubspot.leads.create_deal',
+    params: {
+      contact: {
         email,
+        company: domain,
+      },
+      deal: {
+        dealname: `${domain} inbound pilot`,
+        amount: 7500,
+        dealstage: 'appointmentscheduled',
+      },
+      note: {
+        body: `Inbound lead processed by demo-agent for ${email}.`,
+      },
+    },
+  });
+
+  // 5. Keep the standalone contact upsert available for smaller edits.
+  await step('Mark the contact sales-qualified in HubSpot', {
+    tool: 'hubspot.contacts.upsert',
+    params: {
+      email,
+      properties: {
         lifecyclestage: 'salesqualifiedlead',
       },
     },
   });
 
-  // 4. Draft a personalized email in Gmail (allowed; never sent without approval)
+  // 6. Draft a personalized email in Gmail (allowed; never sent without approval)
   await step('Draft a personalized outreach email in Gmail', {
     tool: 'gmail.draft.create',
     params: {
@@ -125,7 +155,7 @@ async function main() {
     },
   });
 
-  // 5. Enroll in an Outreach sequence (could match a require_approval rule)
+  // 7. Enroll in an Outreach sequence (could match a require_approval rule)
   await step('Enroll the prospect in an Outreach sequence', {
     tool: 'outreach.sequences.enroll',
     params: {
@@ -135,7 +165,7 @@ async function main() {
     },
   });
 
-  // 6. Update a high-value deal — designed to trigger require_approval if the
+  // 8. Update a high-value deal — designed to trigger require_approval if the
   // policy installed by setup.sh is active.
   await step('Update high-value deal in HubSpot ($75k)', {
     tool: 'hubspot.deals.update',

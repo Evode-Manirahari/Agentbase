@@ -17,8 +17,8 @@ const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 export function Shell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen flex">
-      <aside className="w-56 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-panel)] p-4 flex flex-col gap-1">
+    <div className="min-h-screen flex flex-col md:flex-row">
+      <aside className="w-full md:w-56 shrink-0 border-b md:border-b-0 md:border-r border-[var(--color-border)] bg-[var(--color-panel)] p-4 flex flex-col gap-1">
         <div className="px-2 pb-4 mb-2 border-b border-[var(--color-border)]">
           <div className="text-lg font-semibold tracking-tight">Dejavas</div>
           <div className="text-xs text-[var(--color-muted)]">control plane</div>
@@ -50,7 +50,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </span>
         </div>
       </aside>
-      <main className="flex-1 p-8 overflow-x-auto">{children}</main>
+      <main className="flex-1 p-4 md:p-8 overflow-x-auto">{children}</main>
     </div>
   );
 }

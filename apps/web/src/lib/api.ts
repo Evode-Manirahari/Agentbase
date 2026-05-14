@@ -179,6 +179,28 @@ export const api = {
   },
   actions: {
     list: (limit = 100) => req<{ items: ActionRow[] }>(`/v1/actions?limit=${limit}`),
+    runHubspotLeadWorkflow: (body: {
+      email: string;
+      firstname?: string;
+      lastname?: string;
+      company?: string;
+      jobtitle?: string;
+      phone?: string;
+      dealname: string;
+      amount?: number;
+      pipeline?: string;
+      dealstage?: string;
+      note?: string;
+    }) =>
+      req<{
+        action_id: string;
+        status: ActionRow['status'];
+        result?: Record<string, unknown>;
+        policy_decision: unknown;
+      }>(`/v1/actions/demo/hubspot-lead`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     retry: (actionId: string) =>
       req<{
         action_id: string;
@@ -263,6 +285,15 @@ export const api = {
         redirect_uri: string;
         scopes: string[];
       }>(`/v1/connectors/${provider}/oauth/start`, {
+        method: 'POST',
+      }),
+    test: (provider: ConnectorStatus['provider']) =>
+      req<{
+        provider: ConnectorStatus['provider'];
+        ok: boolean;
+        checked_at: string;
+        result: Record<string, unknown>;
+      }>(`/v1/connectors/${provider}/test`, {
         method: 'POST',
       }),
     saveCredentials: (

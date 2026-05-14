@@ -23,6 +23,7 @@ import {
 } from '@dejavas/shared';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
+import { ConnectorRegistry } from './connector-registry.js';
 import { ConnectorCredentialsService } from './connector-credentials.service.js';
 
 const REDIRECT_MESSAGE_MAX = 200;
@@ -32,6 +33,7 @@ export class ConnectorsController {
   constructor(
     private readonly agents: AgentsService,
     private readonly credentials: ConnectorCredentialsService,
+    private readonly registry: ConnectorRegistry,
     private readonly config: ConfigService,
   ) {}
 
@@ -113,6 +115,37 @@ export class ConnectorsController {
     const orgId = await this.agents.ensureDefaultOrg();
     const actorId = req.clerkUser?.userId ?? 'dev-mode-operator';
     return this.credentials.disable({ orgId, provider, actorId });
+  }
+
+  @Post(':provider/test')
+  @UseGuards(ClerkAuthGuard)
+  async testConnection(
+    @Param('provider', new ZodValidationPipe(ConnectorProvider))
+    provider: ConnectorProviderT,
+  ) {
+    const orgId = await this.agents.ensureDefaultOrg();
+    if (provider !== 'hubspot') {
+      throw new BadRequestException(`connector test is not implemented for ${provider}`);
+    }
+
+    const connector = await this.registry.resolveForOrg(orgId, 'hubspot.connection.test');
+    const result = connector
+      ? await connector.invoke('hubspot.connection.test', {})
+      : {
+          ok: false,
+          error: {
+            code: 'no_connector',
+            message: 'no connector resolves hubspot.connection.test',
+          },
+        };
+    return {
+      provider,
+      ok: result.ok,
+      checked_at: new Date().toISOString(),
+      result: result.ok
+        ? { ok: true, data: result.data ?? null }
+        : { ok: false, error: result.error ?? null },
+    };
   }
 
   private dashboardBaseUrl(): string {

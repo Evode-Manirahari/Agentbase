@@ -17,12 +17,41 @@ rules:
     effect: allow
     reason: 'drafts never leave the outbox without a human'
 
-  # Sending email and creating contacts in CRM — allowed without approval
+  # Sending email and routine CRM writes — allowed without approval
   - match: { tool: 'gmail.send' }
+    effect: allow
+  - match: { tool: 'hubspot.connection.test' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.search' }
     effect: allow
   - match: { tool: 'hubspot.contacts.create' }
     effect: allow
   - match: { tool: 'hubspot.contacts.update' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.upsert' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.associate' }
+    effect: allow
+  - match: { tool: 'hubspot.deals.create' }
+    effect: allow
+  - match: { tool: 'hubspot.deals.associate' }
+    effect: allow
+  - match: { tool: 'hubspot.notes.create' }
+    effect: allow
+  - match: { tool: 'hubspot.tasks.create' }
+    effect: allow
+
+  # High-value lead-to-deal workflow requires approval before any CRM writes happen
+  - match:
+      tool: 'hubspot.leads.create_deal'
+      when:
+        deal.amount: { gte: 10000 }
+    effect: require_approval
+    approver_role: approver
+    reason: 'high-value lead deal creation'
+    slack_channel: '#critical-approvals'
+
+  - match: { tool: 'hubspot.leads.create_deal' }
     effect: allow
 
   # High-value deal updates require human approval (>= $10k)

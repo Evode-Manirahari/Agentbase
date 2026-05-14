@@ -244,3 +244,48 @@ describe('AgentsService.ensureDefaultOrg', () => {
     assert.match(a, /^[0-9a-f-]{36}$/i);
   });
 });
+
+describe('AgentsService.ensureInternalAgent', () => {
+  let orgId: string;
+  let svc: AgentsService;
+
+  beforeEach(async () => {
+    const [org] = await db
+      .insert(orgs)
+      .values({ name: 'Test', slug: `ag-${randomUUID().slice(0, 8)}` })
+      .returning();
+    orgId = org!.id;
+    svc = new AgentsService(db, audit);
+  });
+
+  afterEach(async () => {
+    if (orgId) await db.delete(orgs).where(eq(orgs.id, orgId));
+  });
+
+  it('creates one active agent per org/name and reuses it', async () => {
+    const first = await svc.ensureInternalAgent({
+      orgId,
+      name: 'dashboard-hubspot-workflow',
+      description: 'internal',
+    });
+    const second = await svc.ensureInternalAgent({
+      orgId,
+      name: 'dashboard-hubspot-workflow',
+      description: 'internal',
+    });
+
+    assert.equal(first.id, second.id);
+    assert.equal(first.status, 'active');
+
+    const rows = await db
+      .select()
+      .from(agents)
+      .where(
+        and(
+          eq(agents.orgId, orgId),
+          eq(agents.name, 'dashboard-hubspot-workflow'),
+        ),
+      );
+    assert.equal(rows.length, 1);
+  });
+});

@@ -60,6 +60,38 @@ export class AgentsService {
     };
   }
 
+  async ensureInternalAgent(input: {
+    orgId: string;
+    name: string;
+    description?: string | undefined;
+  }) {
+    const existing = await this.db
+      .select()
+      .from(agents)
+      .where(
+        and(
+          eq(agents.orgId, input.orgId),
+          eq(agents.name, input.name),
+          eq(agents.status, 'active'),
+        ),
+      )
+      .orderBy(desc(agents.createdAt))
+      .limit(1);
+    const found = existing[0];
+    if (found) return found;
+
+    const [created] = await this.db
+      .insert(agents)
+      .values({
+        orgId: input.orgId,
+        name: input.name,
+        description: input.description ?? null,
+      })
+      .returning();
+    if (!created) throw new Error('failed to create internal agent');
+    return created;
+  }
+
   async getById(agentId: string) {
     const rows = await this.db.select().from(agents).where(eq(agents.id, agentId)).limit(1);
     const row = rows[0];

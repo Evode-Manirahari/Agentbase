@@ -120,9 +120,9 @@ const enrichCompany = betaZodTool({
 });
 
 const createHubspotContact = betaZodTool({
-  name: 'create_hubspot_contact',
+  name: 'upsert_hubspot_contact',
   description:
-    'Create a contact in HubSpot CRM. Use this once you have enriched the lead. Sets lifecyclestage to salesqualifiedlead by default.',
+    'Create or update a contact in HubSpot CRM by email. Sets lifecyclestage to salesqualifiedlead by default.',
   inputSchema: z.object({
     email: z.string().email(),
     firstname: z.string().optional(),
@@ -140,11 +140,39 @@ const createHubspotContact = betaZodTool({
     if (company) properties.company = company;
     if (jobtitle) properties.jobtitle = jobtitle;
     return callDejavas(
-      'Create the contact in HubSpot CRM',
-      'hubspot.contacts.create',
-      { properties },
+      'Create or update the contact in HubSpot CRM',
+      'hubspot.contacts.upsert',
+      { email, properties },
     );
   },
+});
+
+const createHubspotDealFromLead = betaZodTool({
+  name: 'create_hubspot_deal_from_lead',
+  description:
+    'Create or update a HubSpot contact, create an associated deal, and attach a note in one mediated CRM workflow.',
+  inputSchema: z.object({
+    email: z.string().email(),
+    company: z.string().optional(),
+    dealname: z.string().min(1),
+    amount: z.number().optional(),
+    dealstage: z.string().optional(),
+    note: z.string().optional(),
+  }),
+  run: async ({ email, company, dealname, amount, dealstage, note }) =>
+    callDejavas(
+      'Create HubSpot contact + deal workflow',
+      'hubspot.leads.create_deal',
+      omitUndefined({
+        contact: omitUndefined({ email, company }),
+        deal: omitUndefined({
+          dealname,
+          amount,
+          dealstage: dealstage ?? 'appointmentscheduled',
+        }),
+        note: note ? { body: note } : undefined,
+      }),
+    ),
 });
 
 const draftGmailEmail = betaZodTool({
@@ -213,10 +241,11 @@ When a tool returns:
 
 For each lead, work through this playbook:
 1. Enrich the person and the company via Apollo.
-2. Create a contact record in HubSpot CRM.
-3. Draft a personalized outreach email in Gmail (don't send — humans review drafts).
-4. Enroll the prospect in an appropriate Outreach sequence.
-5. If you have evidence the deal is high-value (e.g. enterprise tier, >100 employees), update the corresponding HubSpot deal with an estimated amount.
+2. Create or update a contact record in HubSpot CRM.
+3. Create a HubSpot lead deal when the lead is qualified enough to track.
+4. Draft a personalized outreach email in Gmail (don't send — humans review drafts).
+5. Enroll the prospect in an appropriate Outreach sequence.
+6. If you have evidence the deal is high-value (e.g. enterprise tier, >100 employees), update the corresponding HubSpot deal with an estimated amount.
 
 When you're done — or as soon as enough actions are awaiting approval that further work would be wasted — produce a brief summary of what happened: which steps executed, which need approval, and what the human should do next.
 
@@ -248,6 +277,7 @@ async function main() {
       enrichPerson,
       enrichCompany,
       createHubspotContact,
+      createHubspotDealFromLead,
       draftGmailEmail,
       enrollOutreachSequence,
       updateHubspotDeal,
@@ -291,3 +321,9 @@ main().catch((err) => {
   console.error('\n[demo-agent:claude] fatal:', err);
   process.exit(1);
 });
+
+function omitUndefined<T extends Record<string, unknown>>(input: T): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined),
+  );
+}

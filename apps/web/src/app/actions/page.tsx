@@ -1,10 +1,23 @@
 import { api } from '../../lib/api';
 import { Card, EmptyState, ErrorBox, H1, StatusPill, Subtitle } from '../../components/nav';
-import { retryActionAction } from './actions';
+import { retryActionAction, runHubspotLeadWorkflowAction } from './actions';
+import type { ReactNode } from 'react';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ActionsPage() {
+interface SearchParams {
+  demo?: string | string[];
+  message?: string | string[];
+}
+
+export default async function ActionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const sp = await searchParams;
+  const demoStatus = firstParam(sp.demo);
+  const demoMessage = firstParam(sp.message);
   let items: Awaited<ReturnType<typeof api.actions.list>>['items'] = [];
   let error: unknown = null;
   try {
@@ -19,6 +32,91 @@ export default async function ActionsPage() {
       <Subtitle>Every action attempted, with the policy decision and connector result.</Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}
+      {demoStatus ? (
+        <div
+          className={`mb-4 rounded border p-3 text-sm ${
+            demoStatus === 'ok'
+              ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300'
+              : demoStatus === 'awaiting_approval'
+                ? 'border-amber-500/30 bg-amber-500/5 text-amber-300'
+                : 'border-rose-500/30 bg-rose-500/5 text-rose-300'
+          }`}
+        >
+          {demoMessage ?? 'HubSpot workflow finished'}
+        </div>
+      ) : null}
+
+      <Card className="mb-6 p-4">
+        <div className="mb-3 text-sm font-medium">HubSpot lead workflow</div>
+        <form action={runHubspotLeadWorkflowAction} className="grid grid-cols-1 md:grid-cols-6 gap-3">
+          <Field label="Email" className="md:col-span-2">
+            <input
+              required
+              name="email"
+              type="email"
+              defaultValue="demo-lead@example.com"
+              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
+            />
+          </Field>
+          <Field label="First" className="md:col-span-1">
+            <input
+              name="firstname"
+              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
+            />
+          </Field>
+          <Field label="Last" className="md:col-span-1">
+            <input
+              name="lastname"
+              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
+            />
+          </Field>
+          <Field label="Company" className="md:col-span-2">
+            <input
+              name="company"
+              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
+            />
+          </Field>
+          <Field label="Deal" className="md:col-span-3">
+            <input
+              required
+              name="dealname"
+              defaultValue="Inbound pilot"
+              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
+            />
+          </Field>
+          <Field label="Amount" className="md:col-span-1">
+            <input
+              name="amount"
+              type="number"
+              min="0"
+              step="1"
+              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
+            />
+          </Field>
+          <Field label="Stage" className="md:col-span-2">
+            <input
+              name="dealstage"
+              placeholder="appointmentscheduled"
+              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
+            />
+          </Field>
+          <Field label="Note" className="md:col-span-5">
+            <input
+              name="note"
+              placeholder="Inbound demo request"
+              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
+            />
+          </Field>
+          <div className="md:col-span-1 flex items-end">
+            <button
+              type="submit"
+              className="w-full px-3 py-2 rounded-md text-xs font-medium bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:opacity-90"
+            >
+              Run
+            </button>
+          </div>
+        </form>
+      </Card>
 
       {items.length === 0 ? (
         <EmptyState>No actions yet.</EmptyState>
@@ -88,5 +186,27 @@ export default async function ActionsPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+function firstParam(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+function Field({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className={`flex flex-col gap-1 ${className}`}>
+      <span className="text-xs text-[var(--color-muted)]">{label}</span>
+      {children}
+    </label>
   );
 }

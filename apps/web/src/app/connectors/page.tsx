@@ -7,10 +7,19 @@ import {
   StatusPill,
   Subtitle,
 } from '../../components/nav';
-import { disableConnectorAction, startHubspotOAuthAction } from './actions';
+import {
+  disableConnectorAction,
+  startHubspotOAuthAction,
+  testConnectorAction,
+} from './actions';
 import { CredentialForm } from './credential-form';
 
 export const dynamic = 'force-dynamic';
+
+interface SearchParams {
+  test?: string | string[];
+  message?: string | string[];
+}
 
 const labels: Record<ConnectorStatus['provider'], string> = {
   hubspot: 'HubSpot',
@@ -20,7 +29,14 @@ const labels: Record<ConnectorStatus['provider'], string> = {
   apollo: 'Apollo',
 };
 
-export default async function ConnectorsPage() {
+export default async function ConnectorsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const sp = await searchParams;
+  const testStatus = firstParam(sp.test);
+  const testMessage = firstParam(sp.message);
   let items: ConnectorStatus[] = [];
   let error: unknown = null;
   try {
@@ -38,11 +54,22 @@ export default async function ConnectorsPage() {
       </Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}
+      {testStatus ? (
+        <div
+          className={`mb-4 rounded border p-3 text-sm ${
+            testStatus === 'ok'
+              ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300'
+              : 'border-rose-500/30 bg-rose-500/5 text-rose-300'
+          }`}
+        >
+          {testMessage ?? (testStatus === 'ok' ? 'Connection healthy' : 'Connection failed')}
+        </div>
+      ) : null}
 
       {items.length === 0 && !error ? (
         <EmptyState>No connector metadata available.</EmptyState>
       ) : (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {items.map((connector) => (
             <Card key={connector.provider} className="p-4">
               <div className="flex items-start justify-between gap-3 mb-4">
@@ -82,17 +109,36 @@ export default async function ConnectorsPage() {
                 </div>
               </div>
 
-              {connector.provider === 'hubspot' && connector.oauth_available ? (
-                <form action={startHubspotOAuthAction} className="mb-4">
-                  <button
-                    type="submit"
-                    className="px-3 py-2 rounded-md text-xs font-medium bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:opacity-90"
-                  >
-                    {connector.auth_type === 'oauth'
-                      ? 'Reconnect HubSpot'
-                      : 'Connect HubSpot'}
-                  </button>
-                </form>
+              {connector.provider === 'hubspot' ? (
+                <div className="mb-4 flex flex-wrap gap-2">
+                  {connector.oauth_available ? (
+                    <form action={startHubspotOAuthAction}>
+                      <button
+                        type="submit"
+                        className="px-3 py-2 rounded-md text-xs font-medium bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:opacity-90"
+                      >
+                        {connector.auth_type === 'oauth'
+                          ? 'Reconnect HubSpot'
+                          : 'Connect HubSpot'}
+                      </button>
+                    </form>
+                  ) : null}
+                  {connector.configured ? (
+                    <form action={testConnectorAction}>
+                      <input
+                        type="hidden"
+                        name="provider"
+                        value={connector.provider}
+                      />
+                      <button
+                        type="submit"
+                        className="px-3 py-2 rounded-md text-xs font-medium border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                      >
+                        Test connection
+                      </button>
+                    </form>
+                  ) : null}
+                </div>
               ) : null}
 
               <CredentialForm connector={connector} />
@@ -118,6 +164,11 @@ export default async function ConnectorsPage() {
       )}
     </div>
   );
+}
+
+function firstParam(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
 }
 
 function AccountLine({ connector }: { connector: ConnectorStatus }) {

@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ZodValidationPipe } from 'nestjs-zod';
 import type { FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import {
   ExecuteActionRequest,
   type ExecuteActionRequest as ExecuteActionRequestT,
@@ -19,6 +20,21 @@ import { ApiKeyGuard } from '../auth/api-key.guard.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { ActionsService } from './actions.service.js';
 import { AgentsService } from '../agents/agents.service.js';
+
+const HubspotLeadWorkflowRequest = z.object({
+  email: z.string().email(),
+  firstname: z.string().trim().min(1).optional(),
+  lastname: z.string().trim().min(1).optional(),
+  company: z.string().trim().min(1).optional(),
+  jobtitle: z.string().trim().min(1).optional(),
+  phone: z.string().trim().min(1).optional(),
+  dealname: z.string().trim().min(1),
+  amount: z.number().positive().optional(),
+  pipeline: z.string().trim().min(1).optional(),
+  dealstage: z.string().trim().min(1).optional(),
+  note: z.string().trim().min(1).optional(),
+});
+type HubspotLeadWorkflowRequest = z.infer<typeof HubspotLeadWorkflowRequest>;
 
 @Controller('v1/actions')
 export class ActionsController {
@@ -52,6 +68,42 @@ export class ActionsController {
     });
   }
 
+  @Post('demo/hubspot-lead')
+  @UseGuards(ClerkAuthGuard)
+  async runHubspotLeadWorkflow(
+    @Body(new ZodValidationPipe(HubspotLeadWorkflowRequest))
+    body: HubspotLeadWorkflowRequest,
+  ): Promise<ExecuteActionResponse> {
+    const orgId = await this.agents.ensureDefaultOrg();
+    const agent = await this.agents.ensureInternalAgent({
+      orgId,
+      name: 'dashboard-hubspot-workflow',
+      description: 'Internal dashboard workflow runner for HubSpot lead demos.',
+    });
+    return this.actions.execute({
+      orgId,
+      agentId: agent.id,
+      tool: 'hubspot.leads.create_deal',
+      params: omitUndefined({
+        contact: omitUndefined({
+          email: body.email,
+          firstname: body.firstname,
+          lastname: body.lastname,
+          company: body.company,
+          jobtitle: body.jobtitle,
+          phone: body.phone,
+        }),
+        deal: omitUndefined({
+          dealname: body.dealname,
+          amount: body.amount,
+          pipeline: body.pipeline,
+          dealstage: body.dealstage,
+        }),
+        note: body.note ? { body: body.note } : undefined,
+      }),
+    });
+  }
+
   @Post(':id/retry')
   @UseGuards(ClerkAuthGuard)
   async retry(
@@ -62,4 +114,10 @@ export class ActionsController {
     const operatorId = req.clerkUser?.userId ?? 'dev-mode-operator';
     return this.actions.retry({ orgId, actionId: id, operatorId });
   }
+}
+
+function omitUndefined<T extends Record<string, unknown>>(input: T): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined),
+  );
 }

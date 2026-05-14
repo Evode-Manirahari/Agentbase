@@ -9,12 +9,19 @@ const PLACEHOLDER = `version: 1
 default: deny
 rules:
   - match:
-      tool: hubspot.contacts.update
+      tool: hubspot.contacts.*
     effect: allow
+  - match:
+      tool: hubspot.leads.create_deal
+      when:
+        deal.amount: { gt: 10000 }
+    effect: require_approval
+    approver_role: approver
+    reason: "high-value lead deal"
   - match:
       tool: hubspot.deals.update
       when:
-        amount: { gt: 10000 }
+        properties.amount: { gt: 10000 }
     effect: require_approval
     approver_role: approver
     reason: "high-value deal"

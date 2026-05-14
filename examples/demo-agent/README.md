@@ -5,10 +5,13 @@ typical inbound-lead flow:
 
 1. **Enrich the lead** via Apollo (`apollo.people.match`)
 2. **Enrich the company** via Apollo (`apollo.organizations.match`)
-3. **Write the contact** to HubSpot (`hubspot.contacts.create`)
-4. **Draft a personalized email** in Gmail (`gmail.draft.create`)
-5. **Enroll in an Outreach sequence** (`outreach.sequences.enroll`) — requires approval
-6. **Update a high-value deal** (`hubspot.deals.update` with `amount: 75000`) — requires approval
+3. **Search HubSpot** for an existing contact (`hubspot.contacts.search`)
+4. **Create/update the contact, create a deal, associate both, and log a note**
+   in HubSpot (`hubspot.leads.create_deal`)
+5. **Patch the contact** through the upsert helper (`hubspot.contacts.upsert`)
+6. **Draft a personalized email** in Gmail (`gmail.draft.create`)
+7. **Enroll in an Outreach sequence** (`outreach.sequences.enroll`) — requires approval
+8. **Update a high-value deal** (`hubspot.deals.update` with `amount: 75000`) — requires approval
 
 Every step is mediated by Dejavas. The agent prints the policy decision + the
 connector outcome for each step so you can see exactly where the control plane
@@ -62,6 +65,12 @@ demo's value is in showing the **decisions**, not the actual external writes).
   ✓ executed (12ms)
   policy: allow — "enrichment is read-only"
   ↳ connector: connector_not_configured — APOLLO_API_KEY is not set
+
+→ Create HubSpot contact + deal workflow
+  hubspot.leads.create_deal
+  ✗ failed (12ms)
+  policy: allow
+  ↳ connector: connector_not_configured — HubSpot access token is not configured
 
 → Enroll the prospect in an Outreach sequence
   outreach.sequences.enroll

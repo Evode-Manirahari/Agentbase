@@ -26,16 +26,41 @@ function makeFetchMock(
   return { fetchImpl, calls };
 }
 
+function makeSequenceFetchMock(
+  responses: { status?: number; body?: unknown }[],
+) {
+  const calls: FetchCall[] = [];
+  const fetchImpl = (async (url: string, init: RequestInit = {}) => {
+    calls.push({ url: String(url), init });
+    const next = responses.shift() ?? {};
+    const status = next.status ?? 200;
+    const body = next.body ?? {};
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as unknown as typeof fetch;
+  return { fetchImpl, calls };
+}
+
 describe('HubspotConnector.supports', () => {
   const c = new HubspotConnector({ accessToken: 'x' });
 
   it('recognizes registered tools', () => {
+    assert.equal(c.supports('hubspot.connection.test'), true);
+    assert.equal(c.supports('hubspot.contacts.search'), true);
+    assert.equal(c.supports('hubspot.contacts.upsert'), true);
     assert.equal(c.supports('hubspot.contacts.update'), true);
     assert.equal(c.supports('hubspot.contacts.create'), true);
     assert.equal(c.supports('hubspot.contacts.get'), true);
+    assert.equal(c.supports('hubspot.contacts.associate'), true);
     assert.equal(c.supports('hubspot.deals.update'), true);
     assert.equal(c.supports('hubspot.deals.create'), true);
     assert.equal(c.supports('hubspot.deals.get'), true);
+    assert.equal(c.supports('hubspot.deals.associate'), true);
+    assert.equal(c.supports('hubspot.notes.create'), true);
+    assert.equal(c.supports('hubspot.tasks.create'), true);
+    assert.equal(c.supports('hubspot.leads.create_deal'), true);
   });
 
   it('rejects unknown tools', () => {
@@ -74,6 +99,44 @@ describe('HubspotConnector.invoke — input validation', () => {
 });
 
 describe('HubspotConnector.invoke — HTTP behavior', () => {
+  it('connection.test validates the token with a tiny contacts read', async () => {
+    const { fetchImpl, calls } = makeFetchMock({
+      status: 200,
+      body: { results: [] },
+    });
+    const c = new HubspotConnector({ accessToken: 'x', fetchImpl });
+    const r = await c.invoke('hubspot.connection.test', {});
+    assert.equal(r.ok, true);
+    assert.equal(calls[0]!.init.method, 'GET');
+    assert.equal(
+      calls[0]!.url,
+      'https://api.hubapi.com/crm/v3/objects/contacts?limit=1&properties=email',
+    );
+  });
+
+  it('contacts.search issues POST to search endpoint with query body', async () => {
+    const { fetchImpl, calls } = makeFetchMock({
+      body: { total: 1, results: [{ id: 'c1' }] },
+    });
+    const c = new HubspotConnector({ accessToken: 'x', fetchImpl });
+    const r = await c.invoke('hubspot.contacts.search', {
+      query: 'ada@example.com',
+      properties: ['email', 'firstname'],
+      limit: 20,
+    });
+    assert.equal(r.ok, true);
+    assert.equal(calls[0]!.init.method, 'POST');
+    assert.equal(
+      calls[0]!.url,
+      'https://api.hubapi.com/crm/v3/objects/contacts/search',
+    );
+    assert.deepEqual(JSON.parse(calls[0]!.init.body as string), {
+      query: 'ada@example.com',
+      properties: ['email', 'firstname'],
+      limit: 20,
+    });
+  });
+
   it('contacts.update issues PATCH to right URL with bearer + body', async () => {
     const { fetchImpl, calls } = makeFetchMock({
       status: 200,
@@ -108,6 +171,59 @@ describe('HubspotConnector.invoke — HTTP behavior', () => {
     assert.equal(calls[0]!.url, 'https://api.hubapi.com/crm/v3/objects/contacts');
   });
 
+  it('contacts.upsert searches by email then updates an existing contact', async () => {
+    const { fetchImpl, calls } = makeSequenceFetchMock([
+      { body: { results: [{ id: '12345' }] } },
+      { body: { id: '12345', properties: { email: 'ada@example.com' } } },
+    ]);
+    const c = new HubspotConnector({ accessToken: 'x', fetchImpl });
+    const r = await c.invoke('hubspot.contacts.upsert', {
+      email: 'ada@example.com',
+      properties: { firstname: 'Ada' },
+    });
+    assert.equal(r.ok, true);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0]!.init.method, 'POST');
+    assert.equal(
+      calls[0]!.url,
+      'https://api.hubapi.com/crm/v3/objects/contacts/search',
+    );
+    assert.equal(calls[1]!.init.method, 'PATCH');
+    assert.equal(
+      calls[1]!.url,
+      'https://api.hubapi.com/crm/v3/objects/contacts/12345',
+    );
+    assert.deepEqual(JSON.parse(calls[1]!.init.body as string), {
+      properties: { firstname: 'Ada', email: 'ada@example.com' },
+    });
+    assert.equal(
+      (r.data as { operation?: string }).operation,
+      'updated',
+    );
+  });
+
+  it('contacts.upsert creates a contact when search has no result', async () => {
+    const { fetchImpl, calls } = makeSequenceFetchMock([
+      { body: { results: [] } },
+      { body: { id: 'new-1', properties: { email: 'new@example.com' } } },
+    ]);
+    const c = new HubspotConnector({ accessToken: 'x', fetchImpl });
+    const r = await c.invoke('hubspot.contacts.upsert', {
+      email: 'new@example.com',
+      properties: { company: 'NewCo' },
+    });
+    assert.equal(r.ok, true);
+    assert.equal(calls[1]!.init.method, 'POST');
+    assert.equal(
+      calls[1]!.url,
+      'https://api.hubapi.com/crm/v3/objects/contacts',
+    );
+    assert.deepEqual(JSON.parse(calls[1]!.init.body as string), {
+      properties: { company: 'NewCo', email: 'new@example.com' },
+    });
+    assert.equal((r.data as { operation?: string }).operation, 'created');
+  });
+
   it('deals.get appends ?properties=... query when provided', async () => {
     const { fetchImpl, calls } = makeFetchMock();
     const c = new HubspotConnector({ accessToken: 'x', fetchImpl });
@@ -127,6 +243,150 @@ describe('HubspotConnector.invoke — HTTP behavior', () => {
       calls[0]!.url,
       'https://api.hubapi.com/crm/v3/objects/deals/d1',
     );
+  });
+
+  it('notes.create sends timeline note properties and associations', async () => {
+    const { fetchImpl, calls } = makeFetchMock({ body: { id: 'n1' } });
+    const c = new HubspotConnector({ accessToken: 'x', fetchImpl });
+    const r = await c.invoke('hubspot.notes.create', {
+      body: 'Spoke with Ada.',
+      timestamp: '2026-05-14T12:00:00.000Z',
+      associations: [
+        {
+          toObjectType: 'contact',
+          toObjectId: 'c1',
+          associationTypeId: 202,
+        },
+      ],
+    });
+    assert.equal(r.ok, true);
+    assert.equal(calls[0]!.init.method, 'POST');
+    assert.equal(calls[0]!.url, 'https://api.hubapi.com/crm/v3/objects/notes');
+    assert.deepEqual(JSON.parse(calls[0]!.init.body as string), {
+      properties: {
+        hs_timestamp: '2026-05-14T12:00:00.000Z',
+        hs_note_body: 'Spoke with Ada.',
+      },
+      associations: [
+        {
+          to: { id: 'c1' },
+          types: [
+            {
+              associationCategory: 'HUBSPOT_DEFINED',
+              associationTypeId: 202,
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('tasks.create sends task fields and association payload', async () => {
+    const { fetchImpl, calls } = makeFetchMock({ body: { id: 't1' } });
+    const c = new HubspotConnector({ accessToken: 'x', fetchImpl });
+    const r = await c.invoke('hubspot.tasks.create', {
+      subject: 'Follow up',
+      body: 'Send pricing.',
+      timestamp: '2026-05-15T12:00:00.000Z',
+      priority: 'HIGH',
+      type: 'EMAIL',
+      associations: [
+        {
+          toObjectType: 'deal',
+          toObjectId: 'd1',
+          associationTypeId: 216,
+        },
+      ],
+    });
+    assert.equal(r.ok, true);
+    assert.equal(calls[0]!.url, 'https://api.hubapi.com/crm/v3/objects/tasks');
+    assert.deepEqual(JSON.parse(calls[0]!.init.body as string), {
+      properties: {
+        hs_timestamp: '2026-05-15T12:00:00.000Z',
+        hs_task_subject: 'Follow up',
+        hs_task_body: 'Send pricing.',
+        hs_task_status: 'NOT_STARTED',
+        hs_task_priority: 'HIGH',
+        hs_task_type: 'EMAIL',
+      },
+      associations: [
+        {
+          to: { id: 'd1' },
+          types: [
+            {
+              associationCategory: 'HUBSPOT_DEFINED',
+              associationTypeId: 216,
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('leads.create_deal upserts contact, creates associated deal, and logs a note', async () => {
+    const { fetchImpl, calls } = makeSequenceFetchMock([
+      { body: { results: [] } },
+      { body: { id: 'c1', properties: { email: 'ada@example.com' } } },
+      { body: { id: 'd1', properties: { dealname: 'Ada - Pilot' } } },
+      { body: { associated: true } },
+      { body: { id: 'n1' } },
+    ]);
+    const c = new HubspotConnector({ accessToken: 'x', fetchImpl });
+    const r = await c.invoke('hubspot.leads.create_deal', {
+      contact: {
+        email: 'ada@example.com',
+        firstname: 'Ada',
+        lastname: 'Lovelace',
+        company: 'Analytical Engines',
+      },
+      deal: {
+        dealname: 'Ada - Pilot',
+        amount: 15000,
+        dealstage: 'appointmentscheduled',
+      },
+      note: {
+        body: 'Inbound demo request.',
+        timestamp: '2026-05-14T12:00:00.000Z',
+      },
+    });
+    assert.equal(r.ok, true);
+    assert.equal(calls.length, 5);
+    assert.equal(calls[0]!.url, 'https://api.hubapi.com/crm/v3/objects/contacts/search');
+    assert.equal(calls[1]!.url, 'https://api.hubapi.com/crm/v3/objects/contacts');
+    assert.equal(calls[2]!.url, 'https://api.hubapi.com/crm/v3/objects/deals');
+    assert.equal(
+      calls[3]!.url,
+      'https://api.hubapi.com/crm/v3/objects/contacts/c1/associations/deals/d1/4',
+    );
+    assert.equal(calls[4]!.url, 'https://api.hubapi.com/crm/v3/objects/notes');
+    assert.deepEqual(JSON.parse(calls[2]!.init.body as string), {
+      properties: {
+        dealname: 'Ada - Pilot',
+        amount: 15000,
+        dealstage: 'appointmentscheduled',
+      },
+    });
+    const noteBody = JSON.parse(calls[4]!.init.body as string);
+    assert.deepEqual(noteBody.associations, [
+      {
+        to: { id: 'c1' },
+        types: [
+          {
+            associationCategory: 'HUBSPOT_DEFINED',
+            associationTypeId: 202,
+          },
+        ],
+      },
+      {
+        to: { id: 'd1' },
+        types: [
+          {
+            associationCategory: 'HUBSPOT_DEFINED',
+            associationTypeId: 214,
+          },
+        ],
+      },
+    ]);
   });
 
   it('maps HTTP 4xx → http_<status> with body details', async () => {

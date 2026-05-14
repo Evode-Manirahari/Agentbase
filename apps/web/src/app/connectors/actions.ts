@@ -46,3 +46,27 @@ export async function startHubspotOAuthAction() {
   const out = await api.connectors.startOAuth('hubspot');
   redirect(out.authorization_url as never);
 }
+
+export async function testConnectorAction(formData: FormData) {
+  const provider = String(formData.get('provider') ?? '') as ConnectorStatus['provider'];
+  if (!provider) return;
+
+  const params = new URLSearchParams({ provider });
+  try {
+    const out = await api.connectors.test(provider);
+    params.set('test', out.ok ? 'ok' : 'error');
+    const err = (out.result as { error?: { code?: string; message?: string } }).error;
+    params.set(
+      'message',
+      out.ok
+        ? `${provider} connection is healthy`
+        : err?.message ?? `${provider} connection failed`,
+    );
+  } catch (e) {
+    params.set('test', 'error');
+    params.set('message', (e as Error).message);
+  }
+
+  revalidatePath('/connectors');
+  redirect(`/connectors?${params.toString()}` as never);
+}
