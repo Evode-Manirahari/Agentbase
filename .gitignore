@@ -28,6 +28,8 @@ pnpm-debug.log*
 
 # coverage / tests
 coverage/
+test-results/
+playwright-report/
 
 # misc
 *.pem
