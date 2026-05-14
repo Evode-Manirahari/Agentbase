@@ -144,8 +144,17 @@ export interface ConnectorStatus {
   configured: boolean;
   enabled: boolean;
   source: 'org' | 'env' | null;
+  auth_type: 'oauth' | 'static' | 'env' | null;
   updated_at: string | null;
   fields: { key: string; label: string; secret: boolean; placeholder?: string }[];
+  oauth_available: boolean;
+  account: {
+    hub_id?: number | string | null;
+    hub_domain?: string | null;
+    user?: string | null;
+    scopes?: string[];
+    expires_at?: string | null;
+  } | null;
 }
 
 export const api = {
@@ -247,6 +256,15 @@ export const api = {
   },
   connectors: {
     list: () => req<{ items: ConnectorStatus[] }>(`/v1/connectors`),
+    startOAuth: (provider: 'hubspot') =>
+      req<{
+        authorization_url: string;
+        expires_at: string;
+        redirect_uri: string;
+        scopes: string[];
+      }>(`/v1/connectors/${provider}/oauth/start`, {
+        method: 'POST',
+      }),
     saveCredentials: (
       provider: ConnectorStatus['provider'],
       credentials: Record<string, string>,

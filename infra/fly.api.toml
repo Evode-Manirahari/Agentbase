@@ -9,8 +9,11 @@
 #
 #   fly secrets set REDIS_URL=redis://... --config infra/fly.api.toml
 #   fly secrets set CONNECTOR_CREDENTIALS_KEY="$(openssl rand -base64 32)" --config infra/fly.api.toml
+#   fly secrets set API_PUBLIC_URL=https://dejavas-api-CHANGEME.fly.dev DASHBOARD_URL=https://dejavas-web-CHANGEME.fly.dev \
+#     --config infra/fly.api.toml
 #   # Plus any of these you want wired:
 #   fly secrets set HUBSPOT_ACCESS_TOKEN=pat-... --config infra/fly.api.toml
+#   fly secrets set HUBSPOT_CLIENT_ID=... HUBSPOT_CLIENT_SECRET=... --config infra/fly.api.toml
 #   fly secrets set SALESFORCE_ACCESS_TOKEN=... SALESFORCE_INSTANCE_URL=... --config infra/fly.api.toml
 #   fly secrets set GMAIL_ACCESS_TOKEN=... --config infra/fly.api.toml
 #   fly secrets set OUTREACH_ACCESS_TOKEN=... --config infra/fly.api.toml

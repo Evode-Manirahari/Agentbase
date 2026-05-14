@@ -77,11 +77,17 @@ services:
       # Set CONNECTOR_CREDENTIALS_KEY in your shell before using this outside
       # local demo mode.
       CONNECTOR_CREDENTIALS_KEY: ${CONNECTOR_CREDENTIALS_KEY:-dejavas-local-docker-connector-credentials-key}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3002}
+      DASHBOARD_URL: ${DASHBOARD_URL:-http://localhost:3000}
       # Optional credentials — uncomment / fill via .env, OR set them in
       # your shell before `docker compose up`. Without these, connector
       # invocations cleanly return connector_not_configured (per-connector
       # graceful degradation), and Slack inbound returns 503.
       # HUBSPOT_ACCESS_TOKEN: ${HUBSPOT_ACCESS_TOKEN:-}
+      # HUBSPOT_CLIENT_ID: ${HUBSPOT_CLIENT_ID:-}
+      # HUBSPOT_CLIENT_SECRET: ${HUBSPOT_CLIENT_SECRET:-}
+      # HUBSPOT_SCOPES: ${HUBSPOT_SCOPES:-}
+      # HUBSPOT_REDIRECT_URI: ${HUBSPOT_REDIRECT_URI:-}
       # SALESFORCE_ACCESS_TOKEN: ${SALESFORCE_ACCESS_TOKEN:-}
       # SALESFORCE_INSTANCE_URL: ${SALESFORCE_INSTANCE_URL:-}
       # GMAIL_ACCESS_TOKEN: ${GMAIL_ACCESS_TOKEN:-}

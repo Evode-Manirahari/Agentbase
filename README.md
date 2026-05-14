@@ -27,12 +27,12 @@ Early. The full demoable loop works end-to-end locally; nothing is hardened for 
 - **Identity & API keys** — register agents, scoped `dvk_…` tokens (sha256-hashed at rest), idempotent revocation
 - **Policy DSL (YAML + Zod)** — rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, dotted-path conditions, 9 operators (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`)
 - **Connector dispatch** — five connectors out of the box: HubSpot CRM v3 (contacts + deals), Salesforce REST v60 (Account + Opportunity + Contact), Gmail v1 (send + draft + messages.get), Outreach v2 (prospects + sequence enrollment + tasks), and Apollo v1 (people.match + organizations.match + people.search), all with structured errors and Zod-validated params
-- **Org-scoped connector credentials** — dashboard-managed credentials override process env vars per org, are AES-256-GCM encrypted at rest, and can be disabled to block inherited env fallback
+- **Org-scoped connector credentials** — HubSpot OAuth install plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, and can be disabled to block inherited env fallback
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
 - **Slack approval cards** — interactive buttons, signed webhook (HMAC + 5-min replay window), per-rule channel routing, two-way consistency (web decisions update the Slack card via `chat.update`)
 - **Audit log** — every state transition recorded with actor type/id
 - **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions, Connectors, Webhooks, Audit
-- **Tests** — 261 API tests passing across 52 suites, plus Playwright coverage for dashboard routes
+- **Tests** — 264 API tests passing across 52 suites, plus Playwright coverage for dashboard routes
 
 ## Quick start
 
@@ -51,7 +51,7 @@ Brings up Postgres + Redis + the schema migration + API on :3002 + web on :3000 
 To use real connectors, set the relevant env vars in your shell before `docker compose up` (or uncomment the lines in `infra/docker-compose.full.yml`):
 
 ```bash
-HUBSPOT_ACCESS_TOKEN=pat-... SLACK_BOT_TOKEN=xoxb-... \
+HUBSPOT_CLIENT_ID=... HUBSPOT_CLIENT_SECRET=... SLACK_BOT_TOKEN=xoxb-... \
   docker compose -f infra/docker-compose.full.yml up --build
 ```
 
@@ -91,6 +91,7 @@ fly postgres attach dejavas-pg-CHANGEME --app dejavas-api-CHANGEME       # sets 
 fly redis create --name dejavas-redis-CHANGEME --region iad
 fly secrets set REDIS_URL=redis://... --config infra/fly.api.toml
 fly secrets set CONNECTOR_CREDENTIALS_KEY="$(openssl rand -base64 32)" --config infra/fly.api.toml
+fly secrets set API_PUBLIC_URL=https://dejavas-api-CHANGEME.fly.dev DASHBOARD_URL=https://dejavas-web-CHANGEME.fly.dev --config infra/fly.api.toml
 fly deploy --config infra/fly.api.toml --remote-only
 
 # Web (after the API is live)
@@ -101,7 +102,15 @@ fly deploy --config infra/fly.web.toml --remote-only
 
 Both Fly configs use `auto_stop_machines = "stop"` so you only pay for active traffic, and `min_machines_running = 0` so idle apps cost ~0. The api's `[[http_service.checks]]` hits `/health` every 30s.
 
-To plug in real connectors after deploy, either save credentials in the dashboard's Connectors page or set fallback env vars with `fly secrets set` (HubSpot / Salesforce / Gmail / Outreach / Apollo / Slack tokens). Org-scoped credentials override fallback env vars. Each connector independently degrades to `connector_not_configured` when its tokens are absent or disabled for the org.
+To plug in real connectors after deploy, either connect HubSpot from the dashboard, save static credentials in the Connectors page, or set fallback env vars with `fly secrets set` (HubSpot / Salesforce / Gmail / Outreach / Apollo / Slack tokens). Org-scoped credentials override fallback env vars. Each connector independently degrades to `connector_not_configured` when its tokens are absent or disabled for the org.
+
+For HubSpot OAuth, create a HubSpot public app and register this redirect URL:
+
+```text
+https://dejavas-api-CHANGEME.fly.dev/v1/connectors/hubspot/oauth/callback
+```
+
+Then set `HUBSPOT_CLIENT_ID` and `HUBSPOT_CLIENT_SECRET` on the API app.
 
 ## Smoke-test the loop
 
@@ -218,14 +227,22 @@ DATABASE_URL=postgresql://dejavas:dejavas@localhost:5433/dejavas
 REDIS_URL=redis://localhost:6380
 PORT=3002
 CONNECTOR_CREDENTIALS_KEY=change-me-32-byte-minimum-local-dev-key
+API_PUBLIC_URL=http://localhost:3002
+DASHBOARD_URL=http://localhost:3000
 
 # Optional — wires real Slack approval cards
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_SIGNING_SECRET=...
 SLACK_APPROVALS_CHANNEL=C0123456789
 
+# Optional HubSpot OAuth app. Register this callback in HubSpot:
+# http://localhost:3002/v1/connectors/hubspot/oauth/callback
+HUBSPOT_CLIENT_ID=
+HUBSPOT_CLIENT_SECRET=
+HUBSPOT_SCOPES=crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write
+HUBSPOT_REDIRECT_URI=
+
 # Optional fallback credentials. Dashboard-saved org credentials override these.
-# Wires real HubSpot writes on effect:allow
 HUBSPOT_ACCESS_TOKEN=pat-...
 
 # Optional — wires real Salesforce writes on effect:allow
@@ -254,7 +271,7 @@ API_URL=http://localhost:3002
 ## What's deliberately NOT done yet
 
 - **Web Clerk integration** — backend now verifies Clerk session tokens via @clerk/backend on every management endpoint, but the Next.js dashboard still hits the API without one. Set `CLERK_SECRET_KEY` (and the frontend bits — ClerkProvider + middleware + token forwarding in `apps/web/src/lib/api.ts`) before any non-localhost deploy. With `CLERK_SECRET_KEY` unset, the guard logs a warning at boot and lets every request through — that's what local dev uses.
-- **Full OAuth installation flow** — org-scoped static credentials work, but real multi-tenant SaaS still needs OAuth connect/reconnect screens and token refresh.
+- **More OAuth providers** — HubSpot OAuth install works; Salesforce, Gmail, and Outreach still need provider-specific OAuth install/reconnect flows.
 - **Broader Web E2E tests** — route smoke coverage exists; form mutation and auth-state browser tests should be added next.
 - **OAuth refresh-token flow** — Gmail and Outreach both take a static access token currently; production needs the refresh-token loop on both.
 - **More connectors** — five wired (HubSpot, Salesforce, Gmail, Outreach, Apollo). Clearbit, ZoomInfo, Salesloft, LinkedIn Sales Navigator are obvious next adds.

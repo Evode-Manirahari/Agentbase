@@ -7,7 +7,7 @@ import {
   StatusPill,
   Subtitle,
 } from '../../components/nav';
-import { disableConnectorAction } from './actions';
+import { disableConnectorAction, startHubspotOAuthAction } from './actions';
 import { CredentialForm } from './credential-form';
 
 export const dynamic = 'force-dynamic';
@@ -47,12 +47,20 @@ export default async function ConnectorsPage() {
             <Card key={connector.provider} className="p-4">
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div>
-                  <div className="text-base font-medium">
-                    {labels[connector.provider]}
+                  <div className="flex items-center gap-2">
+                    <div className="text-base font-medium">
+                      {labels[connector.provider]}
+                    </div>
+                    {connector.auth_type ? (
+                      <span className="text-[10px] uppercase tracking-normal rounded border border-[var(--color-border)] px-1.5 py-0.5 text-[var(--color-muted)]">
+                        {connector.auth_type}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="text-xs text-[var(--color-muted)] mono">
                     {connector.provider}.*
                   </div>
+                  {connector.account ? <AccountLine connector={connector} /> : null}
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <StatusPill
@@ -73,6 +81,19 @@ export default async function ConnectorsPage() {
                   ) : null}
                 </div>
               </div>
+
+              {connector.provider === 'hubspot' && connector.oauth_available ? (
+                <form action={startHubspotOAuthAction} className="mb-4">
+                  <button
+                    type="submit"
+                    className="px-3 py-2 rounded-md text-xs font-medium bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:opacity-90"
+                  >
+                    {connector.auth_type === 'oauth'
+                      ? 'Reconnect HubSpot'
+                      : 'Connect HubSpot'}
+                  </button>
+                </form>
+              ) : null}
 
               <CredentialForm connector={connector} />
 
@@ -95,6 +116,21 @@ export default async function ConnectorsPage() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function AccountLine({ connector }: { connector: ConnectorStatus }) {
+  const account = connector.account;
+  if (!account) return null;
+  const label =
+    account.hub_domain ??
+    account.user ??
+    (account.hub_id ? `Hub ID ${account.hub_id}` : null);
+  if (!label) return null;
+  return (
+    <div className="mt-1 text-xs text-[var(--color-muted)] truncate">
+      {label}
     </div>
   );
 }

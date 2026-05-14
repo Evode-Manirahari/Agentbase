@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { api, type ConnectorStatus } from '../../lib/api';
 
 export type ConnectorFormState =
@@ -39,4 +40,9 @@ export async function disableConnectorAction(formData: FormData) {
   if (!provider) return;
   await api.connectors.disable(provider);
   revalidatePath('/connectors');
+}
+
+export async function startHubspotOAuthAction() {
+  const out = await api.connectors.startOAuth('hubspot');
+  redirect(out.authorization_url as never);
 }
