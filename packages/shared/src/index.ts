@@ -19,6 +19,20 @@ export type AgentStatus = z.infer<typeof AgentStatus>;
 export const UserRole = z.enum(['admin', 'approver', 'viewer']);
 export type UserRole = z.infer<typeof UserRole>;
 
+export const ConnectorProvider = z.enum([
+  'hubspot',
+  'salesforce',
+  'gmail',
+  'outreach',
+  'apollo',
+]);
+export type ConnectorProvider = z.infer<typeof ConnectorProvider>;
+
+export const ConnectorCredentialRequest = z.object({
+  credentials: z.record(z.string().min(1)),
+});
+export type ConnectorCredentialRequest = z.infer<typeof ConnectorCredentialRequest>;
+
 export const ExecuteActionRequest = z.object({
   tool: z.string().min(1),
   params: z.record(z.unknown()),

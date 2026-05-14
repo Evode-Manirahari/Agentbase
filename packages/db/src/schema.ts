@@ -27,6 +27,13 @@ export const approvalDecision = pgEnum('approval_decision', [
   'denied',
   'expired',
 ]);
+export const connectorProvider = pgEnum('connector_provider', [
+  'hubspot',
+  'salesforce',
+  'gmail',
+  'outreach',
+  'apollo',
+]);
 
 export const orgs = pgTable('orgs', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -200,6 +207,38 @@ export const webhookSubscriptions = pgTable(
   }),
 );
 
+export interface EncryptedConnectorConfig {
+  v: 1;
+  alg: 'aes-256-gcm';
+  iv: string;
+  tag: string;
+  ciphertext: string;
+}
+
+export const connectorCredentials = pgTable(
+  'connector_credentials',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    provider: connectorProvider('provider').notNull(),
+    encryptedConfig: jsonb('encrypted_config').$type<EncryptedConnectorConfig>().notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdBy: text('created_by'),
+    updatedBy: text('updated_by'),
+  },
+  (t) => ({
+    orgProviderIdx: uniqueIndex('connector_credentials_org_provider_idx').on(
+      t.orgId,
+      t.provider,
+    ),
+    orgIdx: index('connector_credentials_org_idx').on(t.orgId),
+  }),
+);
+
 export type Org = typeof orgs.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Agent = typeof agents.$inferSelect;
@@ -209,3 +248,4 @@ export type Action = typeof actions.$inferSelect;
 export type Approval = typeof approvals.$inferSelect;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type WebhookSubscription = typeof webhookSubscriptions.$inferSelect;
+export type ConnectorCredential = typeof connectorCredentials.$inferSelect;

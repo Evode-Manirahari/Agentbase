@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, sql } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
 import { actions, agents } from '@dejavas/db';
@@ -46,7 +46,7 @@ export class MetricsService {
         .from(actions)
         .where(orgScope)
         .groupBy(actions.tool)
-        .orderBy(desc(sql`count(*)`))
+        .orderBy(desc(sql`count(*)`), asc(actions.tool))
         .limit(5),
       this.db
         .select({
@@ -58,7 +58,7 @@ export class MetricsService {
         .innerJoin(agents, eq(agents.id, actions.agentId))
         .where(orgScope)
         .groupBy(actions.agentId, agents.name)
-        .orderBy(desc(sql`count(*)`))
+        .orderBy(desc(sql`count(*)`), asc(agents.name))
         .limit(5),
       // Rate-limited actions are status=failed with result.error.code=rate_limited.
       // We could detect via JSON path but a count of all rows where the result

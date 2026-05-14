@@ -8,6 +8,7 @@
 #   fly redis create --name dejavas-redis-CHANGEME --region iad         # set REDIS_URL via fly secrets set
 #
 #   fly secrets set REDIS_URL=redis://... --config infra/fly.api.toml
+#   fly secrets set CONNECTOR_CREDENTIALS_KEY="$(openssl rand -base64 32)" --config infra/fly.api.toml
 #   # Plus any of these you want wired:
 #   fly secrets set HUBSPOT_ACCESS_TOKEN=pat-... --config infra/fly.api.toml
 #   fly secrets set SALESFORCE_ACCESS_TOKEN=... SALESFORCE_INSTANCE_URL=... --config infra/fly.api.toml

@@ -73,6 +73,10 @@ services:
       REDIS_URL: redis://redis:6379
       PORT: 3002
       NODE_ENV: production
+      # Demo-only default so the Connectors page can store org credentials.
+      # Set CONNECTOR_CREDENTIALS_KEY in your shell before using this outside
+      # local demo mode.
+      CONNECTOR_CREDENTIALS_KEY: ${CONNECTOR_CREDENTIALS_KEY:-dejavas-local-docker-connector-credentials-key}
       # Optional credentials — uncomment / fill via .env, OR set them in
       # your shell before `docker compose up`. Without these, connector
       # invocations cleanly return connector_not_configured (per-connector

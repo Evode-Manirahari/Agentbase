@@ -139,6 +139,15 @@ export interface WebhookSubscriptionCreated {
   created_at: string;
 }
 
+export interface ConnectorStatus {
+  provider: 'hubspot' | 'salesforce' | 'gmail' | 'outreach' | 'apollo';
+  configured: boolean;
+  enabled: boolean;
+  source: 'org' | 'env' | null;
+  updated_at: string | null;
+  fields: { key: string; label: string; secret: boolean; placeholder?: string }[];
+}
+
 export const api = {
   agents: {
     list: () => req<{ items: AgentRow[] }>(`/v1/agents`),
@@ -235,5 +244,20 @@ export const api = {
       }),
     remove: (id: string) =>
       req<void>(`/v1/webhooks/${id}`, { method: 'DELETE' }),
+  },
+  connectors: {
+    list: () => req<{ items: ConnectorStatus[] }>(`/v1/connectors`),
+    saveCredentials: (
+      provider: ConnectorStatus['provider'],
+      credentials: Record<string, string>,
+    ) =>
+      req<ConnectorStatus>(`/v1/connectors/${provider}/credentials`, {
+        method: 'PUT',
+        body: JSON.stringify({ credentials }),
+      }),
+    disable: (provider: ConnectorStatus['provider']) =>
+      req<ConnectorStatus>(`/v1/connectors/${provider}/disable`, {
+        method: 'POST',
+      }),
   },
 };

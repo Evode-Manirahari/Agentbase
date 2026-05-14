@@ -14,7 +14,7 @@ import { PolicyService } from '../policy/policy.service.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
 import { SlackService } from '../slack/slack.service.js';
 import { RateLimitService } from './rate-limit.service.js';
-import type { ConnectorResult } from '@dejavas/connector-hubspot';
+import type { Connector, ConnectorResult } from '@dejavas/connector-hubspot';
 import type { ActionStatus, PolicyDecision } from '@dejavas/shared';
 
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
@@ -196,7 +196,7 @@ export class ActionsService {
     }
 
     // effect === 'allow' — dispatch to a connector.
-    const connector = this.connectors.resolve(input.tool);
+    const connector = await this.resolveConnector(input.orgId, input.tool);
     let result: ConnectorResult;
     if (!connector) {
       result = {
@@ -316,7 +316,7 @@ export class ActionsService {
       };
     }
 
-    const connector = this.connectors.resolve(original.tool);
+    const connector = await this.resolveConnector(input.orgId, original.tool);
     let result: ConnectorResult;
     if (!connector) {
       result = {
@@ -378,6 +378,15 @@ export class ActionsService {
       .where(eq(agents.id, agentId))
       .limit(1);
     return rows[0]?.name ?? agentId;
+  }
+
+  private async resolveConnector(orgId: string, tool: string) {
+    const registry = this.connectors as ConnectorRegistry & {
+      resolveForOrg?: (orgId: string, tool: string) => Promise<Connector | null>;
+    };
+    return registry.resolveForOrg
+      ? registry.resolveForOrg(orgId, tool)
+      : registry.resolve(tool);
   }
 
   async listForOrg(orgId: string, limit = 100) {

@@ -27,11 +27,12 @@ Early. The full demoable loop works end-to-end locally; nothing is hardened for 
 - **Identity & API keys** — register agents, scoped `dvk_…` tokens (sha256-hashed at rest), idempotent revocation
 - **Policy DSL (YAML + Zod)** — rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, dotted-path conditions, 9 operators (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`)
 - **Connector dispatch** — five connectors out of the box: HubSpot CRM v3 (contacts + deals), Salesforce REST v60 (Account + Opportunity + Contact), Gmail v1 (send + draft + messages.get), Outreach v2 (prospects + sequence enrollment + tasks), and Apollo v1 (people.match + organizations.match + people.search), all with structured errors and Zod-validated params
+- **Org-scoped connector credentials** — dashboard-managed credentials override process env vars per org, are AES-256-GCM encrypted at rest, and can be disabled to block inherited env fallback
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
 - **Slack approval cards** — interactive buttons, signed webhook (HMAC + 5-min replay window), per-rule channel routing, two-way consistency (web decisions update the Slack card via `chat.update`)
 - **Audit log** — every state transition recorded with actor type/id
-- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions, Audit
-- **Tests** — 186 passing across 41 suites in ~2.7s
+- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions, Connectors, Webhooks, Audit
+- **Tests** — 261 API tests passing across 52 suites, plus Playwright coverage for dashboard routes
 
 ## Quick start
 
@@ -89,6 +90,7 @@ fly postgres create --name dejavas-pg-CHANGEME --region iad
 fly postgres attach dejavas-pg-CHANGEME --app dejavas-api-CHANGEME       # sets DATABASE_URL
 fly redis create --name dejavas-redis-CHANGEME --region iad
 fly secrets set REDIS_URL=redis://... --config infra/fly.api.toml
+fly secrets set CONNECTOR_CREDENTIALS_KEY="$(openssl rand -base64 32)" --config infra/fly.api.toml
 fly deploy --config infra/fly.api.toml --remote-only
 
 # Web (after the API is live)
@@ -99,7 +101,7 @@ fly deploy --config infra/fly.web.toml --remote-only
 
 Both Fly configs use `auto_stop_machines = "stop"` so you only pay for active traffic, and `min_machines_running = 0` so idle apps cost ~0. The api's `[[http_service.checks]]` hits `/health` every 30s.
 
-To plug in real connectors after deploy, just `fly secrets set` more env vars (HubSpot / Salesforce / Gmail / Outreach / Apollo / Slack tokens) — the api restarts and picks them up. Each connector independently degrades to `connector_not_configured` when its tokens are absent.
+To plug in real connectors after deploy, either save credentials in the dashboard's Connectors page or set fallback env vars with `fly secrets set` (HubSpot / Salesforce / Gmail / Outreach / Apollo / Slack tokens). Org-scoped credentials override fallback env vars. Each connector independently degrades to `connector_not_configured` when its tokens are absent or disabled for the org.
 
 ## Smoke-test the loop
 
@@ -148,6 +150,7 @@ apps/
 │       ├── queue/       BullMQ expiry sweeper (every 60s)
 │       ├── audit/       immutable log
 │       ├── auth/        API-key guard + key generation
+│       ├── connectors/  connector registry + org-scoped credential store
 │       └── db/          DI for Drizzle client
 └── web/                 Next.js 15 dashboard (App Router, Tailwind v4)
     └── src/app/
@@ -156,10 +159,12 @@ apps/
         ├── policies/      live YAML editor
         ├── approvals/     web inbox
         ├── actions/       full action history
+        ├── connectors/    org credential management
+        ├── webhooks/      webhook subscriptions
         └── audit/         event log
 
 packages/
-├── db/                  Drizzle schema + client (orgs/users/agents/keys/policies/actions/approvals/audit_log)
+├── db/                  Drizzle schema + client (orgs/users/agents/keys/policies/actions/approvals/connectors/audit_log)
 ├── shared/              Zod schemas + types (used by API, SDK, web)
 └── sdk/                 @dejavas/sdk client (what agents import)
 
@@ -188,14 +193,14 @@ infra/
 | Validation | Zod (shared API ↔ SDK ↔ web) |
 | Tests | `node:test` via @swc-node/register |
 | Agent auth | sha256-hashed API keys (`dvk_…` prefix) |
-| Human auth | Clerk JWT verification on the API (frontend wiring is next) |
+| Human auth | Clerk JWT verification on the API + dashboard token forwarding |
 | Build | pnpm workspaces + Turborepo |
 
 ## Development
 
 ```bash
 pnpm typecheck                                # whole monorepo
-pnpm --filter '@dejavas/api' test             # 118 tests, ~2s
+pnpm --filter '@dejavas/api' test             # 261 tests, ~5s
 pnpm --filter '@dejavas/api' dev              # API on :3002 (watch + swc-register)
 pnpm --filter '@dejavas/web' dev              # web on :3000
 pnpm --filter '@dejavas/db' db:push           # apply schema (interactive)
@@ -212,13 +217,15 @@ The test suite requires Postgres on `$DATABASE_URL` (default `postgresql://dejav
 DATABASE_URL=postgresql://dejavas:dejavas@localhost:5433/dejavas
 REDIS_URL=redis://localhost:6380
 PORT=3002
+CONNECTOR_CREDENTIALS_KEY=change-me-32-byte-minimum-local-dev-key
 
 # Optional — wires real Slack approval cards
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_SIGNING_SECRET=...
 SLACK_APPROVALS_CHANNEL=C0123456789
 
-# Optional — wires real HubSpot writes on effect:allow
+# Optional fallback credentials. Dashboard-saved org credentials override these.
+# Wires real HubSpot writes on effect:allow
 HUBSPOT_ACCESS_TOKEN=pat-...
 
 # Optional — wires real Salesforce writes on effect:allow
@@ -236,7 +243,7 @@ OUTREACH_ACCESS_TOKEN=             # OAuth bearer (refresh-token flow not yet wi
 APOLLO_API_KEY=                    # static API key (X-Api-Key header)
 ```
 
-Without `SLACK_*` set, approval cards are silently skipped and `/v1/slack/interactive` returns 503. Without `HUBSPOT_ACCESS_TOKEN`, hubspot.* `effect: allow` actions complete with `status: failed` + `error.code: connector_not_configured`. Same for Salesforce — both `SALESFORCE_ACCESS_TOKEN` and `SALESFORCE_INSTANCE_URL` must be set together.
+Without `SLACK_*` set, approval cards are silently skipped and `/v1/slack/interactive` returns 503. Without dashboard-saved credentials or fallback env vars, connector `effect: allow` actions complete with `status: failed` + `error.code: connector_not_configured`. In production, `CONNECTOR_CREDENTIALS_KEY` is required before storing dashboard-managed connector credentials.
 
 `apps/web/.env.local`:
 
@@ -247,8 +254,8 @@ API_URL=http://localhost:3002
 ## What's deliberately NOT done yet
 
 - **Web Clerk integration** — backend now verifies Clerk session tokens via @clerk/backend on every management endpoint, but the Next.js dashboard still hits the API without one. Set `CLERK_SECRET_KEY` (and the frontend bits — ClerkProvider + middleware + token forwarding in `apps/web/src/lib/api.ts`) before any non-localhost deploy. With `CLERK_SECRET_KEY` unset, the guard logs a warning at boot and lets every request through — that's what local dev uses.
-- **OAuth per org** — single global HubSpot/Salesforce/Gmail/Outreach token; real multi-tenant SaaS needs per-org OAuth.
-- **Web E2E tests** — only API has automated tests (200+). Web is gated by typecheck + manual QA.
+- **Full OAuth installation flow** — org-scoped static credentials work, but real multi-tenant SaaS still needs OAuth connect/reconnect screens and token refresh.
+- **Broader Web E2E tests** — route smoke coverage exists; form mutation and auth-state browser tests should be added next.
 - **OAuth refresh-token flow** — Gmail and Outreach both take a static access token currently; production needs the refresh-token loop on both.
 - **More connectors** — five wired (HubSpot, Salesforce, Gmail, Outreach, Apollo). Clearbit, ZoomInfo, Salesloft, LinkedIn Sales Navigator are obvious next adds.
 - **Retry / backoff** on connector failures — a transient HubSpot 503 marks the action `failed`; could enqueue and retry via BullMQ.

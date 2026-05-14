@@ -12,6 +12,7 @@ test.describe('dashboard renders every route', () => {
       'Policies',
       'Approvals',
       'Actions',
+      'Connectors',
       'Webhooks',
       'Audit',
     ]) {
@@ -46,6 +47,13 @@ test.describe('dashboard renders every route', () => {
     await expect(page.getByRole('heading', { name: 'Webhooks' })).toBeVisible();
     await expect(page.getByPlaceholder('pagerduty-prod')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create webhook' })).toBeVisible();
+  });
+
+  test('connectors page renders credential forms', async ({ page }) => {
+    await page.goto('/connectors');
+    await expect(page.getByRole('heading', { name: 'Connectors' })).toBeVisible();
+    await expect(page.getByText('HubSpot', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save credentials' }).first()).toBeVisible();
   });
 });
 
