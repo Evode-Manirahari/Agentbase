@@ -47,6 +47,8 @@ export class ApprovalsService {
         expires_at: approvals.expiresAt,
         created_at: approvals.createdAt,
         decided_at: approvals.decidedAt,
+        slack_channel: approvals.slackChannel,
+        slack_ts: approvals.slackTs,
         tool: actions.tool,
         params: actions.params,
         policy_decision: actions.policyDecision,
@@ -75,6 +77,8 @@ export class ApprovalsService {
         expires_at: approvals.expiresAt,
         created_at: approvals.createdAt,
         decided_at: approvals.decidedAt,
+        slack_channel: approvals.slackChannel,
+        slack_ts: approvals.slackTs,
         tool: actions.tool,
         params: actions.params,
         policy_decision: actions.policyDecision,
@@ -322,6 +326,8 @@ function toView(row: {
   expires_at: Date | null;
   created_at: Date;
   decided_at: Date | null;
+  slack_channel: string | null;
+  slack_ts: string | null;
   tool: string;
   params: Record<string, unknown>;
   policy_decision: Record<string, unknown> | null;
@@ -343,6 +349,8 @@ function toView(row: {
     created_at: row.created_at.toISOString(),
     decided_at: row.decided_at?.toISOString() ?? null,
     decided_by_email: row.decided_by_email,
+    slack_channel: row.slack_channel,
+    slack_ts: row.slack_ts,
   };
 }
 

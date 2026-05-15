@@ -392,6 +392,8 @@ describe('ApprovalsService.list / getOne', () => {
         actionId: a1!.id,
         requiredRole: 'approver',
         decision: 'pending',
+        slackChannel: 'C123',
+        slackTs: '1700000000.123456',
       })
       .returning();
 
@@ -417,6 +419,8 @@ describe('ApprovalsService.list / getOne', () => {
     assert.equal(result.items[0]!.approval_id, pending!.id);
     assert.equal(result.items[0]!.tool, 'test.one');
     assert.equal(result.items[0]!.agent_name, 'list-agent');
+    assert.equal(result.items[0]!.slack_channel, 'C123');
+    assert.equal(result.items[0]!.slack_ts, '1700000000.123456');
   });
 
   it('getOne: returns full view with agent_name + tool + params', async () => {
@@ -436,6 +440,8 @@ describe('ApprovalsService.list / getOne', () => {
         actionId: a!.id,
         requiredRole: 'approver',
         decision: 'pending',
+        slackChannel: 'C456',
+        slackTs: '1800000000.654321',
       })
       .returning();
 
@@ -444,6 +450,8 @@ describe('ApprovalsService.list / getOne', () => {
     assert.equal(view.agent_name, 'list-agent');
     assert.deepEqual(view.params, { dealId: 'd1', amount: 5000 });
     assert.equal(view.decision, 'pending');
+    assert.equal(view.slack_channel, 'C456');
+    assert.equal(view.slack_ts, '1800000000.654321');
   });
 
   it('getOne: throws NotFoundException for unknown id', async () => {

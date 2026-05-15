@@ -60,6 +60,14 @@ export default async function ApprovalsPage() {
                       reason: {it.policy_decision.reason}
                     </div>
                   )}
+                  {it.slack_channel && it.slack_ts ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted)]">
+                      <span className="rounded border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-300">
+                        Slack posted
+                      </span>
+                      <span className="mono">{it.slack_channel}</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

@@ -156,6 +156,8 @@ export const ApprovalView = z.object({
   created_at: z.string().datetime(),
   decided_at: z.string().datetime().nullable(),
   decided_by_email: z.string().email().nullable(),
+  slack_channel: z.string().nullable(),
+  slack_ts: z.string().nullable(),
 });
 export type ApprovalView = z.infer<typeof ApprovalView>;
 

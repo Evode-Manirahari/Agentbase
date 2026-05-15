@@ -82,6 +82,8 @@ export interface ApprovalRow {
   created_at: string;
   decided_at: string | null;
   decided_by_email: string | null;
+  slack_channel: string | null;
+  slack_ts: string | null;
 }
 
 export interface AuditRow {
