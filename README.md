@@ -1,6 +1,6 @@
 # Dejavas
 
-> Secure action layer for AI sales agents. Identity, scoped permissions, approval routing, and audit trails — across the revenue stack.
+> Control plane for AI sales agents. Identity, permissions, approvals, routing, observability, and audit logs — across the GTM stack.
 
 [![CI](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml/badge.svg)](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml)
 
@@ -24,15 +24,16 @@ Early. The full demoable loop works end-to-end locally; nothing is hardened for 
 
 ## What works today
 
-- **Identity & API keys** — register agents, scoped `dvk_…` tokens (sha256-hashed at rest), idempotent revocation
-- **Policy DSL (YAML + Zod)** — rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, dotted-path conditions, 9 operators (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`)
+- **Identity & API keys** — register agents, assign permission profiles, issue scoped `dvk_…` tokens (sha256-hashed at rest), and revoke agents idempotently
+- **Permission profiles** — Sales SDR, RevOps Admin, Support Agent, Read-only Analyst, and Custom templates generate profile-scoped policy YAML for GTM tools
+- **Policy DSL (YAML + Zod)** — rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, agent id/name/profile matching, dotted-path conditions, 9 operators (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`)
 - **Connector dispatch** — five connectors out of the box: HubSpot CRM v3 (connection test, contact search/upsert, contacts, deals, notes, tasks, and lead-to-deal workflow), Salesforce REST v60 (Account + Opportunity + Contact), Gmail v1 (send + draft + messages.get), Outreach v2 (prospects + sequence enrollment + tasks), and Apollo v1 (people.match + organizations.match + people.search), all with structured errors and Zod-validated params
 - **Org-scoped connector credentials** — HubSpot, Salesforce, Gmail, and Outreach OAuth install/reconnect plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, refresh access tokens before connector dispatch, show account/expiry metadata, can be tested from the dashboard, and can be disabled to block inherited env fallback
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
 - **Slack approval cards** — interactive buttons, signed webhook (HMAC + 5-min replay window), per-rule channel routing, dashboard posted-status metadata, two-way consistency (web decisions update the Slack card via `chat.update`)
 - **Audit log** — every state transition recorded with actor type/id
-- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions (including a HubSpot lead workflow runner), Connectors, Webhooks, Audit
-- **CI + tests** — GitHub Actions gates lint, typecheck, production build, 277 API tests across 53 suites, and Playwright dashboard E2E including connector credential/OAuth-state coverage
+- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / permission profiles / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions (including a HubSpot lead workflow runner), Connectors, Webhooks, Audit
+- **CI + tests** — GitHub Actions gates lint, typecheck, production build, 284 API tests across 55 suites, and Playwright dashboard E2E including connector credential/OAuth-state and permission-profile coverage
 
 ## Quick start
 
@@ -153,10 +154,10 @@ curl -s -X POST "localhost:3002/v1/approvals/$APPROVAL/decision" \
 apps/
 ├── api/                 NestJS-on-Fastify (TypeScript, ESM)
 │   └── src/
-│       ├── agents/      register / list / revoke
+│       ├── agents/      register / list / profile updates / revoke
 │       ├── actions/     POST /v1/actions/execute (the SDK proxy)
 │       ├── approvals/   list / decide / Slack-card lifecycle
-│       ├── policy/      YAML/Zod engine + active-policy lifecycle
+│       ├── policy/      YAML/Zod engine + active-policy lifecycle + agent profile matching
 │       ├── connectors/  ConnectorRegistry (HubSpot wired)
 │       ├── slack/       approval cards + interactive webhook
 │       ├── queue/       BullMQ expiry sweeper (every 60s)
@@ -167,7 +168,7 @@ apps/
 └── web/                 Next.js 15 dashboard (App Router, Tailwind v4)
     └── src/app/
         ├── page.tsx       Overview
-        ├── agents/        register + revoke
+        ├── agents/        register + permission profiles + revoke
         ├── policies/      live YAML editor
         ├── approvals/     web inbox
         ├── actions/       full action history
@@ -214,7 +215,7 @@ infra/
 pnpm lint                                     # ESLint for API + web
 pnpm typecheck                                # whole monorepo
 pnpm build                                    # production build
-pnpm --filter '@dejavas/api' test             # 277 tests, ~5s
+pnpm --filter '@dejavas/api' test             # 284 tests, ~5s
 pnpm --filter '@dejavas/web' test:e2e         # dashboard Playwright tests
 pnpm --filter '@dejavas/api' dev              # API on :3002 (watch + swc-register)
 pnpm --filter '@dejavas/web' dev              # web on :3000
@@ -301,7 +302,7 @@ API_URL=http://localhost:3002
 ## What's deliberately NOT done yet
 
 - **Production auth configuration** — Clerk wiring is in place for the API and dashboard, but a real deploy still needs `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, and Clerk allowed origins configured. With Clerk env vars unset, local dev intentionally runs in unauthenticated dev mode.
-- **Broader Web E2E tests** — route smoke, connector credential mutation, OAuth env-state, and dev auth-state coverage exist; approval decisions, action runner flows, and real OAuth redirect browser tests should be added next.
+- **Broader Web E2E tests** — route smoke, connector credential mutation, OAuth env-state, permission profile flows, and dev auth-state coverage exist; approval decisions, action runner flows, and real OAuth redirect browser tests should be added next.
 - **More connectors** — five wired (HubSpot, Salesforce, Gmail, Outreach, Apollo). Clearbit, ZoomInfo, Salesloft, LinkedIn Sales Navigator are obvious next adds.
 - **Retry / backoff** on connector failures — a transient HubSpot 503 marks the action `failed`; could enqueue and retry via BullMQ.
 

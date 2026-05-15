@@ -116,6 +116,7 @@ export class ActionsService {
     const decision = await this.policy.evaluate(input.orgId, {
       tool: input.tool,
       params: input.params,
+      agentId: input.agentId,
     });
 
     if (decision.effect === 'deny') {

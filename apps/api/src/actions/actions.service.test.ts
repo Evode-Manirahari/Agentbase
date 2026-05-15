@@ -52,7 +52,23 @@ function makeDecision(overrides: Partial<PolicyDecision> = {}): PolicyDecision {
 
 class StubPolicy {
   decision: PolicyDecision = makeDecision();
-  async evaluate(): Promise<PolicyDecision> {
+  calls: Array<{
+    orgId: string;
+    action: {
+      tool: string;
+      params: Record<string, unknown>;
+      agentId?: string | undefined;
+    };
+  }> = [];
+  async evaluate(
+    orgId: string,
+    action: {
+      tool: string;
+      params: Record<string, unknown>;
+      agentId?: string | undefined;
+    },
+  ): Promise<PolicyDecision> {
+    this.calls.push({ orgId, action });
     return this.decision;
   }
 }
@@ -340,6 +356,11 @@ describe('ActionsService.execute', () => {
 
     const out = await execute('hubspot.contacts.update', { contactId: 'c1' });
     assert.equal(out.status, 'executed');
+
+    assert.equal(policy.calls.length, 1);
+    assert.equal(policy.calls[0]!.orgId, orgId);
+    assert.equal(policy.calls[0]!.action.agentId, agentId);
+    assert.equal(policy.calls[0]!.action.tool, 'hubspot.contacts.update');
 
     assert.equal(registry.invocations.length, 1);
     assert.equal(registry.invocations[0]!.tool, 'hubspot.contacts.update');

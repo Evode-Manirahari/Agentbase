@@ -12,6 +12,7 @@ test.describe('register an agent', () => {
 
     // Register
     await page.getByPlaceholder('research-agent').fill(name);
+    await page.getByLabel('Permission profile').first().selectOption('read_only_analyst');
     await page.getByRole('button', { name: 'Register' }).click();
 
     // Banner appears with the dvk_ key. CI cold-compiles /agents on first
@@ -30,7 +31,40 @@ test.describe('register an agent', () => {
     await expect(banner).toBeHidden();
 
     // The new agent appears in the list below
-    await expect(page.locator(`tr:has-text("${name}")`).first()).toBeVisible();
+    const row = page.locator(`tr:has-text("${name}")`).first();
+    await expect(row).toBeVisible();
+    await expect(row.getByText('Read/search only across CRM')).toBeVisible();
+  });
+});
+
+test.describe('agent permission profiles', () => {
+  test('installs profile policy and updates an agent profile', async ({ page }) => {
+    const name = `e2e-profile-${STAMP()}`;
+
+    await page.goto('/agents');
+    await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Install profile policy' }).click();
+    await page.waitForLoadState('networkidle');
+
+    await page.goto('/policies');
+    const yaml = page.locator('textarea[name="yaml"]');
+    await expect(yaml).toHaveValue(/agent_profile: sales_sdr/, { timeout: 20_000 });
+    await expect(yaml).toHaveValue(/agent_profile: read_only_analyst/);
+
+    await page.goto('/agents');
+    await page.getByPlaceholder('research-agent').fill(name);
+    await page.getByRole('button', { name: 'Register' }).click();
+    await expect(page.locator('text=/Agent .* registered/').first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await page.getByRole('button', { name: 'Dismiss' }).click();
+
+    const row = page.locator(`tr:has-text("${name}")`).first();
+    await expect(row).toBeVisible();
+    await row.getByLabel('Permission profile').selectOption('support_agent');
+    await row.getByRole('button', { name: 'Save profile' }).click();
+    await expect(row.getByText('Read CRM context')).toBeVisible({ timeout: 10_000 });
   });
 });
 

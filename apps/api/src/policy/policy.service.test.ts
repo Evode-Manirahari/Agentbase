@@ -14,7 +14,8 @@ import { and, desc, eq } from 'drizzle-orm';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { BadRequestException } from '@nestjs/common';
-import { schema, orgs, policies } from '@dejavas/db';
+import { schema, orgs, policies, agents } from '@dejavas/db';
+import { buildAgentPermissionProfilePolicyYaml } from '@dejavas/shared';
 import { PolicyService } from './policy.service.js';
 
 const DB_URL =
@@ -59,6 +60,21 @@ rules:
     assert.equal(doc.default, 'deny');
     assert.equal(doc.rules.length, 2);
     assert.equal(doc.rules[1]!.slack_channel, '#critical');
+  });
+
+  it('accepts profile-scoped rules generated from permission profiles', () => {
+    const doc = svc.parseAndValidate(buildAgentPermissionProfilePolicyYaml());
+    assert.equal(doc.default, 'deny');
+    assert.ok(doc.rules.some((rule) =>
+      rule.match.agent_profile === 'sales_sdr' &&
+      rule.match.tool === 'gmail.send' &&
+      rule.effect === 'require_approval',
+    ));
+    assert.ok(doc.rules.some((rule) =>
+      rule.match.agent_profile === 'read_only_analyst' &&
+      rule.match.tool === 'apollo.people.search' &&
+      rule.effect === 'allow',
+    ));
   });
 
   it('rejects malformed YAML with BadRequestException', () => {
@@ -259,5 +275,44 @@ rules:
       params: {},
     });
     assert.equal(denied.effect, 'deny');
+  });
+
+  it('evaluates generated profile policy against the calling agent profile', async () => {
+    const [sdr] = await db
+      .insert(agents)
+      .values({ orgId, name: 'sdr', permissionProfile: 'sales_sdr' })
+      .returning();
+    const [analyst] = await db
+      .insert(agents)
+      .values({ orgId, name: 'analyst', permissionProfile: 'read_only_analyst' })
+      .returning();
+    await svc.setActive({
+      orgId,
+      name: 'profiles',
+      yaml: buildAgentPermissionProfilePolicyYaml(),
+    });
+
+    const sdrDecision = await svc.evaluate(orgId, {
+      agentId: sdr!.id,
+      tool: 'gmail.send',
+      params: {},
+    });
+    assert.equal(sdrDecision.effect, 'require_approval');
+    assert.equal(sdrDecision.rule_matched?.match.agent_profile, 'sales_sdr');
+
+    const analystDecision = await svc.evaluate(orgId, {
+      agentId: analyst!.id,
+      tool: 'gmail.send',
+      params: {},
+    });
+    assert.equal(analystDecision.effect, 'deny');
+
+    const analystRead = await svc.evaluate(orgId, {
+      agentId: analyst!.id,
+      tool: 'apollo.people.search',
+      params: {},
+    });
+    assert.equal(analystRead.effect, 'allow');
+    assert.equal(analystRead.rule_matched?.match.agent_profile, 'read_only_analyst');
   });
 });

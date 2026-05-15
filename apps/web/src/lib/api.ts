@@ -1,4 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
+import type { AgentPermissionProfile } from '@dejavas/shared';
 
 const BASE_URL = process.env.API_URL ?? 'http://localhost:3002';
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -49,6 +50,7 @@ export interface AgentRow {
   id: string;
   name: string;
   description: string | null;
+  permission_profile: AgentPermissionProfile;
   status: 'active' | 'disabled' | 'revoked';
   created_at: string;
   revoked_at: string | null;
@@ -164,10 +166,30 @@ export interface ConnectorStatus {
 export const api = {
   agents: {
     list: () => req<{ items: AgentRow[] }>(`/v1/agents`),
-    register: (body: { name: string; description?: string }) =>
-      req<{ agent_id: string; api_key: string; api_key_prefix: string }>(
+    register: (body: {
+      name: string;
+      description?: string;
+      permission_profile?: AgentPermissionProfile;
+    }) =>
+      req<{
+        agent_id: string;
+        api_key: string;
+        api_key_prefix: string;
+        permission_profile: AgentPermissionProfile;
+      }>(
         `/v1/agents`,
         { method: 'POST', body: JSON.stringify(body) },
+      ),
+    updatePermissionProfile: (
+      agentId: string,
+      permission_profile: AgentPermissionProfile,
+    ) =>
+      req<{ id: string; permission_profile: AgentPermissionProfile }>(
+        `/v1/agents/${agentId}/permission-profile`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ permission_profile }),
+        },
       ),
     revoke: (agentId: string, body: { reason?: string; revoked_by_email?: string } = {}) =>
       req<{

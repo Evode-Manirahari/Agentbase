@@ -1,4 +1,5 @@
 import type {
+  AgentPermissionProfile,
   Condition,
   ConditionOperator,
   PolicyDocument,
@@ -9,6 +10,11 @@ import type {
 export interface ActionContext {
   tool: string;
   params: Record<string, unknown>;
+  agent?: {
+    id: string;
+    name: string;
+    permission_profile: AgentPermissionProfile;
+  } | null;
 }
 
 export interface EvaluateOptions {
@@ -48,6 +54,14 @@ export function evaluatePolicy(
 
 function ruleMatches(rule: PolicyRule, action: ActionContext): boolean {
   if (!matchesToolPattern(rule.match.tool, action.tool)) return false;
+  if (rule.match.agent_id && action.agent?.id !== rule.match.agent_id) return false;
+  if (rule.match.agent_name && action.agent?.name !== rule.match.agent_name) return false;
+  if (
+    rule.match.agent_profile &&
+    action.agent?.permission_profile !== rule.match.agent_profile
+  ) {
+    return false;
+  }
   const when = rule.match.when;
   if (!when) return true;
   for (const [path, cond] of Object.entries(when)) {

@@ -134,6 +134,45 @@ describe('evaluatePolicy — rule precedence', () => {
   });
 });
 
+describe('evaluatePolicy — agent profile matching', () => {
+  it('matches rules scoped to the current agent permission profile', () => {
+    const doc = docWith({
+      match: { tool: 'gmail.send', agent_profile: 'sales_sdr' },
+      effect: 'require_approval',
+      approver_role: 'approver',
+    });
+    const d = evaluatePolicy(doc, {
+      tool: 'gmail.send',
+      params: {},
+      agent: {
+        id: '11111111-1111-4111-8111-111111111111',
+        name: 'sdr-agent',
+        permission_profile: 'sales_sdr',
+      },
+    });
+    assert.equal(d.effect, 'require_approval');
+    assert.equal(d.rule_index, 0);
+  });
+
+  it('falls through when an agent profile does not match', () => {
+    const doc = docWith({
+      match: { tool: 'gmail.send', agent_profile: 'sales_sdr' },
+      effect: 'allow',
+    });
+    const d = evaluatePolicy(doc, {
+      tool: 'gmail.send',
+      params: {},
+      agent: {
+        id: '22222222-2222-4222-8222-222222222222',
+        name: 'analyst-agent',
+        permission_profile: 'read_only_analyst',
+      },
+    });
+    assert.equal(d.effect, 'deny');
+    assert.equal(d.rule_index, null);
+  });
+});
+
 describe('evaluatePolicy — when conditions', () => {
   it('literal value equality (string/number/bool/null)', () => {
     const num = docWith({ match: { tool: 'foo', when: { x: 5 } }, effect: 'allow' });

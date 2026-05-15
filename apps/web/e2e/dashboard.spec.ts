@@ -24,6 +24,9 @@ test.describe('dashboard renders every route', () => {
     await page.goto('/agents');
     await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible();
     await expect(page.getByPlaceholder('research-agent')).toBeVisible();
+    await expect(page.getByText('Permission profiles', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Install profile policy' })).toBeVisible();
+    await expect(page.getByLabel('Permission profile').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Register' })).toBeVisible();
   });
 

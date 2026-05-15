@@ -69,6 +69,7 @@ export const agents = pgTable(
       .references(() => orgs.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     description: text('description'),
+    permissionProfile: text('permission_profile').notNull().default('sales_sdr'),
     status: agentStatus('status').notNull().default('active'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),

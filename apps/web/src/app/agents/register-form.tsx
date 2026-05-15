@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useState } from 'react';
+import { AGENT_PERMISSION_PROFILE_OPTIONS } from '@dejavas/shared';
 import { registerAgentAction, type RegisterState } from './actions';
 
 const initialRegisterState: RegisterState = { status: 'idle' };
@@ -87,6 +88,20 @@ export function RegisterForm() {
           name="description"
           placeholder="researches and updates leads"
         />
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)] flex-1 min-w-[200px]">
+          Permission profile
+          <select
+            name="permission_profile"
+            defaultValue="sales_sdr"
+            className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-accent)]"
+          >
+            {AGENT_PERMISSION_PROFILE_OPTIONS.map((profile) => (
+              <option key={profile.key} value={profile.key}>
+                {profile.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <button
           type="submit"
           disabled={pending}

@@ -2,13 +2,14 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, max } from 'drizzle-orm';
 import { parse as parseYaml } from 'yaml';
 import {
+  AgentPermissionProfile,
   PolicyDocument,
   type ActivePolicyResponse,
   type PolicyDecision,
 } from '@dejavas/shared';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
-import { policies } from '@dejavas/db';
+import { agents, policies } from '@dejavas/db';
 import { evaluatePolicy, FALLBACK_POLICY } from './policy-engine.js';
 
 @Injectable()
@@ -105,13 +106,39 @@ export class PolicyService {
 
   async evaluate(
     orgId: string,
-    action: { tool: string; params: Record<string, unknown> },
+    action: {
+      tool: string;
+      params: Record<string, unknown>;
+      agentId?: string | undefined;
+    },
   ): Promise<PolicyDecision> {
     const active = await this.getActive(orgId);
     const doc = active.document ?? FALLBACK_POLICY;
-    return evaluatePolicy(doc, action, {
+    const agent = action.agentId
+      ? await this.agentContext(orgId, action.agentId)
+      : null;
+    return evaluatePolicy(doc, { ...action, agent }, {
       policyId: active.policy_id,
       isFallback: active.is_fallback,
     });
+  }
+
+  private async agentContext(orgId: string, agentId: string) {
+    const [row] = await this.db
+      .select({
+        id: agents.id,
+        name: agents.name,
+        permissionProfile: agents.permissionProfile,
+      })
+      .from(agents)
+      .where(and(eq(agents.orgId, orgId), eq(agents.id, agentId)))
+      .limit(1);
+    if (!row) return null;
+    const parsed = AgentPermissionProfile.safeParse(row.permissionProfile);
+    return {
+      id: row.id,
+      name: row.name,
+      permission_profile: parsed.success ? parsed.data : 'custom',
+    };
   }
 }

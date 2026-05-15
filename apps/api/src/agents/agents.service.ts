@@ -3,6 +3,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
 import { agents, agentApiKeys, orgs } from '@dejavas/db';
+import { AgentPermissionProfile } from '@dejavas/shared';
 import { generateApiKey } from '../auth/api-key.js';
 import { AuditService } from '../audit/audit.service.js';
 
@@ -35,6 +36,7 @@ export class AgentsService {
     orgId: string;
     name: string;
     description?: string | undefined;
+    permissionProfile?: AgentPermissionProfile | undefined;
   }) {
     const [agent] = await this.db
       .insert(agents)
@@ -42,6 +44,7 @@ export class AgentsService {
         orgId: input.orgId,
         name: input.name,
         description: input.description ?? null,
+        permissionProfile: input.permissionProfile ?? 'sales_sdr',
       })
       .returning();
     if (!agent) throw new Error('failed to create agent');
@@ -57,6 +60,7 @@ export class AgentsService {
       agent_id: agent.id,
       api_key: key.plaintext,
       api_key_prefix: key.prefix,
+      permission_profile: parsePermissionProfile(agent.permissionProfile),
     };
   }
 
@@ -64,6 +68,7 @@ export class AgentsService {
     orgId: string;
     name: string;
     description?: string | undefined;
+    permissionProfile?: AgentPermissionProfile | undefined;
   }) {
     const existing = await this.db
       .select()
@@ -86,6 +91,7 @@ export class AgentsService {
         orgId: input.orgId,
         name: input.name,
         description: input.description ?? null,
+        permissionProfile: input.permissionProfile ?? 'sales_sdr',
       })
       .returning();
     if (!created) throw new Error('failed to create internal agent');
@@ -164,12 +170,50 @@ export class AgentsService {
     };
   }
 
+  async updatePermissionProfile(input: {
+    orgId: string;
+    agentId: string;
+    permissionProfile: AgentPermissionProfile;
+    actorId: string;
+  }) {
+    const rows = await this.db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.id, input.agentId), eq(agents.orgId, input.orgId)))
+      .limit(1);
+    const found = rows[0];
+    if (!found) throw new NotFoundException('agent not found');
+
+    const [updated] = await this.db
+      .update(agents)
+      .set({ permissionProfile: input.permissionProfile })
+      .where(eq(agents.id, input.agentId))
+      .returning();
+    if (!updated) throw new Error('failed to update agent permission profile');
+
+    await this.audit.record({
+      orgId: input.orgId,
+      actorType: 'user',
+      actorId: input.actorId,
+      eventType: 'agent.permission_profile.updated',
+      payload: {
+        agentId: input.agentId,
+        agentName: found.name,
+        from: parsePermissionProfile(found.permissionProfile),
+        to: input.permissionProfile,
+      },
+    });
+
+    return updated;
+  }
+
   async listForOrg(orgId: string, limit = 100) {
     return this.db
       .select({
         id: agents.id,
         name: agents.name,
         description: agents.description,
+        permissionProfile: agents.permissionProfile,
         status: agents.status,
         createdAt: agents.createdAt,
         revokedAt: agents.revokedAt,
@@ -181,4 +225,9 @@ export class AgentsService {
       .orderBy(desc(agents.createdAt))
       .limit(limit);
   }
+}
+
+function parsePermissionProfile(value: string): AgentPermissionProfile {
+  const parsed = AgentPermissionProfile.safeParse(value);
+  return parsed.success ? parsed.data : 'custom';
 }

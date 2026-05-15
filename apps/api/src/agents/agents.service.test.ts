@@ -69,6 +69,8 @@ describe('AgentsService.register', () => {
       .where(eq(agents.id, out.agent_id));
     assert.equal(row!.name, 'researcher');
     assert.equal(row!.description, 'looks things up');
+    assert.equal(row!.permissionProfile, 'sales_sdr');
+    assert.equal(out.permission_profile, 'sales_sdr');
     assert.equal(row!.status, 'active');
     assert.equal(row!.revokedAt, null);
 
@@ -87,6 +89,21 @@ describe('AgentsService.register', () => {
     const b = await svc.register({ orgId, name: 'b' });
     assert.notEqual(a.agent_id, b.agent_id);
     assert.notEqual(a.api_key, b.api_key);
+  });
+
+  it('persists an explicit permission profile', async () => {
+    const out = await svc.register({
+      orgId,
+      name: 'analyst',
+      permissionProfile: 'read_only_analyst',
+    });
+
+    assert.equal(out.permission_profile, 'read_only_analyst');
+    const [row] = await db
+      .select()
+      .from(agents)
+      .where(eq(agents.id, out.agent_id));
+    assert.equal(row!.permissionProfile, 'read_only_analyst');
   });
 });
 
@@ -117,6 +134,7 @@ describe('AgentsService.listForOrg', () => {
     assert.equal(rows[0]!.name, 'second');
     assert.equal(rows[0]!.id, second.agent_id);
     assert.equal(rows[0]!.keyPrefix, second.api_key_prefix);
+    assert.equal(rows[0]!.permissionProfile, 'sales_sdr');
     assert.equal(rows[1]!.name, 'first');
   });
 
@@ -229,6 +247,92 @@ describe('AgentsService.revoke', () => {
         .from(agents)
         .where(eq(agents.id, reg.agent_id));
       assert.equal(row!.status, 'active');
+    } finally {
+      await db.delete(orgs).where(eq(orgs.id, otherOrg!.id));
+    }
+  });
+});
+
+describe('AgentsService.updatePermissionProfile', () => {
+  let orgId: string;
+  let svc: AgentsService;
+
+  beforeEach(async () => {
+    const [org] = await db
+      .insert(orgs)
+      .values({ name: 'Test', slug: `ag-${randomUUID().slice(0, 8)}` })
+      .returning();
+    orgId = org!.id;
+    svc = new AgentsService(db, audit);
+  });
+
+  afterEach(async () => {
+    if (orgId) await db.delete(orgs).where(eq(orgs.id, orgId));
+  });
+
+  it('updates the profile and records an audit event', async () => {
+    const reg = await svc.register({ orgId, name: 'profiled' });
+
+    const updated = await svc.updatePermissionProfile({
+      orgId,
+      agentId: reg.agent_id,
+      permissionProfile: 'support_agent',
+      actorId: 'user_profile_admin',
+    });
+
+    assert.equal(updated.permissionProfile, 'support_agent');
+
+    const [row] = await db
+      .select()
+      .from(agents)
+      .where(eq(agents.id, reg.agent_id));
+    assert.equal(row!.permissionProfile, 'support_agent');
+
+    const events = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.orgId, orgId));
+    const ev = events.find(
+      (event) => event.eventType === 'agent.permission_profile.updated',
+    );
+    assert.ok(ev);
+    assert.equal(ev!.actorId, 'user_profile_admin');
+    const payload = ev!.payload as {
+      agentId: string;
+      agentName: string;
+      from: string;
+      to: string;
+    };
+    assert.equal(payload.agentId, reg.agent_id);
+    assert.equal(payload.agentName, 'profiled');
+    assert.equal(payload.from, 'sales_sdr');
+    assert.equal(payload.to, 'support_agent');
+  });
+
+  it('throws NotFoundException when the agent is not in the org', async () => {
+    const reg = await svc.register({ orgId, name: 'mine' });
+    const [otherOrg] = await db
+      .insert(orgs)
+      .values({ name: 'Other', slug: `ag-${randomUUID().slice(0, 8)}` })
+      .returning();
+
+    try {
+      await assert.rejects(
+        () =>
+          svc.updatePermissionProfile({
+            orgId: otherOrg!.id,
+            agentId: reg.agent_id,
+            permissionProfile: 'revops_admin',
+            actorId: 'operator',
+          }),
+        NotFoundException,
+      );
+
+      const [row] = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.id, reg.agent_id));
+      assert.equal(row!.permissionProfile, 'sales_sdr');
     } finally {
       await db.delete(orgs).where(eq(orgs.id, otherOrg!.id));
     }
