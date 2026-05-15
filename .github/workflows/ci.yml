@@ -45,7 +45,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://dejavas:dejavas@localhost:5433/dejavas
       REDIS_URL: redis://localhost:6380
-      CONNECTOR_CREDENTIALS_KEY: dejavas-ci-connector-credentials-key
+      CONNECTOR_CREDENTIALS_KEY: hex:64656a617661732d63692d636f6e6e6563746f722d6b65792d33326279746521
       API_PUBLIC_URL: http://localhost:3002
       DASHBOARD_URL: http://localhost:3000
       PORT: 3002

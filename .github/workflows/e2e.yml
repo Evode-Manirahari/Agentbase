@@ -48,7 +48,7 @@ jobs:
       API_URL: http://localhost:3002
       API_PUBLIC_URL: http://localhost:3002
       DASHBOARD_URL: http://localhost:3000
-      CONNECTOR_CREDENTIALS_KEY: dejavas-ci-connector-credentials-key
+      CONNECTOR_CREDENTIALS_KEY: hex:64656a617661732d63692d636f6e6e6563746f722d6b65792d33326279746521
       PORT: 3002
 
     steps:

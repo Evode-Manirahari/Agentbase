@@ -8,7 +8,7 @@
 #   fly redis create --name dejavas-redis-CHANGEME --region iad         # set REDIS_URL via fly secrets set
 #
 #   fly secrets set REDIS_URL=redis://... --config infra/fly.api.toml
-#   fly secrets set CONNECTOR_CREDENTIALS_KEY="$(openssl rand -base64 32)" --config infra/fly.api.toml
+#   fly secrets set CONNECTOR_CREDENTIALS_KEY="base64:$(openssl rand -base64 32)" --config infra/fly.api.toml
 #   fly secrets set API_PUBLIC_URL=https://dejavas-api-CHANGEME.fly.dev DASHBOARD_URL=https://dejavas-web-CHANGEME.fly.dev \
 #     --config infra/fly.api.toml
 #   # Plus any of these you want wired:
