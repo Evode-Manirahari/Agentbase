@@ -76,7 +76,7 @@ services:
       # Demo-only default so the Connectors page can store org credentials.
       # Set CONNECTOR_CREDENTIALS_KEY in your shell before using this outside
       # local demo mode.
-      CONNECTOR_CREDENTIALS_KEY: ${CONNECTOR_CREDENTIALS_KEY:-dejavas-local-docker-connector-credentials-key}
+      CONNECTOR_CREDENTIALS_KEY: ${CONNECTOR_CREDENTIALS_KEY:-hex:64656a617661732d6c6f63616c2d646f636b65722d6b65792d33326279746521}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3002}
       DASHBOARD_URL: ${DASHBOARD_URL:-http://localhost:3000}
       # Optional credentials — uncomment / fill via .env, OR set them in

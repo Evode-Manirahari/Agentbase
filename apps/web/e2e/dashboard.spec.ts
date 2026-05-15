@@ -56,6 +56,19 @@ test.describe('dashboard renders every route', () => {
     await expect(page.getByRole('button', { name: 'Save credentials' }).first()).toBeVisible();
   });
 
+  test('connectors page exposes OAuth install state for OAuth providers', async ({ page }) => {
+    await page.goto('/connectors');
+    for (const provider of ['HubSpot', 'Salesforce', 'Gmail', 'Outreach']) {
+      const connector = page.getByRole('region', { name: `${provider} connector` });
+      await expect(connector).toBeVisible();
+      await expect(
+        connector
+          .getByRole('button', { name: new RegExp(`^(Connect|Reconnect) ${provider}$`) })
+          .or(connector.getByText('OAuth app not configured')),
+      ).toBeVisible();
+    }
+  });
+
   test('connectors page shows OAuth connected callback status', async ({ page }) => {
     await page.goto('/connectors?provider=hubspot&oauth=connected');
     await expect(page.getByText('HubSpot connected.')).toBeVisible();

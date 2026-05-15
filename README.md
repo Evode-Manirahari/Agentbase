@@ -32,7 +32,7 @@ Early. The full demoable loop works end-to-end locally; nothing is hardened for 
 - **Slack approval cards** — interactive buttons, signed webhook (HMAC + 5-min replay window), per-rule channel routing, dashboard posted-status metadata, two-way consistency (web decisions update the Slack card via `chat.update`)
 - **Audit log** — every state transition recorded with actor type/id
 - **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions (including a HubSpot lead workflow runner), Connectors, Webhooks, Audit
-- **CI + tests** — GitHub Actions gates lint, typecheck, production build, 277 API tests across 53 suites, and Playwright dashboard E2E
+- **CI + tests** — GitHub Actions gates lint, typecheck, production build, 277 API tests across 53 suites, and Playwright dashboard E2E including connector credential/OAuth-state coverage
 
 ## Quick start
 
@@ -90,7 +90,7 @@ fly postgres create --name dejavas-pg-CHANGEME --region iad
 fly postgres attach dejavas-pg-CHANGEME --app dejavas-api-CHANGEME       # sets DATABASE_URL
 fly redis create --name dejavas-redis-CHANGEME --region iad
 fly secrets set REDIS_URL=redis://... --config infra/fly.api.toml
-fly secrets set CONNECTOR_CREDENTIALS_KEY="$(openssl rand -base64 32)" --config infra/fly.api.toml
+fly secrets set CONNECTOR_CREDENTIALS_KEY="base64:$(openssl rand -base64 32)" --config infra/fly.api.toml
 fly secrets set API_PUBLIC_URL=https://dejavas-api-CHANGEME.fly.dev DASHBOARD_URL=https://dejavas-web-CHANGEME.fly.dev --config infra/fly.api.toml
 fly deploy --config infra/fly.api.toml --remote-only
 
@@ -241,7 +241,7 @@ Both workflows use Node 22, pnpm 10, Postgres 16, Redis 7, and the same localhos
 DATABASE_URL=postgresql://dejavas:dejavas@localhost:5433/dejavas
 REDIS_URL=redis://localhost:6380
 PORT=3002
-CONNECTOR_CREDENTIALS_KEY=change-me-32-byte-minimum-local-dev-key
+CONNECTOR_CREDENTIALS_KEY=hex:64656a617661732d6c6f63616c2d646f636b65722d6b65792d33326279746521
 API_PUBLIC_URL=http://localhost:3002
 DASHBOARD_URL=http://localhost:3000
 
@@ -300,8 +300,8 @@ API_URL=http://localhost:3002
 
 ## What's deliberately NOT done yet
 
-- **Web Clerk integration** — backend now verifies Clerk session tokens via @clerk/backend on every management endpoint, but the Next.js dashboard still hits the API without one. Set `CLERK_SECRET_KEY` (and the frontend bits — ClerkProvider + middleware + token forwarding in `apps/web/src/lib/api.ts`) before any non-localhost deploy. With `CLERK_SECRET_KEY` unset, the guard logs a warning at boot and lets every request through — that's what local dev uses.
-- **Broader Web E2E tests** — route smoke coverage exists; form mutation, OAuth env-state, and auth-state browser tests should be added next.
+- **Production auth configuration** — Clerk wiring is in place for the API and dashboard, but a real deploy still needs `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, and Clerk allowed origins configured. With Clerk env vars unset, local dev intentionally runs in unauthenticated dev mode.
+- **Broader Web E2E tests** — route smoke, connector credential mutation, OAuth env-state, and dev auth-state coverage exist; approval decisions, action runner flows, and real OAuth redirect browser tests should be added next.
 - **More connectors** — five wired (HubSpot, Salesforce, Gmail, Outreach, Apollo). Clearbit, ZoomInfo, Salesloft, LinkedIn Sales Navigator are obvious next adds.
 - **Retry / backoff** on connector failures — a transient HubSpot 503 marks the action `failed`; could enqueue and retry via BullMQ.
 

@@ -89,7 +89,12 @@ export default async function ConnectorsPage({
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {items.map((connector) => (
-            <Card key={connector.provider} className="p-4">
+            <Card
+              key={connector.provider}
+              role="region"
+              aria-label={`${labels[connector.provider]} connector`}
+              className="p-4"
+            >
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div>
                   <div className="flex items-center gap-2">

@@ -117,6 +117,31 @@ test.describe('webhooks: create + lifecycle', () => {
   });
 });
 
+test.describe('connectors: credential lifecycle', () => {
+  test('save and disable org-scoped Apollo credentials', async ({ page }) => {
+    await page.goto('/connectors');
+    await expect(page.getByRole('heading', { name: 'Connectors' })).toBeVisible();
+
+    const connector = page.getByRole('region', { name: 'Apollo connector' });
+    await expect(connector).toBeVisible();
+
+    await connector.getByLabel('API key').fill(`apollo-e2e-${STAMP()}`);
+    await connector.getByRole('button', { name: 'Save credentials' }).click();
+
+    await expect(connector.getByText('apollo credentials saved')).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(
+      connector.getByRole('button', { name: 'Disable org credentials' }),
+    ).toBeVisible();
+
+    await connector.getByRole('button', { name: 'Disable org credentials' }).click();
+    await expect(
+      connector.getByRole('button', { name: 'Disable org credentials' }),
+    ).toHaveCount(0);
+  });
+});
+
 test.describe('policy editor', () => {
   test('saves a new policy version and the active-version stat increments', async ({
     page,

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 import { SignedIn, UserButton } from '@clerk/nextjs';
 
 const items = [
@@ -63,9 +63,17 @@ export function Subtitle({ children }: { children: ReactNode }) {
   return <p className="text-sm text-[var(--color-muted)] mb-6">{children}</p>;
 }
 
-export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
+export function Card({
+  children,
+  className = '',
+  ...props
+}: {
+  children: ReactNode;
+  className?: string;
+} & HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      {...props}
       className={`rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] ${className}`}
     >
       {children}
