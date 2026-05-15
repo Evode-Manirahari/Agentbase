@@ -291,4 +291,4 @@ API_URL=http://localhost:3002
 
 ## License
 
-TBD.
+Apache License 2.0. See [LICENSE](./LICENSE).
