@@ -5,10 +5,18 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   playwright:
     name: dashboard E2E
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -38,6 +46,9 @@ jobs:
       DATABASE_URL: postgresql://dejavas:dejavas@localhost:5433/dejavas
       REDIS_URL: redis://localhost:6380
       API_URL: http://localhost:3002
+      API_PUBLIC_URL: http://localhost:3002
+      DASHBOARD_URL: http://localhost:3000
+      CONNECTOR_CREDENTIALS_KEY: dejavas-ci-connector-credentials-key
       PORT: 3002
 
     steps:
@@ -59,15 +70,7 @@ jobs:
       - name: Apply database schema
         run: pnpm --filter '@dejavas/db' exec drizzle-kit push --force
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: pw-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: pw-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-
-      - name: Install Playwright browser
-        if: steps.pw-cache.outputs.cache-hit != 'true'
+      - name: Install Playwright browser and system dependencies
         run: pnpm --filter '@dejavas/web' run test:e2e:install
 
       - name: Run Playwright tests
@@ -79,4 +82,12 @@ jobs:
         with:
           name: playwright-report
           path: apps/web/playwright-report/
+          retention-days: 7
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: apps/web/test-results/
           retention-days: 7

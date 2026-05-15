@@ -32,7 +32,7 @@ Early. The full demoable loop works end-to-end locally; nothing is hardened for 
 - **Slack approval cards** — interactive buttons, signed webhook (HMAC + 5-min replay window), per-rule channel routing, two-way consistency (web decisions update the Slack card via `chat.update`)
 - **Audit log** — every state transition recorded with actor type/id
 - **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions (including a HubSpot lead workflow runner), Connectors, Webhooks, Audit
-- **Tests** — 272 API tests passing across 53 suites, plus Playwright coverage for dashboard routes
+- **CI + tests** — GitHub Actions gates lint, typecheck, production build, 272 API tests across 53 suites, and Playwright dashboard E2E
 
 ## Quick start
 
@@ -208,8 +208,11 @@ infra/
 ## Development
 
 ```bash
+pnpm lint                                     # ESLint for API + web
 pnpm typecheck                                # whole monorepo
+pnpm build                                    # production build
 pnpm --filter '@dejavas/api' test             # 272 tests, ~5s
+pnpm --filter '@dejavas/web' test:e2e         # dashboard Playwright tests
 pnpm --filter '@dejavas/api' dev              # API on :3002 (watch + swc-register)
 pnpm --filter '@dejavas/web' dev              # web on :3000
 pnpm --filter '@dejavas/db' db:push           # apply schema (interactive)
@@ -217,6 +220,15 @@ pnpm --filter '@dejavas/db' db:studio         # Drizzle Studio
 ```
 
 The test suite requires Postgres on `$DATABASE_URL` (default `postgresql://dejavas:dejavas@localhost:5433/dejavas`). Bring it up via `docker compose -f infra/docker-compose.yml up -d`.
+
+## CI
+
+GitHub Actions runs two quality gates on every push to `main` and every pull request:
+
+- `.github/workflows/ci.yml` installs with the frozen lockfile, runs `pnpm lint`, `pnpm typecheck`, `pnpm build`, applies the Drizzle schema to Postgres, then runs the API test suite.
+- `.github/workflows/e2e.yml` starts Postgres and Redis service containers, applies the schema, installs Chromium with Playwright system dependencies, then runs the dashboard E2E suite.
+
+Both workflows use Node 22, pnpm 10, Postgres 16, Redis 7, and the same localhost ports used in local development.
 
 ## Configuration
 

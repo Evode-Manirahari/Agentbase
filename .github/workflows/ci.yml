@@ -5,10 +5,18 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
-    name: typecheck + test
+  health:
+    name: lint + typecheck + build + API tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -37,6 +45,10 @@ jobs:
     env:
       DATABASE_URL: postgresql://dejavas:dejavas@localhost:5433/dejavas
       REDIS_URL: redis://localhost:6380
+      CONNECTOR_CREDENTIALS_KEY: dejavas-ci-connector-credentials-key
+      API_PUBLIC_URL: http://localhost:3002
+      DASHBOARD_URL: http://localhost:3000
+      PORT: 3002
 
     steps:
       - name: Checkout
@@ -54,11 +66,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Apply database schema
-        run: pnpm --filter '@dejavas/db' exec drizzle-kit push --force
+      - name: Lint
+        run: pnpm lint
 
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
+      - name: Build
+        run: pnpm build
+
+      - name: Apply database schema
+        run: pnpm --filter '@dejavas/db' exec drizzle-kit push --force
+
+      - name: API tests
         run: pnpm --filter '@dejavas/api' run test
