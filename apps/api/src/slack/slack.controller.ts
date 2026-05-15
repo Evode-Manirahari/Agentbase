@@ -71,9 +71,13 @@ export class SlackController {
       payload.user.username ?? payload.user.id ?? 'unknown';
     const email = await this.tryResolveEmail(payload.user.id);
 
-    let actionStatus = '';
-    let errorCode: string | null = null;
-    let finalDecision: 'approved' | 'denied' | 'expired' = 'expired';
+    let resolved:
+      | {
+          actionStatus: string;
+          errorCode: string | null;
+          finalDecision: 'approved' | 'denied';
+        }
+      | undefined;
     let agentName = '';
     let tool = '';
 
@@ -93,10 +97,12 @@ export class SlackController {
         ...(email ? { decidedByEmail: email } : {}),
         notes: `via Slack: ${decidedByDisplay} (${payload.user.id})`,
       });
-      finalDecision = result.decision === 'approved' ? 'approved' : 'denied';
-      actionStatus = result.action_status;
       const r = result.result as { error?: { code?: string } } | null;
-      errorCode = r?.error?.code ?? null;
+      resolved = {
+        actionStatus: result.action_status,
+        errorCode: r?.error?.code ?? null,
+        finalDecision: result.decision === 'approved' ? 'approved' : 'denied',
+      };
     } catch (err) {
       if (err instanceof ConflictException) {
         const msg = (err.getResponse() as { message?: string }).message ?? 'already decided';
@@ -144,19 +150,23 @@ export class SlackController {
       throw err;
     }
 
+    if (!resolved) {
+      throw new Error('Approval decision completed without a result');
+    }
+
     const blocks = this.slack.buildResolvedBlocks({
-      decision: finalDecision,
+      decision: resolved.finalDecision,
       decidedByDisplay: `<@${payload.user.id}>`,
       tool,
       agentName,
-      actionStatus,
-      errorCode,
+      actionStatus: resolved.actionStatus,
+      errorCode: resolved.errorCode,
       notes: null,
     });
     await this.slack.updateViaResponseUrl(
       payload.response_url,
       blocks,
-      `Approval ${finalDecision} by ${decidedByDisplay}`,
+      `Approval ${resolved.finalDecision} by ${decidedByDisplay}`,
     );
 
     return { ok: true };

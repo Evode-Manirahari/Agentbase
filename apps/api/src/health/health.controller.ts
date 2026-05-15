@@ -9,7 +9,7 @@ export class HealthController {
 
   @Get()
   async check() {
-    let dbOk = false;
+    let dbOk: boolean;
     try {
       await this.db.execute(sql`select 1`);
       dbOk = true;
