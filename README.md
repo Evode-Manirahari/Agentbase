@@ -27,12 +27,12 @@ Early. The full demoable loop works end-to-end locally; nothing is hardened for 
 - **Identity & API keys** — register agents, scoped `dvk_…` tokens (sha256-hashed at rest), idempotent revocation
 - **Policy DSL (YAML + Zod)** — rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, dotted-path conditions, 9 operators (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`)
 - **Connector dispatch** — five connectors out of the box: HubSpot CRM v3 (connection test, contact search/upsert, contacts, deals, notes, tasks, and lead-to-deal workflow), Salesforce REST v60 (Account + Opportunity + Contact), Gmail v1 (send + draft + messages.get), Outreach v2 (prospects + sequence enrollment + tasks), and Apollo v1 (people.match + organizations.match + people.search), all with structured errors and Zod-validated params
-- **Org-scoped connector credentials** — HubSpot OAuth install/reconnect plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, show account/expiry metadata, can be tested from the dashboard, and can be disabled to block inherited env fallback
+- **Org-scoped connector credentials** — HubSpot, Salesforce, Gmail, and Outreach OAuth install/reconnect plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, refresh access tokens before connector dispatch, show account/expiry metadata, can be tested from the dashboard, and can be disabled to block inherited env fallback
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
 - **Slack approval cards** — interactive buttons, signed webhook (HMAC + 5-min replay window), per-rule channel routing, dashboard posted-status metadata, two-way consistency (web decisions update the Slack card via `chat.update`)
 - **Audit log** — every state transition recorded with actor type/id
 - **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions (including a HubSpot lead workflow runner), Connectors, Webhooks, Audit
-- **CI + tests** — GitHub Actions gates lint, typecheck, production build, 273 API tests across 53 suites, and Playwright dashboard E2E
+- **CI + tests** — GitHub Actions gates lint, typecheck, production build, 277 API tests across 53 suites, and Playwright dashboard E2E
 
 ## Quick start
 
@@ -102,15 +102,18 @@ fly deploy --config infra/fly.web.toml --remote-only
 
 Both Fly configs use `auto_stop_machines = "stop"` so you only pay for active traffic, and `min_machines_running = 0` so idle apps cost ~0. The api's `[[http_service.checks]]` hits `/health` every 30s.
 
-To plug in real connectors after deploy, either connect HubSpot from the dashboard, save static credentials in the Connectors page, or set fallback env vars with `fly secrets set` (HubSpot / Salesforce / Gmail / Outreach / Apollo / Slack tokens). Org-scoped credentials override fallback env vars. Each connector independently degrades to `connector_not_configured` when its tokens are absent or disabled for the org.
+To plug in real connectors after deploy, connect HubSpot, Salesforce, Gmail, or Outreach from the dashboard, save static credentials in the Connectors page, or set fallback env vars with `fly secrets set` (HubSpot / Salesforce / Gmail / Outreach / Apollo / Slack tokens). Org-scoped credentials override fallback env vars. Each connector independently degrades to `connector_not_configured` when its tokens are absent or disabled for the org.
 
-For HubSpot OAuth, create a HubSpot public app and register this redirect URL:
+For connector OAuth, register the matching redirect URLs in each provider app:
 
 ```text
 https://dejavas-api-CHANGEME.fly.dev/v1/connectors/hubspot/oauth/callback
+https://dejavas-api-CHANGEME.fly.dev/v1/connectors/salesforce/oauth/callback
+https://dejavas-api-CHANGEME.fly.dev/v1/connectors/gmail/oauth/callback
+https://dejavas-api-CHANGEME.fly.dev/v1/connectors/outreach/oauth/callback
 ```
 
-Then set `HUBSPOT_CLIENT_ID` and `HUBSPOT_CLIENT_SECRET` on the API app.
+Then set the provider's `*_CLIENT_ID` and `*_CLIENT_SECRET` on the API app.
 
 ## Smoke-test the loop
 
@@ -211,7 +214,7 @@ infra/
 pnpm lint                                     # ESLint for API + web
 pnpm typecheck                                # whole monorepo
 pnpm build                                    # production build
-pnpm --filter '@dejavas/api' test             # 273 tests, ~5s
+pnpm --filter '@dejavas/api' test             # 277 tests, ~5s
 pnpm --filter '@dejavas/web' test:e2e         # dashboard Playwright tests
 pnpm --filter '@dejavas/api' dev              # API on :3002 (watch + swc-register)
 pnpm --filter '@dejavas/web' dev              # web on :3000
@@ -247,12 +250,27 @@ SLACK_BOT_TOKEN=xoxb-...
 SLACK_SIGNING_SECRET=...
 SLACK_APPROVALS_CHANNEL=C0123456789
 
-# Optional HubSpot OAuth app. Register this callback in HubSpot:
+# Optional connector OAuth apps. Register matching local callbacks:
 # http://localhost:3002/v1/connectors/hubspot/oauth/callback
+# http://localhost:3002/v1/connectors/salesforce/oauth/callback
+# http://localhost:3002/v1/connectors/gmail/oauth/callback
+# http://localhost:3002/v1/connectors/outreach/oauth/callback
 HUBSPOT_CLIENT_ID=
 HUBSPOT_CLIENT_SECRET=
 HUBSPOT_SCOPES=crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write
 HUBSPOT_REDIRECT_URI=
+SALESFORCE_CLIENT_ID=
+SALESFORCE_CLIENT_SECRET=
+SALESFORCE_SCOPES=api refresh_token
+SALESFORCE_REDIRECT_URI=
+GMAIL_CLIENT_ID=
+GMAIL_CLIENT_SECRET=
+GMAIL_SCOPES=https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.readonly
+GMAIL_REDIRECT_URI=
+OUTREACH_CLIENT_ID=
+OUTREACH_CLIENT_SECRET=
+OUTREACH_SCOPES=prospects.all sequenceStates.all tasks.all sequences.read mailboxes.read
+OUTREACH_REDIRECT_URI=
 
 # Optional fallback credentials. Dashboard-saved org credentials override these.
 HUBSPOT_ACCESS_TOKEN=pat-...
@@ -262,11 +280,11 @@ SALESFORCE_ACCESS_TOKEN=
 SALESFORCE_INSTANCE_URL=https://yourdomain.my.salesforce.com
 
 # Optional — wires real Gmail send/draft on effect:allow
-GMAIL_ACCESS_TOKEN=                # OAuth bearer (refresh-token flow not yet wired)
+GMAIL_ACCESS_TOKEN=                # static bearer fallback; dashboard OAuth is preferred
 GMAIL_USER_ID=                     # default 'me'
 
 # Optional — wires real Outreach prospect/sequence/task writes on effect:allow
-OUTREACH_ACCESS_TOKEN=             # OAuth bearer (refresh-token flow not yet wired)
+OUTREACH_ACCESS_TOKEN=             # static bearer fallback; dashboard OAuth is preferred
 
 # Optional — wires real Apollo people/organization match + people search
 APOLLO_API_KEY=                    # static API key (X-Api-Key header)
@@ -283,9 +301,7 @@ API_URL=http://localhost:3002
 ## What's deliberately NOT done yet
 
 - **Web Clerk integration** — backend now verifies Clerk session tokens via @clerk/backend on every management endpoint, but the Next.js dashboard still hits the API without one. Set `CLERK_SECRET_KEY` (and the frontend bits — ClerkProvider + middleware + token forwarding in `apps/web/src/lib/api.ts`) before any non-localhost deploy. With `CLERK_SECRET_KEY` unset, the guard logs a warning at boot and lets every request through — that's what local dev uses.
-- **More OAuth providers** — HubSpot OAuth install works; Salesforce, Gmail, and Outreach still need provider-specific OAuth install/reconnect flows.
-- **Broader Web E2E tests** — route smoke coverage exists; form mutation and auth-state browser tests should be added next.
-- **OAuth refresh-token flow** — Gmail and Outreach both take a static access token currently; production needs the refresh-token loop on both.
+- **Broader Web E2E tests** — route smoke coverage exists; form mutation, OAuth env-state, and auth-state browser tests should be added next.
 - **More connectors** — five wired (HubSpot, Salesforce, Gmail, Outreach, Apollo). Clearbit, ZoomInfo, Salesloft, LinkedIn Sales Navigator are obvious next adds.
 - **Retry / backoff** on connector failures — a transient HubSpot 503 marks the action `failed`; could enqueue and retry via BullMQ.
 

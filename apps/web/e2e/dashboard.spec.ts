@@ -61,6 +61,11 @@ test.describe('dashboard renders every route', () => {
     await expect(page.getByText('HubSpot connected.')).toBeVisible();
   });
 
+  test('connectors page labels non-HubSpot OAuth callback status', async ({ page }) => {
+    await page.goto('/connectors?provider=salesforce&oauth=connected');
+    await expect(page.getByText('Salesforce connected.')).toBeVisible();
+  });
+
   test('connectors page shows OAuth error callback status', async ({ page }) => {
     await page.goto('/connectors?provider=hubspot&oauth=error&message=OAuth%20denied');
     await expect(page.getByText('HubSpot connection failed: OAuth denied')).toBeVisible();

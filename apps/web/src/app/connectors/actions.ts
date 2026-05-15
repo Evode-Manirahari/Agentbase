@@ -42,8 +42,10 @@ export async function disableConnectorAction(formData: FormData) {
   revalidatePath('/connectors');
 }
 
-export async function startHubspotOAuthAction() {
-  const out = await api.connectors.startOAuth('hubspot');
+export async function startOAuthAction(formData: FormData) {
+  const provider = String(formData.get('provider') ?? '') as ConnectorStatus['provider'];
+  if (!provider) return;
+  const out = await api.connectors.startOAuth(provider);
   redirect(out.authorization_url as never);
 }
 

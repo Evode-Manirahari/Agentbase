@@ -9,7 +9,7 @@ import {
 } from '../../components/nav';
 import {
   disableConnectorAction,
-  startHubspotOAuthAction,
+  startOAuthAction,
   testConnectorAction,
 } from './actions';
 import { CredentialForm } from './credential-form';
@@ -30,6 +30,13 @@ const labels: Record<ConnectorStatus['provider'], string> = {
   outreach: 'Outreach',
   apollo: 'Apollo',
 };
+
+const oauthSupported = new Set<ConnectorStatus['provider']>([
+  'hubspot',
+  'salesforce',
+  'gmail',
+  'outreach',
+]);
 
 export default async function ConnectorsPage({
   searchParams,
@@ -120,17 +127,22 @@ export default async function ConnectorsPage({
                 </div>
               </div>
 
-              {connector.provider === 'hubspot' ? (
+              {oauthSupported.has(connector.provider) ? (
                 <div className="mb-4 flex flex-wrap gap-2">
                   {connector.oauth_available ? (
-                    <form action={startHubspotOAuthAction}>
+                    <form action={startOAuthAction}>
+                      <input
+                        type="hidden"
+                        name="provider"
+                        value={connector.provider}
+                      />
                       <button
                         type="submit"
                         className="px-3 py-2 rounded-md text-xs font-medium bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:opacity-90"
                       >
                         {connector.auth_type === 'oauth'
-                          ? 'Reconnect HubSpot'
-                          : 'Connect HubSpot'}
+                          ? `Reconnect ${labels[connector.provider]}`
+                          : `Connect ${labels[connector.provider]}`}
                       </button>
                     </form>
                   ) : null}
@@ -196,7 +208,7 @@ function OAuthStatusBanner({
   status: string;
   message: string | null;
 }) {
-  const providerLabel = provider === 'hubspot' ? 'HubSpot' : 'Connector';
+  const providerLabel = provider ? labelForProvider(provider) : 'Connector';
   const isConnected = status === 'connected';
   return (
     <div
@@ -219,6 +231,7 @@ function AccountDetails({ connector }: { connector: ConnectorStatus }) {
   const label =
     account.user ??
     account.hub_domain ??
+    account.instance_url ??
     (account.hub_id ? `Hub ID ${account.hub_id}` : null);
   if (!label) return null;
   const expiresAt = formatDateTime(account.expires_at);
@@ -228,11 +241,27 @@ function AccountDetails({ connector }: { connector: ConnectorStatus }) {
       <div className="truncate">Connected as {label}</div>
       <div className="flex flex-wrap gap-x-3 gap-y-1">
         {account.hub_id ? <span>Hub ID {account.hub_id}</span> : null}
+        {account.id ? <span>ID {account.id}</span> : null}
+        {account.instance_url ? <span>{shortHost(account.instance_url)}</span> : null}
         {expiresAt ? <span>Expires {expiresAt}</span> : null}
         {scopes > 0 ? <span>{scopes} scopes</span> : null}
       </div>
     </div>
   );
+}
+
+function labelForProvider(provider: string): string {
+  return provider in labels
+    ? labels[provider as ConnectorStatus['provider']]
+    : 'Connector';
+}
+
+function shortHost(value: string): string {
+  try {
+    return new URL(value).host;
+  } catch {
+    return value;
+  }
 }
 
 function formatDateTime(value: string | null | undefined): string | null {

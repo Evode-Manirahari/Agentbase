@@ -151,8 +151,10 @@ export interface ConnectorStatus {
   fields: { key: string; label: string; secret: boolean; placeholder?: string }[];
   oauth_available: boolean;
   account: {
+    id?: number | string | null;
     hub_id?: number | string | null;
     hub_domain?: string | null;
+    instance_url?: string | null;
     user?: string | null;
     scopes?: string[];
     expires_at?: string | null;
@@ -280,7 +282,7 @@ export const api = {
   },
   connectors: {
     list: () => req<{ items: ConnectorStatus[] }>(`/v1/connectors`),
-    startOAuth: (provider: 'hubspot') =>
+    startOAuth: (provider: ConnectorStatus['provider']) =>
       req<{
         authorization_url: string;
         expires_at: string;

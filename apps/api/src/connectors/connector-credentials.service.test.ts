@@ -198,6 +198,7 @@ describe('ConnectorCredentialsService', () => {
 
     assert.equal(url.origin + url.pathname, 'https://app.hubspot.com/oauth/authorize');
     assert.equal(url.searchParams.get('client_id'), 'hub-client-id');
+    assert.equal(url.searchParams.get('response_type'), 'code');
     assert.equal(
       url.searchParams.get('redirect_uri'),
       'https://api.dejavas.test/v1/connectors/hubspot/oauth/callback',
@@ -207,6 +208,81 @@ describe('ConnectorCredentialsService', () => {
       'crm.objects.contacts.read crm.objects.contacts.write',
     );
     assert.ok(url.searchParams.get('state'));
+  });
+
+  it('builds signed OAuth authorization URLs for Salesforce, Gmail, and Outreach', async () => {
+    const svc = new ConnectorCredentialsService(
+      db,
+      config({
+        API_PUBLIC_URL: 'https://api.dejavas.test',
+        SALESFORCE_CLIENT_ID: 'sf-client-id',
+        SALESFORCE_CLIENT_SECRET: 'sf-client-secret',
+        SALESFORCE_LOGIN_URL: 'https://test.salesforce.com',
+        SALESFORCE_SCOPES: 'api refresh_token',
+        GMAIL_CLIENT_ID: 'gmail-client-id',
+        GMAIL_CLIENT_SECRET: 'gmail-client-secret',
+        GMAIL_SCOPES: 'https://www.googleapis.com/auth/gmail.send',
+        OUTREACH_CLIENT_ID: 'outreach-client-id',
+        OUTREACH_CLIENT_SECRET: 'outreach-client-secret',
+        OUTREACH_SCOPES: 'prospects.all tasks.all',
+      }),
+    );
+
+    const salesforce = new URL(
+      (await svc.startOAuth({
+        provider: 'salesforce',
+        orgId,
+        actorId: 'operator-1',
+      })).authorization_url,
+    );
+    assert.equal(
+      salesforce.origin + salesforce.pathname,
+      'https://test.salesforce.com/services/oauth2/authorize',
+    );
+    assert.equal(salesforce.searchParams.get('client_id'), 'sf-client-id');
+    assert.equal(
+      salesforce.searchParams.get('redirect_uri'),
+      'https://api.dejavas.test/v1/connectors/salesforce/oauth/callback',
+    );
+    assert.equal(salesforce.searchParams.get('scope'), 'api refresh_token');
+
+    const gmail = new URL(
+      (await svc.startOAuth({
+        provider: 'gmail',
+        orgId,
+        actorId: 'operator-1',
+      })).authorization_url,
+    );
+    assert.equal(
+      gmail.origin + gmail.pathname,
+      'https://accounts.google.com/o/oauth2/v2/auth',
+    );
+    assert.equal(gmail.searchParams.get('client_id'), 'gmail-client-id');
+    assert.equal(gmail.searchParams.get('access_type'), 'offline');
+    assert.equal(gmail.searchParams.get('include_granted_scopes'), 'true');
+    assert.equal(gmail.searchParams.get('prompt'), 'consent');
+    assert.equal(
+      gmail.searchParams.get('redirect_uri'),
+      'https://api.dejavas.test/v1/connectors/gmail/oauth/callback',
+    );
+
+    const outreach = new URL(
+      (await svc.startOAuth({
+        provider: 'outreach',
+        orgId,
+        actorId: 'operator-1',
+      })).authorization_url,
+    );
+    assert.equal(
+      outreach.origin + outreach.pathname,
+      'https://api.outreach.io/oauth/authorize',
+    );
+    assert.equal(outreach.searchParams.get('client_id'), 'outreach-client-id');
+    assert.equal(outreach.searchParams.get('scope'), 'prospects.all tasks.all');
+    assert.equal(
+      outreach.searchParams.get('redirect_uri'),
+      'https://api.dejavas.test/v1/connectors/outreach/oauth/callback',
+    );
   });
 
   it('exchanges HubSpot OAuth code, stores metadata, and decrypts config', async () => {
@@ -332,6 +408,169 @@ describe('ConnectorCredentialsService', () => {
         accessToken: 'fresh-access-token',
       });
       assert.equal(mock.calls.length, 3);
+    } finally {
+      mock.restore();
+    }
+  });
+
+  it('exchanges Salesforce OAuth code and stores refreshable instance metadata', async () => {
+    const svc = new ConnectorCredentialsService(
+      db,
+      config({
+        SALESFORCE_CLIENT_ID: 'sf-client-id',
+        SALESFORCE_CLIENT_SECRET: 'sf-client-secret',
+        API_PUBLIC_URL: 'https://api.dejavas.test',
+      }),
+    );
+    const state = new URL(
+      (await svc.startOAuth({
+        provider: 'salesforce',
+        orgId,
+        actorId: 'operator-1',
+      })).authorization_url,
+    ).searchParams.get('state')!;
+    const mock = mockFetch([
+      {
+        assert: (url, init) => {
+          assert.equal(url, 'https://login.salesforce.com/services/oauth2/token');
+          const body = init.body as URLSearchParams;
+          assert.equal(body.get('grant_type'), 'authorization_code');
+          assert.equal(body.get('code'), 'sf-code');
+          assert.equal(
+            body.get('redirect_uri'),
+            'https://api.dejavas.test/v1/connectors/salesforce/oauth/callback',
+          );
+        },
+        body: {
+          access_token: 'sf-access-token',
+          refresh_token: 'sf-refresh-token',
+          expires_in: 7200,
+          instance_url: 'https://acme.my.salesforce.com',
+          id: 'https://login.salesforce.com/id/org/user',
+          scope: 'api refresh_token',
+        },
+      },
+    ]);
+
+    try {
+      const status = await svc.completeOAuth({
+        provider: 'salesforce',
+        code: 'sf-code',
+        state,
+      });
+      assert.equal(status.auth_type, 'oauth');
+      assert.equal(status.account?.instance_url, 'https://acme.my.salesforce.com');
+      assert.deepEqual(await svc.configForOrg(orgId, 'salesforce'), {
+        provider: 'salesforce',
+        accessToken: 'sf-access-token',
+        instanceUrl: 'https://acme.my.salesforce.com',
+      });
+      assert.equal(mock.calls.length, 1);
+    } finally {
+      mock.restore();
+    }
+  });
+
+  it('refreshes expired Gmail OAuth access tokens before dispatch', async () => {
+    const svc = new ConnectorCredentialsService(
+      db,
+      config({
+        GMAIL_CLIENT_ID: 'gmail-client-id',
+        GMAIL_CLIENT_SECRET: 'gmail-client-secret',
+        API_PUBLIC_URL: 'https://api.dejavas.test',
+      }),
+    );
+    const state = new URL(
+      (await svc.startOAuth({
+        provider: 'gmail',
+        orgId,
+        actorId: 'operator-1',
+      })).authorization_url,
+    ).searchParams.get('state')!;
+    const mock = mockFetch([
+      {
+        body: {
+          access_token: 'old-gmail-access-token',
+          refresh_token: 'gmail-refresh-token',
+          expires_in: 1,
+          scope: 'https://www.googleapis.com/auth/gmail.send',
+        },
+      },
+      {
+        assert: (url, init) => {
+          assert.equal(url, 'https://oauth2.googleapis.com/token');
+          const body = init.body as URLSearchParams;
+          assert.equal(body.get('grant_type'), 'refresh_token');
+          assert.equal(body.get('refresh_token'), 'gmail-refresh-token');
+        },
+        body: {
+          access_token: 'fresh-gmail-access-token',
+          expires_in: 3600,
+          scope: 'https://www.googleapis.com/auth/gmail.send',
+        },
+      },
+    ]);
+
+    try {
+      await svc.completeOAuth({ provider: 'gmail', code: 'gmail-code', state });
+      assert.deepEqual(await svc.configForOrg(orgId, 'gmail'), {
+        provider: 'gmail',
+        accessToken: 'fresh-gmail-access-token',
+        userId: 'me',
+      });
+      assert.equal(mock.calls.length, 2);
+    } finally {
+      mock.restore();
+    }
+  });
+
+  it('exchanges Outreach OAuth code and stores scope metadata', async () => {
+    const svc = new ConnectorCredentialsService(
+      db,
+      config({
+        OUTREACH_CLIENT_ID: 'outreach-client-id',
+        OUTREACH_CLIENT_SECRET: 'outreach-client-secret',
+        API_PUBLIC_URL: 'https://api.dejavas.test',
+      }),
+    );
+    const state = new URL(
+      (await svc.startOAuth({
+        provider: 'outreach',
+        orgId,
+        actorId: 'operator-1',
+      })).authorization_url,
+    ).searchParams.get('state')!;
+    const mock = mockFetch([
+      {
+        assert: (url, init) => {
+          assert.equal(url, 'https://api.outreach.io/oauth/token');
+          const body = init.body as URLSearchParams;
+          assert.equal(body.get('grant_type'), 'authorization_code');
+          assert.equal(body.get('code'), 'outreach-code');
+        },
+        body: {
+          access_token: 'outreach-access-token',
+          refresh_token: 'outreach-refresh-token',
+          expires_in: 7200,
+          scope: 'prospects.all tasks.all',
+          token_type: 'Bearer',
+        },
+      },
+    ]);
+
+    try {
+      const status = await svc.completeOAuth({
+        provider: 'outreach',
+        code: 'outreach-code',
+        state,
+      });
+      assert.equal(status.auth_type, 'oauth');
+      assert.deepEqual(status.account?.scopes, ['prospects.all', 'tasks.all']);
+      assert.deepEqual(await svc.configForOrg(orgId, 'outreach'), {
+        provider: 'outreach',
+        accessToken: 'outreach-access-token',
+      });
+      assert.equal(mock.calls.length, 1);
     } finally {
       mock.restore();
     }

@@ -44,16 +44,22 @@ export class ConnectorsController {
     return this.credentials.listForOrg(orgId);
   }
 
-  @Post('hubspot/oauth/start')
+  @Post(':provider/oauth/start')
   @UseGuards(ClerkAuthGuard)
-  async startHubspotOAuth(@Req() req: FastifyRequest) {
+  async startOAuth(
+    @Req() req: FastifyRequest,
+    @Param('provider', new ZodValidationPipe(ConnectorProvider))
+    provider: ConnectorProviderT,
+  ) {
     const orgId = await this.agents.ensureDefaultOrg();
     const actorId = req.clerkUser?.userId ?? 'dev-mode-operator';
-    return this.credentials.startHubspotOAuth({ orgId, actorId });
+    return this.credentials.startOAuth({ provider, orgId, actorId });
   }
 
-  @Get('hubspot/oauth/callback')
-  async hubspotOAuthCallback(
+  @Get(':provider/oauth/callback')
+  async oauthCallback(
+    @Param('provider', new ZodValidationPipe(ConnectorProvider))
+    provider: ConnectorProviderT,
     @Query('code') code: string | undefined,
     @Query('state') state: string | undefined,
     @Query('error') error: string | undefined,
@@ -62,7 +68,7 @@ export class ConnectorsController {
   ) {
     const redirect = (status: 'connected' | 'error', message?: string) => {
       const url = new URL('/connectors', this.dashboardBaseUrl());
-      url.searchParams.set('provider', 'hubspot');
+      url.searchParams.set('provider', provider);
       url.searchParams.set('oauth', status);
       if (message) url.searchParams.set('message', sanitizeRedirectMessage(message));
       return reply.redirect(url.toString());
@@ -73,15 +79,15 @@ export class ConnectorsController {
         throw new BadRequestException(errorDescription ?? error);
       }
       if (!code || !state) {
-        throw new BadRequestException('HubSpot OAuth callback missing code or state');
+        throw new BadRequestException('OAuth callback missing code or state');
       }
-      await this.credentials.completeHubspotOAuth({ code, state });
+      await this.credentials.completeOAuth({ provider, code, state });
       return redirect('connected');
     } catch (e) {
       const message =
         e instanceof BadRequestException
           ? String(e.message)
-          : 'HubSpot OAuth connection failed';
+          : 'OAuth connection failed';
       return redirect('error', message);
     }
   }
