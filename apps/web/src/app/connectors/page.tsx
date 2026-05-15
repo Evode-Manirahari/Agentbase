@@ -17,6 +17,8 @@ import { CredentialForm } from './credential-form';
 export const dynamic = 'force-dynamic';
 
 interface SearchParams {
+  oauth?: string | string[];
+  provider?: string | string[];
   test?: string | string[];
   message?: string | string[];
 }
@@ -35,6 +37,8 @@ export default async function ConnectorsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
+  const oauthStatus = firstParam(sp.oauth);
+  const oauthProvider = firstParam(sp.provider);
   const testStatus = firstParam(sp.test);
   const testMessage = firstParam(sp.message);
   let items: ConnectorStatus[] = [];
@@ -54,6 +58,13 @@ export default async function ConnectorsPage({
       </Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}
+      {oauthStatus ? (
+        <OAuthStatusBanner
+          provider={oauthProvider}
+          status={oauthStatus}
+          message={testMessage}
+        />
+      ) : null}
       {testStatus ? (
         <div
           className={`mb-4 rounded border p-3 text-sm ${
@@ -87,7 +98,7 @@ export default async function ConnectorsPage({
                   <div className="text-xs text-[var(--color-muted)] mono">
                     {connector.provider}.*
                   </div>
-                  {connector.account ? <AccountLine connector={connector} /> : null}
+                  {connector.account ? <AccountDetails connector={connector} /> : null}
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <StatusPill
@@ -122,6 +133,11 @@ export default async function ConnectorsPage({
                           : 'Connect HubSpot'}
                       </button>
                     </form>
+                  ) : null}
+                  {!connector.oauth_available && connector.auth_type !== 'oauth' ? (
+                    <span className="self-center text-xs text-[var(--color-muted)]">
+                      OAuth app not configured
+                    </span>
                   ) : null}
                   {connector.configured ? (
                     <form action={testConnectorAction}>
@@ -171,17 +187,57 @@ function firstParam(value: string | string[] | undefined): string | null {
   return value ?? null;
 }
 
-function AccountLine({ connector }: { connector: ConnectorStatus }) {
+function OAuthStatusBanner({
+  provider,
+  status,
+  message,
+}: {
+  provider: string | null;
+  status: string;
+  message: string | null;
+}) {
+  const providerLabel = provider === 'hubspot' ? 'HubSpot' : 'Connector';
+  const isConnected = status === 'connected';
+  return (
+    <div
+      className={`mb-4 rounded border p-3 text-sm ${
+        isConnected
+          ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300'
+          : 'border-rose-500/30 bg-rose-500/5 text-rose-300'
+      }`}
+    >
+      {isConnected
+        ? `${providerLabel} connected.`
+        : `${providerLabel} connection failed${message ? `: ${message}` : '.'}`}
+    </div>
+  );
+}
+
+function AccountDetails({ connector }: { connector: ConnectorStatus }) {
   const account = connector.account;
   if (!account) return null;
   const label =
-    account.hub_domain ??
     account.user ??
+    account.hub_domain ??
     (account.hub_id ? `Hub ID ${account.hub_id}` : null);
   if (!label) return null;
+  const expiresAt = formatDateTime(account.expires_at);
+  const scopes = account.scopes?.length ?? 0;
   return (
-    <div className="mt-1 text-xs text-[var(--color-muted)] truncate">
-      {label}
+    <div className="mt-2 space-y-1 text-xs text-[var(--color-muted)]">
+      <div className="truncate">Connected as {label}</div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {account.hub_id ? <span>Hub ID {account.hub_id}</span> : null}
+        {expiresAt ? <span>Expires {expiresAt}</span> : null}
+        {scopes > 0 ? <span>{scopes} scopes</span> : null}
+      </div>
     </div>
   );
+}
+
+function formatDateTime(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString();
 }

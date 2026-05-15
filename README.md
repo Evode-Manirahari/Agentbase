@@ -27,12 +27,12 @@ Early. The full demoable loop works end-to-end locally; nothing is hardened for 
 - **Identity & API keys** — register agents, scoped `dvk_…` tokens (sha256-hashed at rest), idempotent revocation
 - **Policy DSL (YAML + Zod)** — rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, dotted-path conditions, 9 operators (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`)
 - **Connector dispatch** — five connectors out of the box: HubSpot CRM v3 (connection test, contact search/upsert, contacts, deals, notes, tasks, and lead-to-deal workflow), Salesforce REST v60 (Account + Opportunity + Contact), Gmail v1 (send + draft + messages.get), Outreach v2 (prospects + sequence enrollment + tasks), and Apollo v1 (people.match + organizations.match + people.search), all with structured errors and Zod-validated params
-- **Org-scoped connector credentials** — HubSpot OAuth install plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, can be tested from the dashboard, and can be disabled to block inherited env fallback
+- **Org-scoped connector credentials** — HubSpot OAuth install/reconnect plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, show account/expiry metadata, can be tested from the dashboard, and can be disabled to block inherited env fallback
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
 - **Slack approval cards** — interactive buttons, signed webhook (HMAC + 5-min replay window), per-rule channel routing, two-way consistency (web decisions update the Slack card via `chat.update`)
 - **Audit log** — every state transition recorded with actor type/id
 - **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions (including a HubSpot lead workflow runner), Connectors, Webhooks, Audit
-- **CI + tests** — GitHub Actions gates lint, typecheck, production build, 272 API tests across 53 suites, and Playwright dashboard E2E
+- **CI + tests** — GitHub Actions gates lint, typecheck, production build, 273 API tests across 53 suites, and Playwright dashboard E2E
 
 ## Quick start
 
@@ -211,7 +211,7 @@ infra/
 pnpm lint                                     # ESLint for API + web
 pnpm typecheck                                # whole monorepo
 pnpm build                                    # production build
-pnpm --filter '@dejavas/api' test             # 272 tests, ~5s
+pnpm --filter '@dejavas/api' test             # 273 tests, ~5s
 pnpm --filter '@dejavas/web' test:e2e         # dashboard Playwright tests
 pnpm --filter '@dejavas/api' dev              # API on :3002 (watch + swc-register)
 pnpm --filter '@dejavas/web' dev              # web on :3000

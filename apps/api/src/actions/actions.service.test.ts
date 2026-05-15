@@ -273,6 +273,67 @@ describe('ActionsService.execute', () => {
     assert.equal(apps[0]!.slackTs, '1234.5678');
   });
 
+  it('dashboard HubSpot lead workflow posts Slack approval card with deal context', async () => {
+    policy.decision = makeDecision({
+      effect: 'require_approval',
+      reason: 'high value lead',
+      approver_role: 'approver',
+      rule_matched: {
+        match: { tool: 'hubspot.leads.create_deal' },
+        effect: 'require_approval',
+        slack_channel: '#sales-approvals',
+      },
+    });
+    slack.isConfiguredValue = true;
+    slack.postedCard = { channel: 'C999', ts: '999.1000' };
+
+    const params = {
+      contact: {
+        email: 'buyer@example.com',
+        firstname: 'Bea',
+        lastname: 'Buyer',
+        company: 'Acme',
+      },
+      deal: {
+        dealname: 'Enterprise pilot',
+        amount: 50000,
+      },
+      note: {
+        body: 'Requested a security review before rollout.',
+      },
+    };
+
+    const out = await execute('hubspot.leads.create_deal', params);
+
+    assert.equal(out.status, 'awaiting_approval');
+    assert.equal(registry.invocations.length, 0);
+    assert.equal(slack.posts.length, 1);
+    assert.equal(slack.posts[0]!.tool, 'hubspot.leads.create_deal');
+    assert.equal(slack.posts[0]!.channelOverride, '#sales-approvals');
+
+    const [app] = await db
+      .select()
+      .from(approvals)
+      .where(eq(approvals.actionId, out.action_id));
+    assert.equal(app!.requiredRole, 'approver');
+    assert.equal(app!.slackChannel, 'C999');
+    assert.equal(app!.slackTs, '999.1000');
+
+    const [row] = await db
+      .select()
+      .from(actions)
+      .where(eq(actions.id, out.action_id));
+    assert.equal(row!.status, 'awaiting_approval');
+    assert.deepEqual(row!.params, params);
+
+    const events = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.orgId, orgId));
+    assert.ok(events.some((e) => e.eventType === 'action.awaiting_approval'));
+    assert.ok(events.some((e) => e.eventType === 'approval.posted_to_slack'));
+  });
+
   it('allow + connector success: action executed with stored result', async () => {
     policy.decision = makeDecision({ effect: 'allow' });
     registry.result = { ok: true, data: { id: 'hs-1', updated: true } };
