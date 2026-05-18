@@ -64,6 +64,34 @@ describe('policyTemplateRulesYaml', () => {
     assert.ok(parsed.success, 'concatenation should produce a valid PolicyDocument');
     assert.equal(parsed.data.rules.length, template.rules.length);
   });
+
+  it('preserves nested object and array condition values', () => {
+    const template: PolicyTemplate = {
+      key: 'deny-destructive-and-bulk',
+      label: 'Nested condition values',
+      description: 'Exercises object values in generated YAML.',
+      rules: [
+        {
+          match: {
+            tool: 'hubspot.contacts.update',
+            when: {
+              metadata: {
+                eq: {
+                  source: 'csv',
+                  tags: ['vip', 'renewal'],
+                },
+              },
+            },
+          },
+          effect: 'deny',
+        },
+      ],
+    };
+    const doc = standaloneDoc(template);
+    assert.deepEqual(doc.rules[0]?.match.when?.metadata, {
+      eq: { source: 'csv', tags: ['vip', 'renewal'] },
+    });
+  });
 });
 
 describe('approval-before-external-email template', () => {
