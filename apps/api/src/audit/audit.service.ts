@@ -20,6 +20,19 @@ export interface AuditFilter {
   until?: Date | undefined;
 }
 
+export const AUDIT_EXPORT_DEFAULT_MAX_ROWS = 10_000;
+export const AUDIT_EXPORT_HARD_MAX_ROWS = 50_000;
+
+export interface AuditExportRow {
+  id: string;
+  orgId: string;
+  actorType: string;
+  actorId: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  createdAt: Date;
+}
+
 @Injectable()
 export class AuditService {
   private readonly log = new Logger(AuditService.name);
@@ -70,6 +83,26 @@ export class AuditService {
       .where(and(...conds))
       .orderBy(desc(auditLog.createdAt))
       .limit(limit);
+  }
+
+  async exportForOrg(
+    orgId: string,
+    filter: AuditFilter = {},
+    opts: { maxRows?: number } = {},
+  ): Promise<AuditExportRow[]> {
+    const requested = opts.maxRows ?? AUDIT_EXPORT_DEFAULT_MAX_ROWS;
+    const cap = Math.min(Math.max(requested, 1), AUDIT_EXPORT_HARD_MAX_ROWS);
+    const conds: SQL[] = [eq(auditLog.orgId, orgId)];
+    if (filter.actorType) conds.push(eq(auditLog.actorType, filter.actorType));
+    if (filter.eventType) conds.push(eq(auditLog.eventType, filter.eventType));
+    if (filter.since) conds.push(gte(auditLog.createdAt, filter.since));
+    if (filter.until) conds.push(lte(auditLog.createdAt, filter.until));
+    return this.db
+      .select()
+      .from(auditLog)
+      .where(and(...conds))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(cap);
   }
 
   // Distinct event types this org has produced — used by the audit page to

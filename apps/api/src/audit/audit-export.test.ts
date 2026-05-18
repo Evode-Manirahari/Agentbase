@@ -1,0 +1,106 @@
+import { describe, it } from 'node:test';
+import { strict as assert } from 'node:assert';
+import {
+  AUDIT_EXPORT_COLUMNS,
+  exportFilename,
+  formatAuditCsv,
+  formatAuditJson,
+} from './audit-export.js';
+import type { AuditExportRow } from './audit.service.js';
+
+function row(overrides: Partial<AuditExportRow> = {}): AuditExportRow {
+  return {
+    id: '11111111-1111-1111-1111-111111111111',
+    orgId: '22222222-2222-2222-2222-222222222222',
+    actorType: 'agent',
+    actorId: 'agent-1',
+    eventType: 'action.executed',
+    payload: { tool: 'hubspot.contacts.update' },
+    createdAt: new Date('2026-05-18T13:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+describe('formatAuditCsv', () => {
+  it('emits a header row followed by one row per event with CRLF newlines', () => {
+    const csv = formatAuditCsv([
+      row({ id: 'a', actorId: 'agent-1' }),
+      row({ id: 'b', actorId: 'agent-2' }),
+    ]);
+    const lines = csv.split('\r\n');
+    assert.equal(lines[0], AUDIT_EXPORT_COLUMNS.join(','));
+    assert.equal(lines.length, 4, 'header + 2 rows + trailing empty');
+    assert.match(lines[1]!, /^a,/);
+    assert.match(lines[2]!, /^b,/);
+  });
+
+  it('escapes cells containing commas, quotes, and newlines per RFC 4180', () => {
+    const csv = formatAuditCsv([
+      row({
+        payload: {
+          tool: 'gmail.send',
+          decided_by_email: 'sec, ops "lead"',
+        },
+      }),
+    ]);
+    const dataLine = csv.split('\r\n')[1]!;
+    assert.ok(
+      dataLine.includes('"sec, ops ""lead"""'),
+      `expected quoted+escaped approver_email, got: ${dataLine}`,
+    );
+  });
+
+  it('pulls effect from payload.effect or payload.policy_decision.effect', () => {
+    const direct = formatAuditCsv([
+      row({ payload: { tool: 'gmail.send', effect: 'require_approval' } }),
+    ]);
+    const nested = formatAuditCsv([
+      row({
+        payload: {
+          tool: 'gmail.send',
+          policy_decision: { effect: 'allow' },
+        },
+      }),
+    ]);
+    assert.ok(direct.includes('require_approval'), 'direct payload.effect');
+    assert.ok(nested.includes('allow'), 'nested policy_decision.effect');
+  });
+
+  it('emits empty string for missing payload fields without breaking column alignment', () => {
+    const csv = formatAuditCsv([row({ payload: {} })]);
+    const dataLine = csv.split('\r\n')[1]!;
+    const cells = dataLine.split(',');
+    assert.equal(cells.length, AUDIT_EXPORT_COLUMNS.length);
+  });
+
+  it('includes the raw JSON payload as the last column for grep-and-dig', () => {
+    const payload = { tool: 'gmail.send', extra: { nested: ['x', 'y'] } };
+    const csv = formatAuditCsv([row({ payload })]);
+    assert.ok(csv.includes(JSON.stringify(payload).replace(/"/g, '""')));
+  });
+});
+
+describe('formatAuditJson', () => {
+  it('returns a JSON envelope with count and rows', () => {
+    const json = JSON.parse(formatAuditJson([row(), row({ id: 'second' })]));
+    assert.equal(json.count, 2);
+    assert.equal(json.rows.length, 2);
+    assert.equal(json.rows[0].event_type, 'action.executed');
+    assert.match(json.rows[0].created_at, /^2026-05-18T13:00:00\.000Z$/);
+    assert.match(json.exported_at, /^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('preserves the raw payload shape for downstream parsers', () => {
+    const payload = { tool: 'gmail.send', policy_decision: { effect: 'allow' } };
+    const json = JSON.parse(formatAuditJson([row({ payload })]));
+    assert.deepEqual(json.rows[0].payload, payload);
+  });
+});
+
+describe('exportFilename', () => {
+  it('produces filesystem-safe filenames with the requested extension', () => {
+    const now = new Date('2026-05-18T13:14:15.678Z');
+    assert.equal(exportFilename('csv', now), 'dejavas-audit-2026-05-18T13-14-15Z.csv');
+    assert.equal(exportFilename('json', now), 'dejavas-audit-2026-05-18T13-14-15Z.json');
+  });
+});

@@ -45,6 +45,18 @@ export default async function AuditPage({
 
   const hasFilters = !!(actor || event || since || until);
 
+  const exportQuery = new URLSearchParams();
+  if (actor) exportQuery.set('actor_type', actor);
+  if (event) exportQuery.set('event_type', event);
+  if (since) exportQuery.set('since', toIso(since));
+  if (until) exportQuery.set('until', toIso(until));
+
+  function exportHref(format: 'csv' | 'json'): string {
+    const qs = new URLSearchParams(exportQuery);
+    qs.set('format', format);
+    return `/audit/export?${qs.toString()}`;
+  }
+
   return (
     <div className="max-w-6xl">
       <H1>Audit log</H1>
@@ -114,9 +126,23 @@ export default async function AuditPage({
               Clear
             </a>
           )}
-          <span className="text-xs text-[var(--color-muted)] ml-auto">
-            {items.length} {items.length === 1 ? 'event' : 'events'}
-          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="text-xs text-[var(--color-muted)]">
+              {items.length} {items.length === 1 ? 'event' : 'events'}
+            </span>
+            <a
+              href={exportHref('csv')}
+              className="px-3 py-2 rounded-md text-xs border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            >
+              Download CSV
+            </a>
+            <a
+              href={exportHref('json')}
+              className="px-3 py-2 rounded-md text-xs border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            >
+              Download JSON
+            </a>
+          </div>
         </form>
       </Card>
 
