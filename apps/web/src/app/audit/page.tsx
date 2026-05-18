@@ -22,6 +22,8 @@ export default async function AuditPage({
   const event = trim(sp.event_type);
   const since = trim(sp.since);
   const until = trim(sp.until);
+  const sinceIso = since ? toIso(since) : undefined;
+  const untilIso = until ? toIso(until) : undefined;
 
   let items: Awaited<ReturnType<typeof api.audit.list>>['items'] = [];
   let eventTypes: string[] = [];
@@ -32,8 +34,8 @@ export default async function AuditPage({
         limit: 200,
         ...(actor ? { actor_type: actor } : {}),
         ...(event ? { event_type: event } : {}),
-        ...(since ? { since: toIso(since) } : {}),
-        ...(until ? { until: toIso(until) } : {}),
+        ...(sinceIso ? { since: sinceIso } : {}),
+        ...(untilIso ? { until: untilIso } : {}),
       }),
       api.audit.eventTypes(),
     ]);
@@ -44,6 +46,18 @@ export default async function AuditPage({
   }
 
   const hasFilters = !!(actor || event || since || until);
+
+  const exportQuery = new URLSearchParams();
+  if (actor) exportQuery.set('actor_type', actor);
+  if (event) exportQuery.set('event_type', event);
+  if (sinceIso) exportQuery.set('since', sinceIso);
+  if (untilIso) exportQuery.set('until', untilIso);
+
+  function exportHref(format: 'csv' | 'json'): string {
+    const qs = new URLSearchParams(exportQuery);
+    qs.set('format', format);
+    return `/audit/export?${qs.toString()}`;
+  }
 
   return (
     <div className="max-w-6xl">
@@ -114,9 +128,23 @@ export default async function AuditPage({
               Clear
             </a>
           )}
-          <span className="text-xs text-[var(--color-muted)] ml-auto">
-            {items.length} {items.length === 1 ? 'event' : 'events'}
-          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="text-xs text-[var(--color-muted)]">
+              {items.length} {items.length === 1 ? 'event' : 'events'}
+            </span>
+            <a
+              href={exportHref('csv')}
+              className="px-3 py-2 rounded-md text-xs border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            >
+              Download CSV
+            </a>
+            <a
+              href={exportHref('json')}
+              className="px-3 py-2 rounded-md text-xs border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            >
+              Download JSON
+            </a>
+          </div>
         </form>
       </Card>
 
@@ -192,7 +220,8 @@ function trim(v: string | undefined): string | undefined {
 
 // datetime-local inputs don't include a timezone. We treat the value as local
 // time and convert to ISO so the API can compare to UTC timestamps.
-function toIso(local: string): string {
+function toIso(local: string): string | undefined {
   const d = new Date(local);
+  if (Number.isNaN(d.getTime())) return undefined;
   return d.toISOString();
 }

@@ -5,9 +5,18 @@ import {
   Get,
   Inject,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Readable } from 'node:stream';
+import type { FastifyReply } from 'fastify';
 import { AuditService, type AuditFilter } from './audit.service.js';
+import {
+  auditCsvChunks,
+  auditJsonChunks,
+  exportFilename,
+  type AuditExportFormat,
+} from './audit-export.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 
@@ -45,6 +54,49 @@ export class AuditController {
     const orgId = await this.agents.ensureDefaultOrg();
     return { items: await this.audit.listEventTypes(orgId) };
   }
+
+  @Get('export')
+  async export(
+    @Res() reply: FastifyReply,
+    @Query('format') format?: string,
+    @Query('actor_type') actorType?: string,
+    @Query('event_type') eventType?: string,
+    @Query('since') since?: string,
+    @Query('until') until?: string,
+    @Query('max_rows') maxRows?: string,
+  ) {
+    const fmt = parseFormat(format);
+    const orgId = await this.agents.ensureDefaultOrg();
+    const filter: AuditFilter = {
+      ...(actorType ? { actorType } : {}),
+      ...(eventType ? { eventType } : {}),
+      ...(since ? { since: parseDate('since', since) } : {}),
+      ...(until ? { until: parseDate('until', until) } : {}),
+    };
+    const cap = maxRows ? parseMaxRows(maxRows) : undefined;
+    const rows = await this.audit.exportForOrg(orgId, filter, cap ? { maxRows: cap } : {});
+    const filename = exportFilename(fmt);
+    const body = Readable.from(fmt === 'csv' ? auditCsvChunks(rows) : auditJsonChunks(rows));
+    return reply
+      .header('content-type', fmt === 'csv' ? 'text/csv; charset=utf-8' : 'application/json')
+      .header('content-disposition', `attachment; filename="${filename}"`)
+      .header('cache-control', 'no-store')
+      .send(body);
+  }
+}
+
+function parseFormat(raw: string | undefined): AuditExportFormat {
+  if (raw === undefined || raw === 'csv') return 'csv';
+  if (raw === 'json') return 'json';
+  throw new BadRequestException(`format must be 'csv' or 'json' (got '${raw}')`);
+}
+
+function parseMaxRows(raw: string): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+    throw new BadRequestException('max_rows must be a positive integer');
+  }
+  return n;
 }
 
 function parseDate(name: string, raw: string): Date {

@@ -47,6 +47,7 @@ describe('AuditService', () => {
     eventType: string,
     actorType: 'agent' | 'user' | 'system' = 'agent',
     createdAt?: Date,
+    payload: Record<string, unknown> = {},
   ) {
     if (createdAt) {
       // Skip the service to set explicit timestamps for the window test.
@@ -55,7 +56,7 @@ describe('AuditService', () => {
         actorType,
         actorId: 'a',
         eventType,
-        payload: {},
+        payload,
         createdAt,
       });
     } else {
@@ -64,7 +65,7 @@ describe('AuditService', () => {
         actorType,
         actorId: 'a',
         eventType,
-        payload: {},
+        payload,
       });
     }
   }
@@ -166,5 +167,25 @@ describe('AuditService', () => {
     for (let i = 0; i < 10; i++) await emit('e.t');
     const rows = await svc.listForOrg(orgId, 3, { eventType: 'e.t' });
     assert.equal(rows.length, 3);
+  });
+
+  it('exportForOrg applies filters, maxRows, ordering, and preserves payloads', async () => {
+    const old = new Date(Date.now() - 3 * 3600_000);
+    const newer = new Date(Date.now() - 2 * 3600_000);
+    const newest = new Date(Date.now() - 1 * 3600_000);
+    await emit('action.executed', 'agent', old, { tool: 'gmail.send' });
+    await emit('action.executed', 'user', newer, { tool: 'hubspot.deals.update' });
+    await emit('action.failed', 'agent', newest, { tool: 'apollo.people.search' });
+
+    const rows = await svc.exportForOrg(
+      orgId,
+      { eventType: 'action.executed' },
+      { maxRows: 1 },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.eventType, 'action.executed');
+    assert.equal(rows[0]!.actorType, 'user');
+    assert.deepEqual(rows[0]!.payload, { tool: 'hubspot.deals.update' });
   });
 });
