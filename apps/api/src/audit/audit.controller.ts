@@ -8,12 +8,13 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { Readable } from 'node:stream';
 import type { FastifyReply } from 'fastify';
 import { AuditService, type AuditFilter } from './audit.service.js';
 import {
+  auditCsvChunks,
+  auditJsonChunks,
   exportFilename,
-  formatAuditCsv,
-  formatAuditJson,
   type AuditExportFormat,
 } from './audit-export.js';
 import { AgentsService } from '../agents/agents.service.js';
@@ -75,7 +76,7 @@ export class AuditController {
     const cap = maxRows ? parseMaxRows(maxRows) : undefined;
     const rows = await this.audit.exportForOrg(orgId, filter, cap ? { maxRows: cap } : {});
     const filename = exportFilename(fmt);
-    const body = fmt === 'csv' ? formatAuditCsv(rows) : formatAuditJson(rows);
+    const body = Readable.from(fmt === 'csv' ? auditCsvChunks(rows) : auditJsonChunks(rows));
     return reply
       .header('content-type', fmt === 'csv' ? 'text/csv; charset=utf-8' : 'application/json')
       .header('content-disposition', `attachment; filename="${filename}"`)

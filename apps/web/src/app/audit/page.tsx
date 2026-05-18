@@ -22,6 +22,8 @@ export default async function AuditPage({
   const event = trim(sp.event_type);
   const since = trim(sp.since);
   const until = trim(sp.until);
+  const sinceIso = since ? toIso(since) : undefined;
+  const untilIso = until ? toIso(until) : undefined;
 
   let items: Awaited<ReturnType<typeof api.audit.list>>['items'] = [];
   let eventTypes: string[] = [];
@@ -32,8 +34,8 @@ export default async function AuditPage({
         limit: 200,
         ...(actor ? { actor_type: actor } : {}),
         ...(event ? { event_type: event } : {}),
-        ...(since ? { since: toIso(since) } : {}),
-        ...(until ? { until: toIso(until) } : {}),
+        ...(sinceIso ? { since: sinceIso } : {}),
+        ...(untilIso ? { until: untilIso } : {}),
       }),
       api.audit.eventTypes(),
     ]);
@@ -48,8 +50,8 @@ export default async function AuditPage({
   const exportQuery = new URLSearchParams();
   if (actor) exportQuery.set('actor_type', actor);
   if (event) exportQuery.set('event_type', event);
-  if (since) exportQuery.set('since', toIso(since));
-  if (until) exportQuery.set('until', toIso(until));
+  if (sinceIso) exportQuery.set('since', sinceIso);
+  if (untilIso) exportQuery.set('until', untilIso);
 
   function exportHref(format: 'csv' | 'json'): string {
     const qs = new URLSearchParams(exportQuery);
@@ -218,7 +220,8 @@ function trim(v: string | undefined): string | undefined {
 
 // datetime-local inputs don't include a timezone. We treat the value as local
 // time and convert to ISO so the API can compare to UTC timestamps.
-function toIso(local: string): string {
+function toIso(local: string): string | undefined {
   const d = new Date(local);
+  if (Number.isNaN(d.getTime())) return undefined;
   return d.toISOString();
 }

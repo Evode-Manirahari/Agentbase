@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
 import {
   AUDIT_EXPORT_COLUMNS,
+  auditCsvChunks,
+  auditJsonChunks,
   exportFilename,
   formatAuditCsv,
   formatAuditJson,
@@ -78,6 +80,34 @@ describe('formatAuditCsv', () => {
     const csv = formatAuditCsv([row({ payload })]);
     assert.ok(csv.includes(JSON.stringify(payload).replace(/"/g, '""')));
   });
+
+  it('neutralizes spreadsheet formula prefixes in scalar cells', () => {
+    const csv = formatAuditCsv([
+      row({
+        actorId: '=cmd',
+        payload: {
+          tool: '+SUM(1,1)',
+          effect: '-10',
+          decided_by_email: '@ops.example',
+          error: { code: '=ERR' },
+        },
+      }),
+    ]);
+    const dataLine = csv.split('\r\n')[1]!;
+    assert.ok(dataLine.includes("'=cmd"));
+    assert.ok(dataLine.includes("\"'+SUM(1,1)\""));
+    assert.ok(dataLine.includes("'-10"));
+    assert.ok(dataLine.includes("'@ops.example"));
+    assert.ok(dataLine.includes("'=ERR"));
+  });
+
+  it('can emit CSV one row chunk at a time', () => {
+    const chunks = Array.from(auditCsvChunks([row({ id: 'a' }), row({ id: 'b' })]));
+    assert.equal(chunks.length, 3);
+    assert.equal(chunks[0], `${AUDIT_EXPORT_COLUMNS.join(',')}\r\n`);
+    assert.match(chunks[1]!, /^a,/);
+    assert.match(chunks[2]!, /^b,/);
+  });
 });
 
 describe('formatAuditJson', () => {
@@ -94,6 +124,17 @@ describe('formatAuditJson', () => {
     const payload = { tool: 'gmail.send', policy_decision: { effect: 'allow' } };
     const json = JSON.parse(formatAuditJson([row({ payload })]));
     assert.deepEqual(json.rows[0].payload, payload);
+  });
+
+  it('can emit JSON in parseable chunks', () => {
+    const chunks = Array.from(
+      auditJsonChunks([row(), row({ id: 'second' })], new Date('2026-05-18T13:14:15.678Z')),
+    );
+    const json = JSON.parse(chunks.join(''));
+    assert.equal(chunks.length, 5);
+    assert.equal(json.exported_at, '2026-05-18T13:14:15.678Z');
+    assert.equal(json.count, 2);
+    assert.equal(json.rows[1].id, 'second');
   });
 });
 

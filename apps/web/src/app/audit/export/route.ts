@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server';
 const BASE_URL = process.env.API_URL ?? 'http://localhost:3002';
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 const FORWARDED_PARAMS = ['format', 'actor_type', 'event_type', 'since', 'until', 'max_rows'];
+const EXPORT_TIMEOUT_MS = 30_000;
 
 export const dynamic = 'force-dynamic';
 
@@ -25,10 +26,19 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const upstream = await fetch(`${BASE_URL}/v1/audit/export?${forwarded.toString()}`, {
-    headers,
-    cache: 'no-store',
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${BASE_URL}/v1/audit/export?${forwarded.toString()}`, {
+      headers,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(EXPORT_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      return new Response('audit export timed out', { status: 504 });
+    }
+    return new Response('audit export failed', { status: 502 });
+  }
 
   if (!upstream.ok) {
     const text = await upstream.text().catch(() => '');
@@ -46,4 +56,11 @@ export async function GET(req: NextRequest) {
     status: upstream.status,
     headers: responseHeaders,
   });
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    error instanceof DOMException &&
+    (error.name === 'AbortError' || error.name === 'TimeoutError')
+  );
 }

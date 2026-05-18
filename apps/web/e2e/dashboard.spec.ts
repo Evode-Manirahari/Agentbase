@@ -43,6 +43,17 @@ test.describe('dashboard renders every route', () => {
   test('audit page renders', async ({ page }) => {
     await page.goto('/audit');
     await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Download CSV' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Download JSON' })).toBeVisible();
+  });
+
+  test('audit page ignores malformed date query params', async ({ page }) => {
+    await page.goto('/audit?since=definitely-not-a-date&until=also-bad');
+    await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Download CSV' })).toHaveAttribute(
+      'href',
+      '/audit/export?format=csv',
+    );
   });
 
   test('webhooks page renders create form', async ({ page }) => {

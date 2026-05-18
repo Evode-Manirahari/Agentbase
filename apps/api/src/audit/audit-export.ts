@@ -16,33 +16,34 @@ export const AUDIT_EXPORT_COLUMNS = [
 export type AuditExportFormat = 'csv' | 'json';
 
 export function formatAuditCsv(rows: AuditExportRow[]): string {
-  const lines = [AUDIT_EXPORT_COLUMNS.join(',')];
+  return Array.from(auditCsvChunks(rows)).join('');
+}
+
+export function* auditCsvChunks(rows: AuditExportRow[]): Generator<string> {
+  yield `${AUDIT_EXPORT_COLUMNS.join(',')}\r\n`;
   for (const row of rows) {
-    lines.push(AUDIT_EXPORT_COLUMNS.map((col) => csvCell(row, col)).join(','));
+    yield `${AUDIT_EXPORT_COLUMNS.map((col) => csvCell(row, col)).join(',')}\r\n`;
   }
-  return lines.join('\r\n') + '\r\n';
 }
 
 export function formatAuditJson(rows: AuditExportRow[]): string {
-  return (
-    JSON.stringify(
-      {
-        exported_at: new Date().toISOString(),
-        count: rows.length,
-        rows: rows.map((row) => ({
-          id: row.id,
-          org_id: row.orgId,
-          created_at: row.createdAt.toISOString(),
-          actor_type: row.actorType,
-          actor_id: row.actorId,
-          event_type: row.eventType,
-          payload: row.payload,
-        })),
-      },
-      null,
-      2,
-    ) + '\n'
-  );
+  return Array.from(auditJsonChunks(rows)).join('');
+}
+
+export function* auditJsonChunks(
+  rows: AuditExportRow[],
+  exportedAt: Date = new Date(),
+): Generator<string> {
+  yield `{\n  "exported_at": ${JSON.stringify(exportedAt.toISOString())},\n`;
+  yield `  "count": ${rows.length},\n  "rows": [`;
+  for (const [index, row] of rows.entries()) {
+    const json = JSON.stringify(jsonRow(row), null, 2)
+      .split('\n')
+      .map((line) => `    ${line}`)
+      .join('\n');
+    yield `${index === 0 ? '\n' : ',\n'}${json}`;
+  }
+  yield rows.length > 0 ? '\n  ]\n}\n' : ']\n}\n';
 }
 
 export function exportFilename(format: AuditExportFormat, now: Date = new Date()): string {
@@ -85,6 +86,18 @@ function csvCell(row: AuditExportRow, col: (typeof AUDIT_EXPORT_COLUMNS)[number]
   }
 }
 
+function jsonRow(row: AuditExportRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    org_id: row.orgId,
+    created_at: row.createdAt.toISOString(),
+    actor_type: row.actorType,
+    actor_id: row.actorId,
+    event_type: row.eventType,
+    payload: row.payload,
+  };
+}
+
 function payloadDecision(payload: Record<string, unknown>): Record<string, unknown> {
   const value = payload['policy_decision'];
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
@@ -107,8 +120,9 @@ function escapeCsv(value: string | undefined | null): string {
   if (value === undefined || value === null) return '';
   const s = String(value);
   if (s === '') return '';
-  if (/[",\r\n]/.test(s)) {
-    return `"${s.replace(/"/g, '""')}"`;
+  const safe = /^[=+\-@]/.test(s) ? `'${s}` : s;
+  if (/[",\r\n]/.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
   }
-  return s;
+  return safe;
 }
