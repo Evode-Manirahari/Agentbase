@@ -2,7 +2,14 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { parse as parseYaml } from 'yaml';
-import { PolicyDocument, type PolicyEffect } from '@dejavas/shared';
+import {
+  POLICY_TEMPLATES,
+  PolicyDocument,
+  policyTemplateRulesYaml,
+  policyTemplateStandaloneYaml,
+  type PolicyEffect,
+  type PolicyTemplate,
+} from '@dejavas/shared';
 
 type ValidationOk = {
   ok: true;
@@ -89,6 +96,31 @@ export function PolicyEditor({ initialName, initialYaml, action }: PolicyEditorP
   const isFail =
     validation !== null && (validation as ValidationFail).ok === false;
 
+  function appendTemplate(template: PolicyTemplate) {
+    const block = policyTemplateRulesYaml(template);
+    setYaml((current) => {
+      const trimmed = current.trimEnd();
+      if (trimmed.length === 0) {
+        return policyTemplateStandaloneYaml(template);
+      }
+      const needsNewline = trimmed.length > 0 && !trimmed.endsWith('\n');
+      const separator = needsNewline ? '\n\n' : '\n';
+      return `${trimmed}${separator}${block}`;
+    });
+  }
+
+  function replaceWithTemplate(template: PolicyTemplate) {
+    if (
+      yaml.trim().length > 0 &&
+      !window.confirm(
+        `Replace the current policy with the "${template.label}" template? This clears the YAML in the editor — nothing is saved until you click Save and activate.`,
+      )
+    ) {
+      return;
+    }
+    setYaml(policyTemplateStandaloneYaml(template));
+  }
+
   return (
     <form
       className="flex flex-col gap-3"
@@ -106,6 +138,8 @@ export function PolicyEditor({ initialName, initialYaml, action }: PolicyEditorP
         </label>
         <ValidationBadge validation={validation} />
       </div>
+
+      <TemplatesPanel onInsert={appendTemplate} onReplace={replaceWithTemplate} />
 
       <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
         YAML
@@ -174,6 +208,59 @@ function ValidationBadge({ validation }: { validation: Validation }) {
         {v.errors.length} issue{v.errors.length === 1 ? '' : 's'}
       </span>
     </span>
+  );
+}
+
+function TemplatesPanel({
+  onInsert,
+  onReplace,
+}: {
+  onInsert: (template: PolicyTemplate) => void;
+  onReplace: (template: PolicyTemplate) => void;
+}) {
+  return (
+    <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]/40 p-3">
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <h3 className="text-sm font-medium">Approval-gate templates</h3>
+        <span className="text-xs text-[var(--color-muted)]">
+          One-click rules for the common high-risk actions. Insert to append, replace to start fresh.
+        </span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+        {POLICY_TEMPLATES.map((template) => (
+          <div
+            key={template.key}
+            className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-3 flex flex-col gap-2"
+          >
+            <div className="flex flex-col gap-1">
+              <div className="text-sm font-medium">{template.label}</div>
+              <div className="text-xs text-[var(--color-muted)]">
+                {template.description}
+              </div>
+              <div className="text-xs mono text-[var(--color-muted)]">
+                {template.rules.length} rule{template.rules.length === 1 ? '' : 's'}
+              </div>
+            </div>
+            <div className="flex gap-2 mt-auto">
+              <button
+                type="button"
+                onClick={() => onInsert(template)}
+                className="px-2 py-1 rounded-md text-xs border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+              >
+                Insert
+              </button>
+              <button
+                type="button"
+                onClick={() => onReplace(template)}
+                className="px-2 py-1 rounded-md text-xs border border-[var(--color-border)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+              >
+                Replace
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
