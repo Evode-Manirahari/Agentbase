@@ -299,9 +299,19 @@ Without `SLACK_*` set, approval cards are silently skipped and `/v1/slack/intera
 API_URL=http://localhost:3002
 ```
 
+### Production auth (required before any pilot)
+
+In `NODE_ENV=production`, both the API and the dashboard **refuse to boot** if Clerk env vars are missing:
+
+- API needs `CLERK_SECRET_KEY` — `ClerkAuthGuard` throws `UnauthenticatedProductionError` at construction.
+- Dashboard needs `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` — the Next middleware throws on module load.
+
+If you really need an unauthenticated production deploy (demos behind a VPN, security-test fixtures, etc.), opt in explicitly with `DEJAVAS_ALLOW_UNAUTHENTICATED=1`. The boot warning makes the mode visible in logs.
+
+For local dev (`NODE_ENV !== 'production'`), Clerk env vars are still optional and the dev-passthrough mode is the default — the dashboard, API, and SDK behave as today.
+
 ## What's deliberately NOT done yet
 
-- **Production auth configuration** — Clerk wiring is in place for the API and dashboard, but a real deploy still needs `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, and Clerk allowed origins configured. With Clerk env vars unset, local dev intentionally runs in unauthenticated dev mode.
 - **Broader Web E2E tests** — route smoke, connector credential mutation, OAuth env-state, permission profile flows, and dev auth-state coverage exist; approval decisions, action runner flows, and real OAuth redirect browser tests should be added next.
 - **More connectors** — five wired (HubSpot, Salesforce, Gmail, Outreach, Apollo). Clearbit, ZoomInfo, Salesloft, LinkedIn Sales Navigator are obvious next adds.
 - **Retry / backoff** on connector failures — a transient HubSpot 503 marks the action `failed`; could enqueue and retry via BullMQ.
