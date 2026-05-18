@@ -1,7 +1,12 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse, type NextRequest } from 'next/server';
+import { authModeOrFatal } from './lib/auth-mode';
 
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+// authModeOrFatal throws when NODE_ENV=production and Clerk env vars are
+// missing and DEJAVAS_ALLOW_UNAUTHENTICATED=1 isn't set. That intentionally
+// crashes the middleware at boot so the dashboard refuses to serve rather
+// than silently dev-passthrough in production.
+const mode = authModeOrFatal();
 
 const isPublic = createRouteMatcher(['/sign-in(.*)']);
 
@@ -9,10 +14,7 @@ const protectedClerkMiddleware = clerkMiddleware(async (auth, req) => {
   if (!isPublic(req)) await auth.protect();
 });
 
-// In dev mode (no Clerk keys configured), the API also accepts requests
-// without a Bearer token, so the dashboard can still hit it. Set both
-// NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY to flip auth on.
-export default clerkEnabled
+export default mode === 'enforced'
   ? protectedClerkMiddleware
   : function devModePassthrough(_req: NextRequest) {
       return NextResponse.next();

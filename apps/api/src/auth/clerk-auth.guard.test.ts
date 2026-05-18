@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { ClerkAuthGuard } from './clerk-auth.guard.js';
+import { UnauthenticatedProductionError } from './auth-mode.js';
 
 class FakeConfig {
   constructor(private readonly env: Record<string, string | undefined> = {}) {}
@@ -98,5 +99,32 @@ describe('ClerkAuthGuard — enforced mode (CLERK_SECRET_KEY set)', () => {
         ),
       UnauthorizedException,
     );
+  });
+});
+
+describe('ClerkAuthGuard — production refusal', () => {
+  it('throws at construction when NODE_ENV=production and CLERK_SECRET_KEY is missing', () => {
+    assert.throws(
+      () =>
+        new ClerkAuthGuard(
+          new FakeConfig({
+            NODE_ENV: 'production',
+          }) as unknown as ConfigService,
+        ),
+      UnauthenticatedProductionError,
+    );
+  });
+
+  it('accepts DEJAVAS_ALLOW_UNAUTHENTICATED=1 as an explicit prod opt-in', () => {
+    const guard = new ClerkAuthGuard(
+      new FakeConfig({
+        NODE_ENV: 'production',
+        DEJAVAS_ALLOW_UNAUTHENTICATED: '1',
+      }) as unknown as ConfigService,
+    );
+    // No throw at construction; behaves like dev passthrough at request time.
+    return guard
+      .canActivate(makeContext({}))
+      .then((ok) => assert.equal(ok, true));
   });
 });
