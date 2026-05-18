@@ -342,6 +342,216 @@ export const ApprovalDecisionResponse = z.object({
 });
 export type ApprovalDecisionResponse = z.infer<typeof ApprovalDecisionResponse>;
 
+export type PolicyTemplateKey =
+  | 'approval-before-external-email'
+  | 'approval-before-high-value-crm-write'
+  | 'deny-destructive-and-bulk';
+
+export interface PolicyTemplate {
+  key: PolicyTemplateKey;
+  label: string;
+  description: string;
+  rules: PolicyRule[];
+}
+
+export const POLICY_TEMPLATES: readonly PolicyTemplate[] = [
+  {
+    key: 'approval-before-external-email',
+    label: 'Require approval before external email',
+    description:
+      'Drafts execute freely. Sending real email pauses for human sign-off via Slack.',
+    rules: [
+      {
+        match: { tool: 'gmail.draft.create' },
+        effect: 'allow',
+        reason: 'drafts never leave the outbox without a human',
+      },
+      {
+        match: { tool: 'gmail.send' },
+        effect: 'require_approval',
+        approver_role: 'approver',
+        reason: 'outbound email needs human sign-off',
+        slack_channel: '#agent-approvals',
+      },
+      {
+        match: { tool: 'gmail.draft.send' },
+        effect: 'require_approval',
+        approver_role: 'approver',
+        reason: 'sending a saved draft still needs sign-off',
+        slack_channel: '#agent-approvals',
+      },
+    ],
+  },
+  {
+    key: 'approval-before-high-value-crm-write',
+    label: 'Require approval on CRM writes over $10,000',
+    description:
+      'Routine deal updates auto-execute. HubSpot and Salesforce writes with amount >= $10,000 pause for approval.',
+    rules: [
+      {
+        match: {
+          tool: 'hubspot.deals.update',
+          when: { 'properties.amount': { gte: 10000 } },
+        },
+        effect: 'require_approval',
+        approver_role: 'approver',
+        reason: 'high-value HubSpot deal change',
+        slack_channel: '#critical-approvals',
+      },
+      {
+        match: { tool: 'hubspot.deals.update' },
+        effect: 'allow',
+        reason: 'routine HubSpot deal update below high-value threshold',
+      },
+      {
+        match: {
+          tool: 'hubspot.deals.create',
+          when: { 'properties.amount': { gte: 10000 } },
+        },
+        effect: 'require_approval',
+        approver_role: 'approver',
+        reason: 'high-value HubSpot deal creation',
+        slack_channel: '#critical-approvals',
+      },
+      {
+        match: { tool: 'hubspot.deals.create' },
+        effect: 'allow',
+        reason: 'routine HubSpot deal creation below high-value threshold',
+      },
+      {
+        match: {
+          tool: 'hubspot.leads.create_deal',
+          when: { 'deal.amount': { gte: 10000 } },
+        },
+        effect: 'require_approval',
+        approver_role: 'approver',
+        reason: 'high-value lead-to-deal workflow',
+        slack_channel: '#critical-approvals',
+      },
+      {
+        match: { tool: 'hubspot.leads.create_deal' },
+        effect: 'allow',
+        reason: 'routine lead-to-deal workflow below high-value threshold',
+      },
+      {
+        match: {
+          tool: 'salesforce.opportunity.update',
+          when: { 'fields.Amount': { gte: 10000 } },
+        },
+        effect: 'require_approval',
+        approver_role: 'approver',
+        reason: 'high-value Salesforce opportunity change',
+        slack_channel: '#critical-approvals',
+      },
+      {
+        match: { tool: 'salesforce.opportunity.update' },
+        effect: 'allow',
+        reason: 'routine Salesforce opportunity update below high-value threshold',
+      },
+      {
+        match: {
+          tool: 'salesforce.opportunity.create',
+          when: { 'fields.Amount': { gte: 10000 } },
+        },
+        effect: 'require_approval',
+        approver_role: 'approver',
+        reason: 'high-value Salesforce opportunity creation',
+        slack_channel: '#critical-approvals',
+      },
+      {
+        match: { tool: 'salesforce.opportunity.create' },
+        effect: 'allow',
+        reason: 'routine Salesforce opportunity creation below high-value threshold',
+      },
+    ],
+  },
+  {
+    key: 'deny-destructive-and-bulk',
+    label: 'Deny delete, export, and bulk actions',
+    description:
+      'Hard stops for destructive or wide-blast-radius operations across every connector.',
+    rules: [
+      {
+        match: { tool: '*.delete' },
+        effect: 'deny',
+        reason: 'destructive deletes are blocked',
+      },
+      {
+        match: { tool: '*.export' },
+        effect: 'deny',
+        reason: 'bulk exports are blocked',
+      },
+      {
+        match: { tool: '*.bulk' },
+        effect: 'deny',
+        reason: 'bulk operations are blocked',
+      },
+      {
+        match: { tool: '*.bulk_*' },
+        effect: 'deny',
+        reason: 'bulk operations are blocked',
+      },
+    ],
+  },
+];
+
+export function policyTemplateRulesYaml(template: PolicyTemplate): string {
+  const lines: string[] = [`# ${template.label}`, `# ${template.description}`];
+  for (const rule of template.rules) {
+    lines.push('  - match:');
+    lines.push(`      tool: ${quoteYaml(rule.match.tool)}`);
+    if (rule.match.when) {
+      lines.push('      when:');
+      for (const [path, cond] of Object.entries(rule.match.when)) {
+        lines.push(`        ${path}: ${formatConditionYaml(cond)}`);
+      }
+    }
+    lines.push(`    effect: ${rule.effect}`);
+    if (rule.approver_role) {
+      lines.push(`    approver_role: ${rule.approver_role}`);
+    }
+    if (rule.reason) {
+      lines.push(`    reason: ${quoteYaml(rule.reason)}`);
+    }
+    if (rule.slack_channel) {
+      lines.push(`    slack_channel: ${quoteYaml(rule.slack_channel)}`);
+    }
+  }
+  return lines.join('\n') + '\n';
+}
+
+export function policyTemplateStandaloneYaml(template: PolicyTemplate): string {
+  return (
+    `version: 1\n` +
+    `default: deny\n` +
+    `rules:\n` +
+    policyTemplateRulesYaml(template)
+      .split('\n')
+      .filter((line) => !line.startsWith('#'))
+      .join('\n')
+  );
+}
+
+function formatConditionYaml(cond: Condition): string {
+  if (cond === null) return 'null';
+  if (typeof cond === 'string') return quoteYaml(cond);
+  if (typeof cond === 'number' || typeof cond === 'boolean') return String(cond);
+  const entries = Object.entries(cond as Record<string, unknown>);
+  const [op, value] = entries[0] ?? [];
+  if (!op) return '{}';
+  return `{ ${op}: ${formatConditionValue(value)} }`;
+}
+
+function formatConditionValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (typeof value === 'string') return quoteYaml(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => formatConditionValue(v)).join(', ')}]`;
+  }
+  return quoteYaml(String(value));
+}
+
 function allow(tool: string, reason: string): AgentPermissionRuleTemplate {
   return { tool, effect: 'allow', reason };
 }
