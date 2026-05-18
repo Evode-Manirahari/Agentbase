@@ -549,6 +549,13 @@ function formatConditionValue(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((v) => formatConditionValue(v)).join(', ')}]`;
   }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return '{}';
+    return `{ ${entries
+      .map(([key, nested]) => `${quoteYaml(key)}: ${formatConditionValue(nested)}`)
+      .join(', ')} }`;
+  }
   return quoteYaml(String(value));
 }
 
