@@ -14,13 +14,16 @@ import { ExpiryProcessor } from './expiry.processor.js';
 import { QueueController } from './queue.controller.js';
 import {
   AGENT_RUN_JOB,
+  EMAIL_REPLY_POLL_JOB,
   EXPIRY_JOB,
   QUEUE,
   QUEUE_NAME,
   REDIS_CONNECTION,
   type AgentRunJobData,
+  type EmailReplyPollJobData,
 } from './queue.tokens.js';
 import { AgentRunProcessor } from '../agent-runtime/agent-run.processor.js';
+import { EmailsService } from '../agent-runtime/emails.service.js';
 import { AuditModule } from '../audit/audit.module.js';
 import {
   WebhookService,
@@ -29,6 +32,7 @@ import {
 } from '../webhooks/webhook.service.js';
 
 const SWEEP_INTERVAL_MS = 60_000;
+const EMAIL_REPLY_POLL_INTERVAL_MS = 10 * 60 * 1000;
 
 @Global()
 @Module({
@@ -68,6 +72,7 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
     // Same pattern for agent runs — AgentRuntimeModule provides this in
     // production; absent in test contexts that don't import it.
     @Optional() private readonly agentRuns?: AgentRunProcessor,
+    @Optional() private readonly emails?: EmailsService,
   ) {}
 
   async onModuleInit() {
@@ -83,6 +88,24 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
       );
     } catch (err) {
       this.log.warn(`failed to register expiry scheduler: ${(err as Error).message}`);
+    }
+
+    if (this.emails) {
+      try {
+        await this.queue.upsertJobScheduler(
+          EMAIL_REPLY_POLL_JOB,
+          { every: EMAIL_REPLY_POLL_INTERVAL_MS },
+          {
+            name: EMAIL_REPLY_POLL_JOB,
+            data: {} as EmailReplyPollJobData,
+            opts: { attempts: 1, removeOnComplete: 50, removeOnFail: 50 },
+          },
+        );
+      } catch (err) {
+        this.log.warn(
+          `failed to register email reply scheduler: ${(err as Error).message}`,
+        );
+      }
     }
 
     this.worker = new Worker(
@@ -102,6 +125,14 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
             return { skipped: true, reason: 'agent runtime not wired' };
           }
           return this.agentRuns.process(job.data as AgentRunJobData);
+        }
+        if (job.name === EMAIL_REPLY_POLL_JOB) {
+          if (!this.emails) {
+            return { skipped: true, reason: 'emails service not wired' };
+          }
+          return this.emails.scanForReplies(
+            job.data as EmailReplyPollJobData,
+          );
         }
         return { skipped: true, reason: `unknown job ${job.name}` };
       },

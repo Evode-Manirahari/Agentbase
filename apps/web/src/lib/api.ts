@@ -425,6 +425,16 @@ export const api = {
       ),
     getBatch: (batchId: string) =>
       req<CampaignBatchDetail>(`/v1/campaigns/batches/${batchId}`),
+    checkRepliesForRun: (runId: string) =>
+      req<{ enqueued: true; run_id: string }>(
+        `/v1/campaigns/runs/${runId}/check-replies`,
+        { method: 'POST' },
+      ),
+    checkRepliesForBatch: (batchId: string) =>
+      req<{ enqueued: true; batch_id: string }>(
+        `/v1/campaigns/batches/${batchId}/check-replies`,
+        { method: 'POST' },
+      ),
   },
 };
 

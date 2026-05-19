@@ -11,6 +11,7 @@ import type {
 } from './llm-client.js';
 import { AI_SDR_OUTBOUND_JOB } from './jobs/ai-sdr-outbound.js';
 import { AI_CRM_HYGIENE_JOB } from './jobs/ai-crm-hygiene.js';
+import { AI_REPLY_HANDLER_JOB } from './jobs/ai-reply-handler.js';
 import type { ActionsService } from '../actions/actions.service.js';
 import type { ExecuteInput, ExecuteOutput } from '../actions/actions.service.js';
 
@@ -694,5 +695,78 @@ describe('AgentRuntimeService — AI CRM hygiene end-to-end loop', () => {
 
     const finalMsg = result.transcript.find((t) => t.type === 'agent_message');
     assert.ok(finalMsg);
+  });
+});
+
+describe('AI reply-handler job — config sanity', () => {
+  it('registers without conflict and declares the expected Dejavas tools', () => {
+    const r = new JobRegistry();
+    r.register(AI_REPLY_HANDLER_JOB);
+    assert.deepEqual(r.keys(), ['ai-reply-handler']);
+    const tools = AI_REPLY_HANDLER_JOB.tools.map((t) => t.dejavasTool).sort();
+    assert.deepEqual(tools, [
+      'gmail.messages.get',
+      'gmail.send',
+      'gmail.threads.get',
+    ]);
+  });
+
+  it('initial message includes the thread id and recipient context', () => {
+    const msg = AI_REPLY_HANDLER_JOB.buildInitialMessage({
+      thread_id: 'thr_abc123',
+      reply_message_id: 'msg_def456',
+      to_email: 'lead@acme.com',
+      subject: 'Re: AI SDR you can run in prod',
+      source_run_id: '11111111-1111-1111-1111-111111111111',
+    });
+    assert.ok(msg.includes('thr_abc123'));
+    assert.ok(msg.includes('msg_def456'));
+    assert.ok(msg.includes('lead@acme.com'));
+    assert.ok(msg.includes('Re: AI SDR'));
+    assert.ok(msg.includes('source_run_id'));
+  });
+
+  it('handles missing context fields gracefully', () => {
+    const msg = AI_REPLY_HANDLER_JOB.buildInitialMessage({});
+    assert.ok(msg.includes('(missing)'));
+  });
+
+  it('read_thread_metadata paramMapper wraps the thread id', () => {
+    const tool = AI_REPLY_HANDLER_JOB.tools.find(
+      (t) => t.name === 'read_thread_metadata',
+    );
+    assert.ok(tool?.paramMapper);
+    const mapped = tool!.paramMapper!({ thread_id: 'thr_abc' });
+    assert.deepEqual(mapped, { threadId: 'thr_abc', format: 'metadata' });
+  });
+
+  it('send_reply paramMapper passes threadId so Gmail keeps the thread together', () => {
+    const tool = AI_REPLY_HANDLER_JOB.tools.find(
+      (t) => t.name === 'send_reply',
+    );
+    assert.ok(tool?.paramMapper);
+    const mapped = tool!.paramMapper!({
+      to: 'lead@acme.com',
+      subject: 'Re: AI SDR',
+      body: 'Happy to chat',
+      thread_id: 'thr_abc',
+    });
+    assert.equal(mapped.to, 'lead@acme.com');
+    assert.equal(mapped.threadId, 'thr_abc');
+    assert.equal(mapped.body, 'Happy to chat');
+  });
+});
+
+describe('Bundle expansion sanity — runtime hosts all three jobs', () => {
+  it('JobRegistry holds SDR + hygiene + reply-handler side-by-side', () => {
+    const r = new JobRegistry();
+    r.register(AI_SDR_OUTBOUND_JOB);
+    r.register(AI_CRM_HYGIENE_JOB);
+    r.register(AI_REPLY_HANDLER_JOB);
+    assert.deepEqual(r.keys().sort(), [
+      'ai-crm-hygiene',
+      'ai-reply-handler',
+      'ai-sdr-outbound',
+    ]);
   });
 });
