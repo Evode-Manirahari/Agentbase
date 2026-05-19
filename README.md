@@ -1,6 +1,6 @@
 # Dejavas
 
-> Approval gate for AI agents before they write to Salesforce or HubSpot, or send customer-facing email.
+> An AI SDR you can run in production — because every risky action is approval-gated and audit-ready by default.
 
 [![CI](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml/badge.svg)](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml)
 
@@ -8,15 +8,36 @@
 
 ## What this is
 
-RevOps teams are buying AI SDRs, deal-update bots, sequence-enrollment agents, and CRM hygiene copilots. Security teams are blocking them. The pattern is consistent: nobody is comfortable giving a non-human identity unsupervised write access to Salesforce, HubSpot, or Gmail, so the agent gets stuck in draft-only mode and the pilot stalls.
+RevOps teams are buying AI SDRs and watching them stall. The pattern is consistent: the agent works in demos, but the moment it tries to write to Salesforce, update a HubSpot deal, or send a real email, security pulls the OAuth scopes and the pilot dies in draft-only mode.
 
-Dejavas puts an approval gate in front of every action the agent wants to take. Low-risk writes auto-execute. Risky writes — outbound email, high-value deal updates, sequence enrollments, anything destructive — pause for a human to approve or deny in Slack, then execute. Every state transition lands in an audit log that security can export.
+Dejavas ships the **agent and the safety rails together**:
 
-The narrow wedge isn't another control plane:
+- The agent is an AI SDR that enriches inbound leads (Apollo), upserts CRM contacts (HubSpot or Salesforce), drafts personalized outreach (Claude `claude-opus-4-7`), and sends — through the gate.
+- The gate is the approval workflow, policy templates, audit export, and Slack-driven human-in-the-loop that PR-1-through-3 of this repo wired. Every tool call the agent makes runs through the same `ActionsService.execute` path an external customer would — so the safety story is true at the code level, not marketing.
 
-> **Let an AI agent touch revenue systems without giving it unsupervised write access.**
+The pitch:
 
-We sell first to RevOps and Revenue Systems leaders unblocking AI pilots, with security and IT as the required sign-off.
+> **An AI SDR a RevOps team can run in production today, because security can read the policy YAML, audit the export, and approve every risky write in Slack before it touches a CRM record.**
+
+Buyer is RevOps / Revenue Systems leaders; security and IT are the required sign-off. Expansion jobs (AI CRM hygiene v1.1, AI deal-update agent v1.2) sit on the same runtime — adding a new "job" is data + prompts, not a new product.
+
+## How the demo works
+
+End-to-end in <2 minutes once the API is up:
+
+1. Open `http://localhost:3000/campaigns`.
+2. Pick the **AI SDR — outbound** job and an active agent identity.
+3. Paste a lead email + optional notes. Click **Run**.
+4. You're redirected to `/campaigns/[id]`, which polls live as Claude:
+   - calls `apollo.people.match` and `apollo.organizations.match` (auto-execute)
+   - calls `hubspot.contacts.upsert` (auto-execute)
+   - calls `gmail.draft.create` (auto-execute)
+   - calls `gmail.send` → **policy pauses the run** ([approval-before-external-email](#) template fires)
+5. A Slack approval card lands in `#agent-approvals` with the full email body, recipient, and policy reason.
+6. Approver clicks ✓. The action transitions to `executed`, the worker picks up the resume job, the loop continues, and the dashboard timeline updates to `completed` with a final summary from Claude.
+7. Every state transition is in the audit log; **Download CSV** on `/audit` hands security the evidence.
+
+The same loop runs on Salesforce + Gmail + Slack instead of HubSpot if that's the customer's stack — the SDR job uses Apollo + HubSpot today, but the runtime is connector-agnostic.
 
 ## Status
 
@@ -24,22 +45,29 @@ Early. The full demoable loop works end-to-end locally. Production auth now fail
 
 ## What works today
 
-The approval gate:
+The agent:
+
+- **Agent runtime** — generic loop on the API (`apps/api/src/agent-runtime/`) that takes a `Job` config (system prompt + tool list + initial-message builder) and a context, calls Claude via the Anthropic SDK with adaptive thinking and `xhigh` effort, dispatches every tool call through the existing approval gate, and returns a transcript. Pauses cleanly on `awaiting_approval`; resumes when the approval lands. Single tool per turn via `disable_parallel_tool_use` so pause state stays simple.
+- **AI SDR job (v1)** — the first job. Enrich the lead, upsert the CRM contact, draft a personalized email, send it. The send hits the `approval-before-external-email` template (auto-paused for human review). System prompt forces sequential tool calls and concise reasoning.
+- **Async runs + resume** — `agent_runs` table persists conversation state. `POST /v1/campaigns/runs` enqueues a BullMQ job, returns the run id immediately. `GET /v1/campaigns/runs/:id` is polled by the dashboard. When a Slack approval (or the expiry sweeper) transitions the action out of `awaiting_approval`, `ApprovalsService` notifies `AgentRunsService` and a resume job continues the loop with the resolved tool_result.
+- **Campaigns dashboard** — `/campaigns` form to paste a lead, redirect to `/campaigns/[id]` with live polling. Recent runs table on the index page. Transcript view tones agent_thinking / agent_message / tool_call / tool_result blocks by status (allow=green, require_approval=amber, deny/failed=rose).
+
+The safety rails:
 
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
-- **Slack approval cards** — interactive Approve / Deny buttons with the full action payload, signed webhook (HMAC + 5-min replay window), per-rule channel routing, dashboard posted-status metadata, two-way consistency (web decisions update the Slack card via `chat.update`)
+- **Slack approval cards** — interactive Approve / Deny buttons with the full action payload, signed webhook (HMAC + 5-min replay window), per-rule channel routing, two-way consistency (web decisions update the Slack card via `chat.update`)
 - **Policy templates** — three one-click templates that cover the most common pilot questions: require approval before external email, require approval on CRM writes over $10k, and deny delete/export/bulk actions. Sit above the YAML editor so the RevOps buyer never has to write Rego on call one.
 - **Audit log + export** — every state transition recorded with actor type/id, exportable as RFC 4180 CSV or JSON straight from the dashboard, so security teams can take evidence into SOC 2 reviews and questionnaires
 - **Production auth refusal** — `ClerkAuthGuard` and the Next middleware both throw at boot if `NODE_ENV=production` and Clerk env vars aren't set; explicit `DEJAVAS_ALLOW_UNAUTHENTICATED=1` is the only way to opt out
 
-Plumbing the gate runs on:
+The plumbing both sides share:
 
 - **Identity & API keys** — register agents, assign permission profiles, issue scoped `dvk_…` tokens (sha256-hashed at rest), and revoke agents idempotently
 - **Permission profiles** — Sales SDR, RevOps Admin, Support Agent, Read-only Analyst, and Custom — used to seed policy templates per agent role
 - **Policy DSL** — YAML + Zod, rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, agent id/name/profile matching, dotted-path conditions with `eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`; the templates compile to this, and security can read it
 - **GTM connectors** — Salesforce, HubSpot, Gmail, Outreach, and Apollo, all behind the same approval gate, with Zod-validated params and structured connector errors. Pilots ship on Salesforce + Gmail + Slack or HubSpot + Gmail + Slack; the rest are available if a customer asks.
 - **Org-scoped connector credentials** — HubSpot, Salesforce, Gmail, and Outreach OAuth install/reconnect plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, refresh access tokens before connector dispatch, show account/expiry metadata, can be tested from the dashboard, and can be disabled to block inherited env fallback
-- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents, Policies (templates + YAML editor), Approvals (web inbox alongside Slack), Actions, Connectors, Webhooks, Audit
+- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Campaigns, Agents, Policies (templates + YAML editor), Approvals (web inbox alongside Slack), Actions, Connectors, Webhooks, Audit
 - **CI + tests** — GitHub Actions gates lint, typecheck, production build, the API test suite, and Playwright dashboard E2E including connector credential/OAuth-state and permission-profile coverage
 
 ## Quick start
@@ -252,6 +280,12 @@ PORT=3002
 CONNECTOR_CREDENTIALS_KEY=hex:64656a617661732d6c6f63616c2d646f636b65722d6b65792d33326279746521
 API_PUBLIC_URL=http://localhost:3002
 DASHBOARD_URL=http://localhost:3000
+
+# Required for the AI SDR agent runtime. Without it, /v1/campaigns/runs
+# enqueues a run but the worker fails the run with a clear error. The
+# rest of the platform (policy editor, approvals, audit, connectors)
+# works without this key.
+ANTHROPIC_API_KEY=sk-ant-...
 
 # Optional — wires real Slack approval cards
 SLACK_BOT_TOKEN=xoxb-...
