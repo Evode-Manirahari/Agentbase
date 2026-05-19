@@ -14,7 +14,7 @@ typical inbound-lead flow:
 8. **Update a high-value deal** (`hubspot.deals.update` with `amount: 75000`) — requires approval
 
 Every step is mediated by Dejavas. The agent prints the policy decision + the
-connector outcome for each step so you can see exactly where the control plane
+connector outcome for each step so you can see exactly where the approval gate
 intervenes.
 
 ## Two modes

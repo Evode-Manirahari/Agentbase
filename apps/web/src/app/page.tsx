@@ -30,7 +30,7 @@ export default async function OverviewPage() {
   return (
     <div className="max-w-6xl">
       <H1>Overview</H1>
-      <Subtitle>Live state of the control plane.</Subtitle>
+      <Subtitle>Live state of the approval gate.</Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}
 

@@ -6,7 +6,8 @@ import { Shell } from '../components/nav';
 
 export const metadata: Metadata = {
   title: 'Dejavas',
-  description: 'Secure action layer for AI sales agents.',
+  description:
+    'Approval gate for AI agents writing to Salesforce, HubSpot, and Gmail.',
 };
 
 export const viewport: Viewport = {

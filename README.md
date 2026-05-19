@@ -1,6 +1,6 @@
 # Dejavas
 
-> Control plane for AI sales agents. Identity, permissions, approvals, routing, observability, and audit logs — across the GTM stack.
+> Approval gate for AI agents before they write to Salesforce or HubSpot, or send customer-facing email.
 
 [![CI](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml/badge.svg)](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml)
 
@@ -8,32 +8,39 @@
 
 ## What this is
 
-Sales teams are deploying AI agents into Salesforce, HubSpot, Gmail, Slack, and enrichment tools — and security teams are blocking them before they can touch revenue systems.
+RevOps teams are buying AI SDRs, deal-update bots, sequence-enrollment agents, and CRM hygiene copilots. Security teams are blocking them. The pattern is consistent: nobody is comfortable giving a non-human identity unsupervised write access to Salesforce, HubSpot, or Gmail, so the agent gets stuck in draft-only mode and the pilot stalls.
 
-Agents can research accounts, enrich leads, update CRM fields, draft emails, create tasks, and summarize deal activity. But they need scoped permissions, approval rules, revocation, and audit trails before enterprises will let them act.
+Dejavas puts an approval gate in front of every action the agent wants to take. Low-risk writes auto-execute. Risky writes — outbound email, high-value deal updates, sequence enrollments, anything destructive — pause for a human to approve or deny in Slack, then execute. Every state transition lands in an audit log that security can export.
 
-Dejavas is a cross-stack control plane that gives every agent an identity, governs what it can do, routes sensitive actions to humans for approval, and monitors everything across the sales stack. We sell first to RevOps teams deploying agents, with security and IT as the required sign-off.
+The narrow wedge isn't another control plane:
 
-Salesforce, HubSpot, and Outreach will govern agents inside their own products. Dejavas governs agents *across the full revenue workflow*.
+> **Let an AI agent touch revenue systems without giving it unsupervised write access.**
 
-In short: **Okta + Zapier + Datadog for AI sales agents.**
+We sell first to RevOps and Revenue Systems leaders unblocking AI pilots, with security and IT as the required sign-off.
 
 ## Status
 
-Early. The full demoable loop works end-to-end locally; nothing is hardened for production. No customers yet.
+Early. The full demoable loop works end-to-end locally. Production auth now fails closed unless Clerk is configured or an explicit unauthenticated escape hatch is set; broader production hardening is still incomplete. No customers yet.
 
 ## What works today
 
-- **Identity & API keys** — register agents, assign permission profiles, issue scoped `dvk_…` tokens (sha256-hashed at rest), and revoke agents idempotently
-- **Permission profiles** — Sales SDR, RevOps Admin, Support Agent, Read-only Analyst, and Custom templates generate profile-scoped policy YAML for GTM tools
-- **Policy DSL (YAML + Zod)** — rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, agent id/name/profile matching, dotted-path conditions, 9 operators (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`)
-- **Connector dispatch** — five connectors out of the box: HubSpot CRM v3 (connection test, contact search/upsert, contacts, deals, notes, tasks, and lead-to-deal workflow), Salesforce REST v60 (Account + Opportunity + Contact), Gmail v1 (send + draft + messages.get), Outreach v2 (prospects + sequence enrollment + tasks), and Apollo v1 (people.match + organizations.match + people.search), all with structured errors and Zod-validated params
-- **Org-scoped connector credentials** — HubSpot, Salesforce, Gmail, and Outreach OAuth install/reconnect plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, refresh access tokens before connector dispatch, show account/expiry metadata, can be tested from the dashboard, and can be disabled to block inherited env fallback
+The approval gate:
+
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
-- **Slack approval cards** — interactive buttons, signed webhook (HMAC + 5-min replay window), per-rule channel routing, dashboard posted-status metadata, two-way consistency (web decisions update the Slack card via `chat.update`)
-- **Audit log** — every state transition recorded with actor type/id
-- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents (register / permission profiles / type-to-confirm revoke / reveal-key-once banner), Policies (live YAML+Zod editor), Approvals (web inbox with approve/deny), Actions (including a HubSpot lead workflow runner), Connectors, Webhooks, Audit
-- **CI + tests** — GitHub Actions gates lint, typecheck, production build, 284 API tests across 55 suites, and Playwright dashboard E2E including connector credential/OAuth-state and permission-profile coverage
+- **Slack approval cards** — interactive Approve / Deny buttons with the full action payload, signed webhook (HMAC + 5-min replay window), per-rule channel routing, dashboard posted-status metadata, two-way consistency (web decisions update the Slack card via `chat.update`)
+- **Policy templates** — three one-click templates that cover the most common pilot questions: require approval before external email, require approval on CRM writes over $10k, and deny delete/export/bulk actions. Sit above the YAML editor so the RevOps buyer never has to write Rego on call one.
+- **Audit log + export** — every state transition recorded with actor type/id, exportable as RFC 4180 CSV or JSON straight from the dashboard, so security teams can take evidence into SOC 2 reviews and questionnaires
+- **Production auth refusal** — `ClerkAuthGuard` and the Next middleware both throw at boot if `NODE_ENV=production` and Clerk env vars aren't set; explicit `DEJAVAS_ALLOW_UNAUTHENTICATED=1` is the only way to opt out
+
+Plumbing the gate runs on:
+
+- **Identity & API keys** — register agents, assign permission profiles, issue scoped `dvk_…` tokens (sha256-hashed at rest), and revoke agents idempotently
+- **Permission profiles** — Sales SDR, RevOps Admin, Support Agent, Read-only Analyst, and Custom — used to seed policy templates per agent role
+- **Policy DSL** — YAML + Zod, rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, agent id/name/profile matching, dotted-path conditions with `eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`; the templates compile to this, and security can read it
+- **GTM connectors** — Salesforce, HubSpot, Gmail, Outreach, and Apollo, all behind the same approval gate, with Zod-validated params and structured connector errors. Pilots ship on Salesforce + Gmail + Slack or HubSpot + Gmail + Slack; the rest are available if a customer asks.
+- **Org-scoped connector credentials** — HubSpot, Salesforce, Gmail, and Outreach OAuth install/reconnect plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, refresh access tokens before connector dispatch, show account/expiry metadata, can be tested from the dashboard, and can be disabled to block inherited env fallback
+- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Agents, Policies (templates + YAML editor), Approvals (web inbox alongside Slack), Actions, Connectors, Webhooks, Audit
+- **CI + tests** — GitHub Actions gates lint, typecheck, production build, the API test suite, and Playwright dashboard E2E including connector credential/OAuth-state and permission-profile coverage
 
 ## Quick start
 
@@ -158,7 +165,7 @@ apps/
 │       ├── actions/     POST /v1/actions/execute (the SDK proxy)
 │       ├── approvals/   list / decide / Slack-card lifecycle
 │       ├── policy/      YAML/Zod engine + active-policy lifecycle + agent profile matching
-│       ├── connectors/  ConnectorRegistry (HubSpot wired)
+│       ├── connectors/  connector registry + provider dispatch
 │       ├── slack/       approval cards + interactive webhook
 │       ├── queue/       BullMQ expiry sweeper (every 60s)
 │       ├── audit/       immutable log
@@ -215,7 +222,7 @@ infra/
 pnpm lint                                     # ESLint for API + web
 pnpm typecheck                                # whole monorepo
 pnpm build                                    # production build
-pnpm --filter '@dejavas/api' test             # 284 tests, ~5s
+pnpm --filter '@dejavas/api' test             # API test suite
 pnpm --filter '@dejavas/web' test:e2e         # dashboard Playwright tests
 pnpm --filter '@dejavas/api' dev              # API on :3002 (watch + swc-register)
 pnpm --filter '@dejavas/web' dev              # web on :3000
@@ -307,6 +314,20 @@ In `NODE_ENV=production`, both the API and the dashboard **refuse to boot** if C
 - Dashboard needs `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` — the Next middleware throws on module load.
 
 If you really need an unauthenticated production deploy (demos behind a VPN, security-test fixtures, etc.), opt in explicitly with `DEJAVAS_ALLOW_UNAUTHENTICATED=1`. The boot warning makes the mode visible in logs.
+
+For Fly.io deployments:
+
+```bash
+# API app
+fly secrets set CLERK_SECRET_KEY=... --config infra/fly.api.toml
+
+# Web/dashboard app
+fly secrets set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=... --config infra/fly.web.toml
+
+# Optional escape hatch: explicitly unauthenticated production
+fly secrets set DEJAVAS_ALLOW_UNAUTHENTICATED=1 --config infra/fly.api.toml
+fly secrets set DEJAVAS_ALLOW_UNAUTHENTICATED=1 --config infra/fly.web.toml
+```
 
 For local dev (`NODE_ENV !== 'production'`), Clerk env vars are still optional and the dev-passthrough mode is the default — the dashboard, API, and SDK behave as today.
 
