@@ -7,6 +7,7 @@ import { AgentRunsService } from './agent-runs.service.js';
 import { AgentRuntimeService } from './agent-runtime.service.js';
 import { CampaignsController } from './campaigns.controller.js';
 import { JobRegistry } from './job.js';
+import { AI_CRM_HYGIENE_JOB } from './jobs/ai-crm-hygiene.js';
 import { AI_SDR_OUTBOUND_JOB } from './jobs/ai-sdr-outbound.js';
 import { AnthropicLlmClient, LLM_CLIENT, type LlmClient } from './llm-client.js';
 
@@ -35,6 +36,7 @@ class UnconfiguredLlmClient implements LlmClient {
       useFactory: () => {
         const registry = new JobRegistry();
         registry.register(AI_SDR_OUTBOUND_JOB);
+        registry.register(AI_CRM_HYGIENE_JOB);
         return registry;
       },
     },
