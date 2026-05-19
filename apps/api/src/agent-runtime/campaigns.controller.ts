@@ -13,7 +13,11 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import { ZodValidationPipe } from 'nestjs-zod';
-import { AgentRunsService, type RunRow } from './agent-runs.service.js';
+import {
+  AgentRunsService,
+  BATCH_MAX_LEADS,
+  type RunRow,
+} from './agent-runs.service.js';
 import { JobRegistry } from './job.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
@@ -24,6 +28,18 @@ const RunCampaignRequest = z.object({
   context: z.record(z.unknown()).default({}),
 });
 type RunCampaignRequestT = z.infer<typeof RunCampaignRequest>;
+
+const BatchLead = z.object({
+  email: z.string().email(),
+  notes: z.string().max(2000).optional(),
+});
+
+const CreateBatchRequest = z.object({
+  job_key: z.string().min(1),
+  agent_id: z.string().uuid(),
+  leads: z.array(BatchLead).min(1).max(BATCH_MAX_LEADS),
+});
+type CreateBatchRequestT = z.infer<typeof CreateBatchRequest>;
 
 @Controller('v1/campaigns')
 @UseGuards(ClerkAuthGuard)
@@ -97,6 +113,86 @@ export class CampaignsController {
     const row = await this.runs.get(orgId, runId);
     return toResponse(row);
   }
+
+  // Enqueues N runs (one per lead) all tagged with the same batchId.
+  // Each run executes independently — a pause on one doesn't block
+  // the others. The dashboard groups them under /campaigns/batch/:id.
+  @Post('batches')
+  async createBatch(
+    @Body(new ZodValidationPipe(CreateBatchRequest))
+    body: CreateBatchRequestT,
+  ): Promise<BatchResponse> {
+    if (!this.registry.keys().includes(body.job_key)) {
+      throw new BadRequestException(`Unknown job: ${body.job_key}`);
+    }
+    const orgId = await this.agents.ensureDefaultOrg();
+    const result = await this.runs.createBatch({
+      orgId,
+      agentId: body.agent_id,
+      jobKey: body.job_key,
+      leads: body.leads.map((l) => ({
+        email: l.email,
+        ...(l.notes ? { notes: l.notes } : {}),
+      })),
+    });
+    return {
+      batch_id: result.batch_id,
+      run_count: result.run_ids.length,
+      run_ids: result.run_ids,
+    };
+  }
+
+  @Get('batches/:id')
+  async getBatch(
+    @Param('id', new ParseUUIDPipe()) batchId: string,
+  ): Promise<BatchDetailResponse> {
+    const orgId = await this.agents.ensureDefaultOrg();
+    const runs = await this.runs.listByBatch(orgId, batchId);
+    if (runs.length === 0) {
+      // Empty result with a valid UUID could mean either "no such batch"
+      // or "batch belongs to another org" — both look the same to the
+      // caller, intentionally.
+      throw new BadRequestException(
+        `batch ${batchId} not found or has no runs`,
+      );
+    }
+    return {
+      batch_id: batchId,
+      run_count: runs.length,
+      runs: runs.map(toResponse),
+      status_summary: summarizeBatchStatus(runs),
+    };
+  }
+}
+
+export interface BatchResponse {
+  batch_id: string;
+  run_count: number;
+  run_ids: string[];
+}
+
+export interface BatchDetailResponse {
+  batch_id: string;
+  run_count: number;
+  runs: RunResponse[];
+  // Cheap status rollup the dashboard uses for the batch-level banner.
+  status_summary: {
+    pending: number;
+    running: number;
+    paused: number;
+    completed: number;
+    failed: number;
+  };
+}
+
+function summarizeBatchStatus(
+  runs: RunRow[],
+): BatchDetailResponse['status_summary'] {
+  const summary = { pending: 0, running: 0, paused: 0, completed: 0, failed: 0 };
+  for (const run of runs) {
+    summary[run.status] += 1;
+  }
+  return summary;
 }
 
 // HTTP-facing run shape — strips `messages` (internal LLM conversation state
@@ -117,6 +213,7 @@ export interface RunResponse {
   } | null;
   usage: RunRow['usage'];
   error: string | null;
+  batch_id: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -143,6 +240,7 @@ function toResponse(row: RunRow): RunResponse {
         : null,
     usage: row.usage,
     error: row.error,
+    batch_id: row.batch_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
     completed_at: row.completed_at,

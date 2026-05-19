@@ -291,6 +291,10 @@ export const agentRuns = pgTable(
     pausedOnDejavasTool: text('paused_on_dejavas_tool'),
     usage: jsonb('usage').$type<Record<string, number>>(),
     error: text('error'),
+    // When a single batch submission fans out into N runs (one per lead),
+    // every run in the batch shares this UUID so the dashboard can
+    // group them. Null for single-lead runs.
+    batchId: uuid('batch_id'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -305,6 +309,7 @@ export const agentRuns = pgTable(
       t.pausedOnActionId,
     ),
     statusIdx: index('agent_runs_status_idx').on(t.status),
+    batchIdx: index('agent_runs_batch_idx').on(t.orgId, t.batchId),
   }),
 );
 
