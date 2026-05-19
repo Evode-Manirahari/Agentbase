@@ -1,9 +1,10 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { and, eq, inArray, lt } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
 import { actions, approvals } from '@dejavas/db';
 import { AuditService } from '../audit/audit.service.js';
+import { AgentRunsService } from '../agent-runtime/agent-runs.service.js';
 
 @Injectable()
 export class ExpiryProcessor {
@@ -12,6 +13,9 @@ export class ExpiryProcessor {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly audit: AuditService,
+    // Optional so the queue can boot without the runtime in test
+    // contexts. In production AgentRuntimeModule supplies this.
+    @Optional() private readonly agentRuns?: AgentRunsService,
   ) {}
 
   async sweep(): Promise<{ expired: number }> {
@@ -77,6 +81,12 @@ export class ExpiryProcessor {
 
     if (expiredItems.length > 0) {
       this.log.log(`expired ${expiredItems.length} pending approval(s)`);
+    }
+    // Resume any agent runs paused on these now-denied actions.
+    if (this.agentRuns) {
+      for (const item of expiredItems) {
+        void this.agentRuns.notifyActionResolved(item.actionId);
+      }
     }
     return { expired: expiredItems.length };
   }

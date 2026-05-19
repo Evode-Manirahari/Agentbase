@@ -4,46 +4,8 @@ import { BadRequestException } from '@nestjs/common';
 import { CampaignsController } from './campaigns.controller.js';
 import { JobRegistry } from './job.js';
 import { AI_SDR_OUTBOUND_JOB } from './jobs/ai-sdr-outbound.js';
-import type { AgentRuntimeService } from './agent-runtime.service.js';
+import type { AgentRunsService, RunRow } from './agent-runs.service.js';
 import type { AgentsService } from '../agents/agents.service.js';
-import type { AgentRunResult } from './transcript.js';
-
-function makeController(opts: {
-  registry?: JobRegistry;
-  runtimeResult?: AgentRunResult;
-  orgId?: string;
-}): {
-  controller: CampaignsController;
-  runtimeCalls: Array<Parameters<AgentRuntimeService['runJob']>[0]>;
-} {
-  const registry = opts.registry ?? makeRegistry();
-  const runtimeCalls: Array<Parameters<AgentRuntimeService['runJob']>[0]> = [];
-  const runtime: Pick<AgentRuntimeService, 'runJob'> = {
-    async runJob(input) {
-      runtimeCalls.push(input);
-      return (
-        opts.runtimeResult ?? {
-          status: 'completed',
-          transcript: [],
-          usage: { input_tokens: 0, output_tokens: 0 },
-        }
-      );
-    },
-  };
-  const agents: Pick<AgentsService, 'ensureDefaultOrg'> = {
-    async ensureDefaultOrg() {
-      return opts.orgId ?? '00000000-0000-0000-0000-0000000000aa';
-    },
-  };
-  return {
-    controller: new CampaignsController(
-      runtime as AgentRuntimeService,
-      registry,
-      agents as AgentsService,
-    ),
-    runtimeCalls,
-  };
-}
 
 function makeRegistry(): JobRegistry {
   const r = new JobRegistry();
@@ -51,86 +13,138 @@ function makeRegistry(): JobRegistry {
   return r;
 }
 
-describe('CampaignsController.jobs', () => {
-  it('lists every registered job with label + description + tools', () => {
-    const { controller } = makeController({});
-    const out = controller.jobs();
-    assert.equal(out.items.length, 1);
-    const job = out.items[0]!;
-    assert.equal(job.key, 'ai-sdr-outbound');
-    assert.equal(job.model, 'claude-opus-4-7');
-    assert.ok(job.tools.some((t) => t.dejavas_tool === 'gmail.send'));
+interface CreateCall {
+  input: Parameters<AgentRunsService['create']>[0];
+}
+
+function makeController(opts: {
+  registry?: JobRegistry;
+  orgId?: string;
+  existingRow?: Partial<RunRow>;
+} = {}): {
+  controller: CampaignsController;
+  createCalls: CreateCall[];
+  getCalls: string[];
+} {
+  const registry = opts.registry ?? makeRegistry();
+  const createCalls: CreateCall[] = [];
+  const getCalls: string[] = [];
+
+  const stubRow = (id: string): RunRow => ({
+    id,
+    org_id: opts.orgId ?? '00000000-0000-0000-0000-0000000000aa',
+    agent_id: '11111111-1111-1111-1111-111111111111',
+    job_key: 'ai-sdr-outbound',
+    context: {},
+    status: 'pending',
+    transcript: [],
+    messages: [],
+    paused_on_action_id: null,
+    paused_on_tool_use_id: null,
+    paused_on_dejavas_tool: null,
+    usage: null,
+    error: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    completed_at: null,
+    ...opts.existingRow,
   });
 
-  it('reflects newly registered jobs without restart', () => {
-    const r = makeRegistry();
-    r.register({
-      key: 'crm-hygiene-stub',
-      label: 'Stub hygiene job',
-      description: 'placeholder',
-      model: 'claude-sonnet-4-6',
-      systemPrompt: 'stub',
-      buildInitialMessage: () => 'stub',
-      tools: [],
-    });
-    const { controller } = makeController({ registry: r });
-    assert.deepEqual(
-      controller.jobs().items.map((j) => j.key).sort(),
-      ['ai-sdr-outbound', 'crm-hygiene-stub'],
-    );
+  const runs: Pick<AgentRunsService, 'create' | 'get' | 'listForOrg'> = {
+    async create(input) {
+      createCalls.push({ input });
+      return stubRow('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    },
+    async get(_orgId, id) {
+      getCalls.push(id);
+      return stubRow(id);
+    },
+    async listForOrg() {
+      return [stubRow('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')];
+    },
+  };
+
+  const agents: Pick<AgentsService, 'ensureDefaultOrg'> = {
+    async ensureDefaultOrg() {
+      return opts.orgId ?? '00000000-0000-0000-0000-0000000000aa';
+    },
+  };
+
+  return {
+    controller: new CampaignsController(
+      runs as AgentRunsService,
+      registry,
+      agents as AgentsService,
+    ),
+    createCalls,
+    getCalls,
+  };
+}
+
+describe('CampaignsController.jobs', () => {
+  it('lists every registered job', () => {
+    const { controller } = makeController();
+    const out = controller.jobs();
+    assert.equal(out.items.length, 1);
+    assert.equal(out.items[0]?.key, 'ai-sdr-outbound');
+    assert.ok(out.items[0]?.tools.some((t) => t.dejavas_tool === 'gmail.send'));
   });
 });
 
-describe('CampaignsController.run', () => {
-  it('forwards the validated request to the runtime with the resolved orgId', async () => {
-    const { controller, runtimeCalls } = makeController({});
-    await controller.run({
+describe('CampaignsController.createRun', () => {
+  it('enqueues the run with resolved orgId and returns the pending row', async () => {
+    const { controller, createCalls } = makeController();
+    const out = await controller.createRun({
       job_key: 'ai-sdr-outbound',
-      agent_id: '11111111-1111-1111-1111-111111111111',
+      agent_id: '22222222-2222-2222-2222-222222222222',
       context: { email: 'lead@acme.com' },
     });
-    assert.equal(runtimeCalls.length, 1);
-    const call = runtimeCalls[0]!;
-    assert.equal(call.jobKey, 'ai-sdr-outbound');
-    assert.equal(call.agentId, '11111111-1111-1111-1111-111111111111');
-    assert.deepEqual(call.context, { email: 'lead@acme.com' });
-    // The orgId comes from agents.ensureDefaultOrg, not the request body —
-    // RevOps doesn't get to spoof another org via the runtime.
-    assert.equal(call.orgId, '00000000-0000-0000-0000-0000000000aa');
+    assert.equal(createCalls.length, 1);
+    assert.equal(createCalls[0]?.input.jobKey, 'ai-sdr-outbound');
+    assert.equal(
+      createCalls[0]?.input.agentId,
+      '22222222-2222-2222-2222-222222222222',
+    );
+    assert.deepEqual(createCalls[0]?.input.context, { email: 'lead@acme.com' });
+    assert.equal(
+      createCalls[0]?.input.orgId,
+      '00000000-0000-0000-0000-0000000000aa',
+    );
+    assert.equal(out.status, 'pending');
+    assert.equal(out.paused_on, null);
   });
 
-  it('rejects unknown job keys with BadRequest before touching the runtime', async () => {
-    const { controller, runtimeCalls } = makeController({});
+  it('rejects unknown job keys before enqueueing', async () => {
+    const { controller, createCalls } = makeController();
     await assert.rejects(
       () =>
-        controller.run({
+        controller.createRun({
           job_key: 'does-not-exist',
-          agent_id: '11111111-1111-1111-1111-111111111111',
+          agent_id: '22222222-2222-2222-2222-222222222222',
           context: {},
         }),
       BadRequestException,
     );
-    assert.equal(runtimeCalls.length, 0);
+    assert.equal(createCalls.length, 0);
   });
+});
 
-  it('passes the runtime result through unchanged', async () => {
-    const paused: AgentRunResult = {
-      status: 'paused',
-      transcript: [],
-      paused_on: {
-        action_id: 'act_1',
-        tool_use_id: 'tu_1',
-        dejavas_tool: 'gmail.send',
+describe('CampaignsController.getRun', () => {
+  it('hydrates paused_on metadata into a nested object', async () => {
+    const { controller } = makeController({
+      existingRow: {
+        status: 'paused',
+        paused_on_action_id: '33333333-3333-3333-3333-333333333333',
+        paused_on_tool_use_id: 'tu_xyz',
+        paused_on_dejavas_tool: 'gmail.send',
       },
-      usage: { input_tokens: 100, output_tokens: 40 },
-    };
-    const { controller } = makeController({ runtimeResult: paused });
-    const out = await controller.run({
-      job_key: 'ai-sdr-outbound',
-      agent_id: '22222222-2222-2222-2222-222222222222',
-      context: { email: 'a@b.com' },
     });
+    const out = await controller.getRun('44444444-4444-4444-4444-444444444444');
     assert.equal(out.status, 'paused');
-    assert.equal(out.paused_on?.dejavas_tool, 'gmail.send');
+    assert.deepEqual(out.paused_on, {
+      action_id: '33333333-3333-3333-3333-333333333333',
+      tool_use_id: 'tu_xyz',
+      dejavas_tool: 'gmail.send',
+    });
   });
 });

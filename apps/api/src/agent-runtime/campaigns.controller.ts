@@ -5,12 +5,15 @@ import {
   forwardRef,
   Get,
   Inject,
+  Param,
+  ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
 import { ZodValidationPipe } from 'nestjs-zod';
-import { AgentRuntimeService } from './agent-runtime.service.js';
+import { AgentRunsService, type RunRow } from './agent-runs.service.js';
 import { JobRegistry } from './job.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
@@ -26,7 +29,7 @@ type RunCampaignRequestT = z.infer<typeof RunCampaignRequest>;
 @UseGuards(ClerkAuthGuard)
 export class CampaignsController {
   constructor(
-    private readonly runtime: AgentRuntimeService,
+    private readonly runs: AgentRunsService,
     private readonly registry: JobRegistry,
     @Inject(forwardRef(() => AgentsService))
     private readonly agents: AgentsService,
@@ -56,24 +59,92 @@ export class CampaignsController {
     };
   }
 
-  // Synchronously runs one job. PR 2 keeps this in-request — the caller
-  // waits ~10–60s while Claude reasons + tools dispatch. PR 3 will move
-  // this behind a job queue with persistence and polling so long runs
-  // don't tie up the HTTP request.
+  // Enqueues a run. Returns immediately with the run row in `pending`
+  // status; the worker picks it up, drives the loop, and updates the
+  // row to running → (paused | completed | failed). The dashboard polls
+  // GET /runs/:id for live status.
   @Post('runs')
-  async run(
+  async createRun(
     @Body(new ZodValidationPipe(RunCampaignRequest))
     body: RunCampaignRequestT,
-  ) {
+  ): Promise<RunResponse> {
     if (!this.registry.keys().includes(body.job_key)) {
       throw new BadRequestException(`Unknown job: ${body.job_key}`);
     }
     const orgId = await this.agents.ensureDefaultOrg();
-    return this.runtime.runJob({
-      jobKey: body.job_key,
+    const row = await this.runs.create({
       orgId,
       agentId: body.agent_id,
+      jobKey: body.job_key,
       context: body.context,
     });
+    return toResponse(row);
   }
+
+  @Get('runs')
+  async listRuns(@Query('limit') limit?: string): Promise<{ items: RunResponse[] }> {
+    const orgId = await this.agents.ensureDefaultOrg();
+    const n = Math.min(Math.max(Number(limit ?? 50), 1), 200);
+    const rows = await this.runs.listForOrg(orgId, n);
+    return { items: rows.map(toResponse) };
+  }
+
+  @Get('runs/:id')
+  async getRun(
+    @Param('id', new ParseUUIDPipe()) runId: string,
+  ): Promise<RunResponse> {
+    const orgId = await this.agents.ensureDefaultOrg();
+    const row = await this.runs.get(orgId, runId);
+    return toResponse(row);
+  }
+}
+
+// HTTP-facing run shape — strips `messages` (internal LLM conversation state
+// used only for resume) and keeps the transcript + status + paused-on
+// metadata that the dashboard renders.
+export interface RunResponse {
+  id: string;
+  org_id: string;
+  agent_id: string;
+  job_key: string;
+  context: Record<string, unknown>;
+  status: RunRow['status'];
+  transcript: RunRow['transcript'];
+  paused_on: {
+    action_id: string;
+    tool_use_id: string;
+    dejavas_tool: string;
+  } | null;
+  usage: RunRow['usage'];
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+function toResponse(row: RunRow): RunResponse {
+  return {
+    id: row.id,
+    org_id: row.org_id,
+    agent_id: row.agent_id,
+    job_key: row.job_key,
+    context: row.context,
+    status: row.status,
+    transcript: row.transcript,
+    paused_on:
+      row.paused_on_action_id &&
+      row.paused_on_tool_use_id &&
+      row.paused_on_dejavas_tool
+        ? {
+            action_id: row.paused_on_action_id,
+            tool_use_id: row.paused_on_tool_use_id,
+            dejavas_tool: row.paused_on_dejavas_tool,
+          }
+        : null,
+    usage: row.usage,
+    error: row.error,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    completed_at: row.completed_at,
+  };
 }

@@ -257,6 +257,57 @@ export const oauthStates = pgTable(
   }),
 );
 
+export const agentRunStatus = pgEnum('agent_run_status', [
+  'pending',
+  'running',
+  'paused',
+  'completed',
+  'failed',
+]);
+
+// One agent loop, persisted. The runtime enqueues a worker job for each
+// row; the worker drives the LLM + tool loop and updates the row in place
+// (status, transcript, conversation messages so resume can pick up where
+// the loop left off when a paused tool's approval lands).
+export const agentRuns = pgTable(
+  'agent_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    jobKey: text('job_key').notNull(),
+    context: jsonb('context').$type<Record<string, unknown>>().notNull(),
+    status: agentRunStatus('status').notNull().default('pending'),
+    transcript: jsonb('transcript').$type<unknown[]>().notNull().default([]),
+    // LlmMessage[] — the conversation so far. Persisted so a paused run
+    // can be resumed without replaying the whole loop.
+    messages: jsonb('messages').$type<unknown[]>().notNull().default([]),
+    pausedOnActionId: uuid('paused_on_action_id'),
+    pausedOnToolUseId: text('paused_on_tool_use_id'),
+    pausedOnDejavasTool: text('paused_on_dejavas_tool'),
+    usage: jsonb('usage').$type<Record<string, number>>(),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (t) => ({
+    orgCreatedIdx: index('agent_runs_org_created_idx').on(t.orgId, t.createdAt),
+    pausedOnActionIdx: index('agent_runs_paused_on_action_idx').on(
+      t.pausedOnActionId,
+    ),
+    statusIdx: index('agent_runs_status_idx').on(t.status),
+  }),
+);
+
 export type Org = typeof orgs.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Agent = typeof agents.$inferSelect;
@@ -268,3 +319,4 @@ export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type WebhookSubscription = typeof webhookSubscriptions.$inferSelect;
 export type ConnectorCredential = typeof connectorCredentials.$inferSelect;
 export type OAuthState = typeof oauthStates.$inferSelect;
+export type AgentRun = typeof agentRuns.$inferSelect;

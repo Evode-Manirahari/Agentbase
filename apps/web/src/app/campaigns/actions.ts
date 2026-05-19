@@ -1,14 +1,16 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { api, type AgentRunResult } from '../../lib/api';
+import { redirect } from 'next/navigation';
+import { api } from '../../lib/api';
 
 export interface RunCampaignState {
-  result: AgentRunResult | null;
   error: string | null;
 }
 
-export async function runCampaignAction(
+// Enqueues a run and redirects to its detail page. The run executes in
+// the worker; the detail page polls /v1/campaigns/runs/:id for status.
+export async function startCampaignAction(
   _prev: RunCampaignState,
   formData: FormData,
 ): Promise<RunCampaignState> {
@@ -18,14 +20,12 @@ export async function runCampaignAction(
   const notes = field(formData, 'notes');
 
   if (!jobKey || !agentId || !email) {
-    return {
-      result: null,
-      error: 'job, agent, and lead email are required',
-    };
+    return { error: 'job, agent, and lead email are required' };
   }
 
+  let runId: string;
   try {
-    const result = await api.campaigns.run({
+    const created = await api.campaigns.createRun({
       job_key: jobKey,
       agent_id: agentId,
       context: {
@@ -33,17 +33,13 @@ export async function runCampaignAction(
         ...(notes ? { notes } : {}),
       },
     });
-    revalidatePath('/');
-    revalidatePath('/approvals');
-    revalidatePath('/actions');
-    revalidatePath('/audit');
-    return { result, error: null };
+    runId = created.id;
   } catch (e) {
-    return {
-      result: null,
-      error: (e as Error).message ?? 'campaign run failed',
-    };
+    return { error: (e as Error).message ?? 'campaign create failed' };
   }
+
+  revalidatePath('/campaigns');
+  redirect(`/campaigns/${runId}` as never);
 }
 
 function field(formData: FormData, key: string): string | null {
