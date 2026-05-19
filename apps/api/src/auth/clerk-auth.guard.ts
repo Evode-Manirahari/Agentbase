@@ -62,6 +62,9 @@ export class ClerkAuthGuard implements CanActivate {
     }
   }
 
+  /**
+   * Allows dev passthrough requests, otherwise verifies a Clerk bearer token.
+   */
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     if (this.mode === 'dev_passthrough') return true;
     if (!this.secretKey) {
