@@ -1,7 +1,9 @@
-import { Module, Logger } from '@nestjs/common';
+import { Module, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ActionsModule } from '../actions/actions.module.js';
+import { AgentsModule } from '../agents/agents.module.js';
 import { AgentRuntimeService } from './agent-runtime.service.js';
+import { CampaignsController } from './campaigns.controller.js';
 import { JobRegistry } from './job.js';
 import { AI_SDR_OUTBOUND_JOB } from './jobs/ai-sdr-outbound.js';
 import { AnthropicLlmClient, LLM_CLIENT, type LlmClient } from './llm-client.js';
@@ -20,7 +22,8 @@ class UnconfiguredLlmClient implements LlmClient {
 }
 
 @Module({
-  imports: [ActionsModule],
+  imports: [ActionsModule, forwardRef(() => AgentsModule)],
+  controllers: [CampaignsController],
   providers: [
     AgentRuntimeService,
     {

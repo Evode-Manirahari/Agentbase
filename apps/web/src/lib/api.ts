@@ -163,6 +163,51 @@ export interface ConnectorStatus {
   } | null;
 }
 
+export type AgentRunStatus = 'completed' | 'paused' | 'failed';
+
+export type TranscriptEntry =
+  | { type: 'agent_thinking'; text: string }
+  | { type: 'agent_message'; text: string }
+  | {
+      type: 'tool_call';
+      tool_use_id: string;
+      job_tool_name: string;
+      dejavas_tool: string;
+      params: Record<string, unknown>;
+    }
+  | {
+      type: 'tool_result';
+      tool_use_id: string;
+      action_id: string;
+      status: ActionRow['status'];
+      policy_decision: {
+        effect: 'allow' | 'require_approval' | 'deny';
+        reason: string | null;
+      };
+      result?: Record<string, unknown> | null;
+    };
+
+export interface AgentRunResult {
+  status: AgentRunStatus;
+  transcript: TranscriptEntry[];
+  paused_on?: { action_id: string; tool_use_id: string; dejavas_tool: string };
+  error?: string | null;
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number | null;
+    cache_read_input_tokens?: number | null;
+  };
+}
+
+export interface CampaignJobSummary {
+  key: string;
+  label: string;
+  description: string;
+  model: string;
+  tools: { name: string; description: string; dejavas_tool: string }[];
+}
+
 export const api = {
   agents: {
     list: () => req<{ items: AgentRow[] }>(`/v1/agents`),
@@ -333,6 +378,18 @@ export const api = {
     disable: (provider: ConnectorStatus['provider']) =>
       req<ConnectorStatus>(`/v1/connectors/${provider}/disable`, {
         method: 'POST',
+      }),
+  },
+  campaigns: {
+    jobs: () => req<{ items: CampaignJobSummary[] }>(`/v1/campaigns/jobs`),
+    run: (body: {
+      job_key: string;
+      agent_id: string;
+      context: Record<string, unknown>;
+    }) =>
+      req<AgentRunResult>(`/v1/campaigns/runs`, {
+        method: 'POST',
+        body: JSON.stringify(body),
       }),
   },
 };
