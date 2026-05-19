@@ -63,17 +63,18 @@ export function CampaignForm({
           </Field>
         </div>
 
-        <Field label="Lead email">
-          <input
-            name="email"
-            type="email"
+        <Field label="Lead emails (one per line, comma- or semicolon-separated, max 50)">
+          <textarea
+            name="emails"
             required
-            placeholder="cto@globex.com"
-            className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
+            rows={5}
+            spellCheck={false}
+            placeholder={'cto@globex.com\nvp-eng@acme.io\nrevops@initech.com'}
+            className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm mono"
           />
         </Field>
 
-        <Field label="Notes (optional — feed the agent context)">
+        <Field label="Notes (applied to every lead in the batch)">
           <textarea
             name="notes"
             rows={3}
@@ -93,8 +94,9 @@ export function CampaignForm({
             {pending ? 'Starting…' : 'Run campaign'}
           </button>
           <span className="text-xs text-[var(--color-muted)]">
-            Enqueues the run and redirects to its live transcript. The agent calls
-            Apollo + HubSpot + Gmail through Dejavas; <span className="mono">gmail.send</span> pauses for human approval in Slack.
+            Enqueues one agent run per lead and redirects to the batch view.
+            Each run dispatches Apollo + HubSpot + Gmail through Dejavas;
+            <span className="mono"> gmail.send</span> pauses for human approval in Slack.
           </span>
         </div>
       </form>
