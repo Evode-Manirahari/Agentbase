@@ -17,20 +17,27 @@ interface CreateCall {
   input: Parameters<AgentRunsService['create']>[0];
 }
 
+interface CreateBatchCall {
+  input: Parameters<AgentRunsService['createBatch']>[0];
+}
+
 function makeController(opts: {
   registry?: JobRegistry;
   orgId?: string;
   existingRow?: Partial<RunRow>;
+  batchRuns?: RunRow[];
 } = {}): {
   controller: CampaignsController;
   createCalls: CreateCall[];
+  createBatchCalls: CreateBatchCall[];
   getCalls: string[];
 } {
   const registry = opts.registry ?? makeRegistry();
   const createCalls: CreateCall[] = [];
+  const createBatchCalls: CreateBatchCall[] = [];
   const getCalls: string[] = [];
 
-  const stubRow = (id: string): RunRow => ({
+  const stubRow = (id: string, overrides: Partial<RunRow> = {}): RunRow => ({
     id,
     org_id: opts.orgId ?? '00000000-0000-0000-0000-0000000000aa',
     agent_id: '11111111-1111-1111-1111-111111111111',
@@ -44,13 +51,18 @@ function makeController(opts: {
     paused_on_dejavas_tool: null,
     usage: null,
     error: null,
+    batch_id: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     completed_at: null,
     ...opts.existingRow,
+    ...overrides,
   });
 
-  const runs: Pick<AgentRunsService, 'create' | 'get' | 'listForOrg'> = {
+  const runs: Pick<
+    AgentRunsService,
+    'create' | 'get' | 'listForOrg' | 'createBatch' | 'listByBatch'
+  > = {
     async create(input) {
       createCalls.push({ input });
       return stubRow('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
@@ -61,6 +73,14 @@ function makeController(opts: {
     },
     async listForOrg() {
       return [stubRow('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')];
+    },
+    async createBatch(input) {
+      createBatchCalls.push({ input });
+      const ids = input.leads.map((_, i) => `cccccccc-cccc-cccc-cccc-cccccccccc0${i}`);
+      return { batch_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', run_ids: ids };
+    },
+    async listByBatch() {
+      return opts.batchRuns ?? [];
     },
   };
 
@@ -77,6 +97,7 @@ function makeController(opts: {
       agents as AgentsService,
     ),
     createCalls,
+    createBatchCalls,
     getCalls,
   };
 }
@@ -146,5 +167,94 @@ describe('CampaignsController.getRun', () => {
       tool_use_id: 'tu_xyz',
       dejavas_tool: 'gmail.send',
     });
+  });
+});
+
+describe('CampaignsController.createBatch', () => {
+  it('fans the batch out to the runs service with the resolved orgId', async () => {
+    const { controller, createBatchCalls } = makeController();
+    const out = await controller.createBatch({
+      job_key: 'ai-sdr-outbound',
+      agent_id: '22222222-2222-2222-2222-222222222222',
+      leads: [
+        { email: 'a@b.com' },
+        { email: 'c@d.com', notes: 'inbound from website' },
+      ],
+    });
+    assert.equal(createBatchCalls.length, 1);
+    const call = createBatchCalls[0]!.input;
+    assert.equal(call.orgId, '00000000-0000-0000-0000-0000000000aa');
+    assert.equal(call.jobKey, 'ai-sdr-outbound');
+    assert.equal(call.leads.length, 2);
+    assert.equal(call.leads[0]?.email, 'a@b.com');
+    assert.equal(call.leads[1]?.notes, 'inbound from website');
+    assert.equal(out.run_count, 2);
+    assert.equal(out.run_ids.length, 2);
+  });
+
+  it('rejects unknown job keys before enqueueing the batch', async () => {
+    const { controller, createBatchCalls } = makeController();
+    await assert.rejects(
+      () =>
+        controller.createBatch({
+          job_key: 'does-not-exist',
+          agent_id: '22222222-2222-2222-2222-222222222222',
+          leads: [{ email: 'a@b.com' }],
+        }),
+      BadRequestException,
+    );
+    assert.equal(createBatchCalls.length, 0);
+  });
+});
+
+describe('CampaignsController.getBatch', () => {
+  it('rolls up per-status counts and returns the runs in order', async () => {
+    const stub = (id: string, status: RunRow['status']): RunRow => ({
+      id,
+      org_id: '00000000-0000-0000-0000-0000000000aa',
+      agent_id: '11111111-1111-1111-1111-111111111111',
+      job_key: 'ai-sdr-outbound',
+      context: { email: `${id}@x.com` },
+      status,
+      transcript: [],
+      messages: [],
+      paused_on_action_id: null,
+      paused_on_tool_use_id: null,
+      paused_on_dejavas_tool: null,
+      usage: null,
+      error: null,
+      batch_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      completed_at: null,
+    });
+    const { controller } = makeController({
+      batchRuns: [
+        stub('a', 'completed'),
+        stub('b', 'paused'),
+        stub('c', 'running'),
+        stub('d', 'completed'),
+        stub('e', 'failed'),
+      ],
+    });
+    const out = await controller.getBatch(
+      'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    );
+    assert.equal(out.run_count, 5);
+    assert.deepEqual(out.status_summary, {
+      pending: 0,
+      running: 1,
+      paused: 1,
+      completed: 2,
+      failed: 1,
+    });
+  });
+
+  it('throws BadRequest when the batch has no runs (unknown id or wrong org)', async () => {
+    const { controller } = makeController({ batchRuns: [] });
+    await assert.rejects(
+      () => controller.getBatch('00000000-0000-0000-0000-000000000999'),
+      BadRequestException,
+    );
   });
 });

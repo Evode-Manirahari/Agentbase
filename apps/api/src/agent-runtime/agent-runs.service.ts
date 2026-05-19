@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import type { ActionStatus, PolicyDecision } from '@dejavas/shared';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
@@ -23,6 +24,29 @@ export interface CreateRunInput {
   context: Record<string, unknown>;
 }
 
+export interface BatchLead {
+  email: string;
+  notes?: string | undefined;
+}
+
+export interface CreateBatchInput {
+  orgId: string;
+  agentId: string;
+  jobKey: string;
+  leads: BatchLead[];
+}
+
+export interface CreateBatchResult {
+  batch_id: string;
+  run_ids: string[];
+}
+
+// Hard cap on a single batch submission. Lets the demo show "feed 50
+// leads in" without enabling batch-spam against the connector layer.
+// Larger lists should land via a different ingestion path (CSV import,
+// CRM segment trigger) which can rate-limit + paginate.
+export const BATCH_MAX_LEADS = 50;
+
 export interface RunRow {
   id: string;
   org_id: string;
@@ -37,6 +61,7 @@ export interface RunRow {
   paused_on_dejavas_tool: string | null;
   usage: AgentRunUsage | null;
   error: string | null;
+  batch_id: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -76,6 +101,56 @@ export class AgentRunsService {
     // an operator can retry from the dashboard.
     await this.enqueue({ run_id: row.id, mode: 'start' });
     return toRunRow(row);
+  }
+
+  // Fans one batch submission out into N agent runs, all tagged with
+  // the same batchId so the dashboard can show per-lead progress
+  // grouped under one "campaign batch." Each run executes independently
+  // through the worker; a pause on one doesn't block the others.
+  async createBatch(input: CreateBatchInput): Promise<CreateBatchResult> {
+    if (input.leads.length === 0) {
+      throw new Error('createBatch requires at least one lead');
+    }
+    if (input.leads.length > BATCH_MAX_LEADS) {
+      throw new Error(
+        `batch size ${input.leads.length} exceeds limit ${BATCH_MAX_LEADS}`,
+      );
+    }
+    const batchId = randomUUID();
+    const rows = await this.db.transaction(async (tx) => {
+      const inserted: { id: string }[] = [];
+      for (const lead of input.leads) {
+        const [row] = await tx
+          .insert(agentRuns)
+          .values({
+            orgId: input.orgId,
+            agentId: input.agentId,
+            jobKey: input.jobKey,
+            context: {
+              email: lead.email,
+              ...(lead.notes ? { notes: lead.notes } : {}),
+            },
+            status: 'pending',
+            batchId,
+          })
+          .returning({ id: agentRuns.id });
+        if (row) inserted.push(row);
+      }
+      return inserted;
+    });
+    for (const row of rows) {
+      await this.enqueue({ run_id: row.id, mode: 'start' });
+    }
+    return { batch_id: batchId, run_ids: rows.map((r) => r.id) };
+  }
+
+  async listByBatch(orgId: string, batchId: string): Promise<RunRow[]> {
+    const rows = await this.db
+      .select()
+      .from(agentRuns)
+      .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.batchId, batchId)))
+      .orderBy(asc(agentRuns.createdAt));
+    return rows.map(toRunRow);
   }
 
   async get(orgId: string, runId: string): Promise<RunRow> {
@@ -224,6 +299,7 @@ function toRunRow(row: typeof agentRuns.$inferSelect): RunRow {
     paused_on_dejavas_tool: row.pausedOnDejavasTool,
     usage: (row.usage as AgentRunUsage | null) ?? null,
     error: row.error,
+    batch_id: row.batchId,
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
     completed_at: row.completedAt ? row.completedAt.toISOString() : null,

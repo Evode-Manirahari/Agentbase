@@ -213,6 +213,7 @@ export interface AgentRunResult {
     cache_read_input_tokens?: number | null;
   } | null;
   error: string | null;
+  batch_id: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -413,5 +414,29 @@ export const api = {
       req<AgentRunResult>(`/v1/campaigns/runs/${runId}`),
     listRuns: (limit = 50) =>
       req<{ items: AgentRunResult[] }>(`/v1/campaigns/runs?limit=${limit}`),
+    createBatch: (body: {
+      job_key: string;
+      agent_id: string;
+      leads: { email: string; notes?: string }[];
+    }) =>
+      req<{ batch_id: string; run_count: number; run_ids: string[] }>(
+        `/v1/campaigns/batches`,
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
+    getBatch: (batchId: string) =>
+      req<CampaignBatchDetail>(`/v1/campaigns/batches/${batchId}`),
   },
 };
+
+export interface CampaignBatchDetail {
+  batch_id: string;
+  run_count: number;
+  runs: AgentRunResult[];
+  status_summary: {
+    pending: number;
+    running: number;
+    paused: number;
+    completed: number;
+    failed: number;
+  };
+}
