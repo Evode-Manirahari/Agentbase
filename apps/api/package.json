@@ -12,6 +12,7 @@
     "lint": "eslint src --max-warnings=0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
     "@dejavas/connector-apollo": "workspace:*",
     "@dejavas/connector-gmail": "workspace:*",
     "@dejavas/connector-hubspot": "workspace:*",
