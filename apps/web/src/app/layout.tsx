@@ -7,7 +7,7 @@ import { Shell } from '../components/nav';
 export const metadata: Metadata = {
   title: 'Dejavas',
   description:
-    'Approval gate for AI agents writing to Salesforce, HubSpot, and Gmail.',
+    'An AI SDR you can run in production — every risky action is approval-gated and audit-ready by default.',
 };
 
 export const viewport: Viewport = {

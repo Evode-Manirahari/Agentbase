@@ -30,7 +30,12 @@ export default async function OverviewPage() {
   return (
     <div className="max-w-6xl">
       <H1>Overview</H1>
-      <Subtitle>Live state of the approval gate.</Subtitle>
+      <Subtitle>
+        Live state of the AI SDR and its approval gate.{' '}
+        <a href="/campaigns" className="underline hover:text-[var(--color-accent)]">
+          Run a campaign →
+        </a>
+      </Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}
 

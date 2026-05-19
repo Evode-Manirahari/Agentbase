@@ -68,16 +68,18 @@ export function CampaignForm({
             name="email"
             type="email"
             required
-            placeholder="lead@example.com"
+            placeholder="cto@globex.com"
             className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
           />
         </Field>
 
-        <Field label="Notes (optional context for the agent)">
+        <Field label="Notes (optional — feed the agent context)">
           <textarea
             name="notes"
             rows={3}
-            placeholder="Where the lead came from, what they asked for, any history."
+            placeholder={
+              'e.g. "Downloaded our pricing PDF this morning. Hit our docs from a Google search for `Salesforce AI agent governance`. Series B fintech."'
+            }
             className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
           />
         </Field>
@@ -91,8 +93,8 @@ export function CampaignForm({
             {pending ? 'Starting…' : 'Run campaign'}
           </button>
           <span className="text-xs text-[var(--color-muted)]">
-            The agent calls Apollo + HubSpot + Gmail through Dejavas. Risky writes
-            (gmail.send) will pause for human approval in Slack.
+            Enqueues the run and redirects to its live transcript. The agent calls
+            Apollo + HubSpot + Gmail through Dejavas; <span className="mono">gmail.send</span> pauses for human approval in Slack.
           </span>
         </div>
       </form>
