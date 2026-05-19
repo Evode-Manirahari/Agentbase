@@ -43,8 +43,8 @@ export class ClerkAuthGuard implements CanActivate {
   private readonly secretKey: string | null;
 
   constructor(config: ConfigService) {
-    const sk = config.get<string>('CLERK_SECRET_KEY');
-    this.secretKey = sk && sk.length > 0 ? sk : null;
+    const sk = (config.get<string>('CLERK_SECRET_KEY') ?? '').trim();
+    this.secretKey = sk.length > 0 ? sk : null;
     // resolveAuthMode throws when NODE_ENV=production and there is no secret
     // and no explicit unauthenticated opt-in — boot fails fast instead of
     // silently exposing every /v1 endpoint.
@@ -64,7 +64,9 @@ export class ClerkAuthGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     if (this.mode === 'dev_passthrough') return true;
-    if (!this.secretKey) return true; // unreachable, kept for type narrowing
+    if (!this.secretKey) {
+      throw new UnauthorizedException('missing Clerk secret key');
+    }
 
     const req = ctx.switchToHttp().getRequest();
     const header = (req.headers['authorization'] ?? '') as string;

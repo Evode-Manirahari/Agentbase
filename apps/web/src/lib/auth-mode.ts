@@ -20,7 +20,7 @@ export function resolveAuthMode(): AuthMode {
   const publishable = (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '').trim();
   if (publishable.length > 0) return 'enforced';
 
-  const isProd = (process.env.NODE_ENV ?? '').toLowerCase() === 'production';
+  const isProd = (process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
   const allowUnauth = (process.env.DEJAVAS_ALLOW_UNAUTHENTICATED ?? '').trim() === '1';
   if (isProd && !allowUnauth) {
     throw new UnauthenticatedProductionError();
