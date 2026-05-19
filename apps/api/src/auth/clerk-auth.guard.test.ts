@@ -51,6 +51,13 @@ describe('ClerkAuthGuard — dev mode bypass', () => {
     );
     assert.equal(await guard.canActivate(makeContext({})), true);
   });
+
+  it('treats a whitespace-only CLERK_SECRET_KEY as unset', async () => {
+    const guard = new ClerkAuthGuard(
+      new FakeConfig({ CLERK_SECRET_KEY: '   ' }) as unknown as ConfigService,
+    );
+    assert.equal(await guard.canActivate(makeContext({})), true);
+  });
 });
 
 describe('ClerkAuthGuard — enforced mode (CLERK_SECRET_KEY set)', () => {
@@ -69,6 +76,27 @@ describe('ClerkAuthGuard — enforced mode (CLERK_SECRET_KEY set)', () => {
     const guard = enforcedGuard();
     await assert.rejects(
       () => guard.canActivate(makeContext({})),
+      UnauthorizedException,
+    );
+  });
+
+  it('trims CLERK_SECRET_KEY before storing it', () => {
+    const guard = new ClerkAuthGuard(
+      new FakeConfig({
+        CLERK_SECRET_KEY: '  sk_test_fake_for_unit_tests_only  ',
+      }) as unknown as ConfigService,
+    ) as unknown as { secretKey: string | null };
+    assert.equal(guard.secretKey, 'sk_test_fake_for_unit_tests_only');
+  });
+
+  it('fails closed if enforced mode has no secret key', async () => {
+    const guard = enforcedGuard() as unknown as {
+      secretKey: string | null;
+      canActivate(ctx: ExecutionContext): Promise<boolean>;
+    };
+    guard.secretKey = null;
+    await assert.rejects(
+      () => guard.canActivate(makeContext({ authorization: 'Bearer token' })),
       UnauthorizedException,
     );
   });
@@ -109,6 +137,18 @@ describe('ClerkAuthGuard — production refusal', () => {
         new ClerkAuthGuard(
           new FakeConfig({
             NODE_ENV: 'production',
+          }) as unknown as ConfigService,
+        ),
+      UnauthenticatedProductionError,
+    );
+  });
+
+  it('throws when production NODE_ENV has surrounding whitespace', () => {
+    assert.throws(
+      () =>
+        new ClerkAuthGuard(
+          new FakeConfig({
+            NODE_ENV: ' production ',
           }) as unknown as ConfigService,
         ),
       UnauthenticatedProductionError,

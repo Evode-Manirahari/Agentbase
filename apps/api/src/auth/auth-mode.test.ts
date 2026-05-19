@@ -52,6 +52,11 @@ describe('resolveAuthMode', () => {
       'NODE_ENV check is case-insensitive',
     );
     assert.throws(
+      () => resolveAuthMode(env({ NODE_ENV: ' production ' })),
+      UnauthenticatedProductionError,
+      'NODE_ENV check ignores surrounding whitespace',
+    );
+    assert.throws(
       () =>
         resolveAuthMode(
           env({

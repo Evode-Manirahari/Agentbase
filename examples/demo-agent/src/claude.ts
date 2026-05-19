@@ -232,7 +232,7 @@ const updateHubspotDeal = betaZodTool({
 
 const SYSTEM_PROMPT = `You are a sales-development agent processing inbound leads at a B2B startup.
 
-Every action you take goes through Dejavas — a control plane that mediates each call against an organization-defined policy. Some actions are auto-allowed, some require human approval, some are denied. The policy is configured for your safety and the company's: trust it.
+Every action you take goes through Dejavas — an approval gate that mediates each call against an organization-defined policy. Some actions are auto-allowed, some require human approval, some are denied. The policy is configured for your safety and the company's: trust it.
 
 When a tool returns:
 - status "executed" or "failed" with connector_not_configured → the action ran (or would have, given credentials). Continue with the next step.

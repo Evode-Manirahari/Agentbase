@@ -16,11 +16,14 @@ export class UnauthenticatedProductionError extends Error {
   }
 }
 
+/**
+ * Resolves whether the dashboard should enforce Clerk auth for the current env.
+ */
 export function resolveAuthMode(): AuthMode {
   const publishable = (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '').trim();
   if (publishable.length > 0) return 'enforced';
 
-  const isProd = (process.env.NODE_ENV ?? '').toLowerCase() === 'production';
+  const isProd = (process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
   const allowUnauth = (process.env.DEJAVAS_ALLOW_UNAUTHENTICATED ?? '').trim() === '1';
   if (isProd && !allowUnauth) {
     throw new UnauthenticatedProductionError();
@@ -28,6 +31,9 @@ export function resolveAuthMode(): AuthMode {
   return 'dev_passthrough';
 }
 
+/**
+ * Resolves auth mode and logs the production refusal reason before rethrowing.
+ */
 export function authModeOrFatal(): AuthMode {
   try {
     return resolveAuthMode();

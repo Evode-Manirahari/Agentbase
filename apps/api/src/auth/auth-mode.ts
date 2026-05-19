@@ -34,11 +34,15 @@ export class UnauthenticatedProductionError extends Error {
   }
 }
 
+/**
+ * Resolves whether management endpoints should enforce Clerk session auth.
+ * Production refuses unauthenticated mode unless the operator opts in explicitly.
+ */
 export function resolveAuthMode(env: AuthModeEnv): AuthMode {
   const secret = (env.CLERK_SECRET_KEY ?? '').trim();
   if (secret.length > 0) return 'enforced';
 
-  const isProd = (env.NODE_ENV ?? '').toLowerCase() === 'production';
+  const isProd = (env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
   const allowUnauth = (env.DEJAVAS_ALLOW_UNAUTHENTICATED ?? '').trim() === '1';
 
   if (isProd && !allowUnauth) {
