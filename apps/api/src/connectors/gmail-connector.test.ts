@@ -127,14 +127,15 @@ describe('GmailConnector — gmailMessage builder', () => {
 
 describe('GmailConnector.supports', () => {
   const c = new GmailConnector({ accessToken: 'x' });
-  it('recognizes the four registered tools', () => {
+  it('recognizes the five registered tools', () => {
     assert.equal(c.supports('gmail.send'), true);
     assert.equal(c.supports('gmail.draft.create'), true);
     assert.equal(c.supports('gmail.draft.send'), true);
     assert.equal(c.supports('gmail.messages.get'), true);
+    assert.equal(c.supports('gmail.threads.get'), true);
   });
   it('rejects unknown', () => {
-    assert.equal(c.supports('gmail.threads.get'), false);
+    assert.equal(c.supports('gmail.threads.delete'), false);
     assert.equal(c.supports('hubspot.contacts.update'), false);
   });
 });
@@ -173,7 +174,7 @@ describe('GmailConnector.invoke — input validation', () => {
 
   it('returns unsupported_tool for unknown', async () => {
     const c = new GmailConnector({ accessToken: 'x' });
-    const r = await c.invoke('gmail.threads.get', { threadId: 't' });
+    const r = await c.invoke('gmail.threads.delete', { threadId: 't' });
     assert.equal(r.error?.code, 'unsupported_tool');
   });
 });

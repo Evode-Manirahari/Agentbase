@@ -42,6 +42,11 @@ const MessagesGetParams = z.object({
   format: z.enum(['full', 'metadata', 'minimal', 'raw']).optional(),
 });
 
+const ThreadsGetParams = z.object({
+  threadId: z.string().min(1),
+  format: z.enum(['full', 'metadata', 'minimal']).optional(),
+});
+
 interface ToolDef<T extends z.ZodTypeAny> {
   schema: T;
   request: (
@@ -86,6 +91,16 @@ const TOOLS = {
       };
     },
   } satisfies ToolDef<typeof MessagesGetParams>,
+  'gmail.threads.get': {
+    schema: ThreadsGetParams,
+    request: (i, b, u) => {
+      const qs = i.format ? `?format=${encodeURIComponent(i.format)}` : '';
+      return {
+        method: 'GET',
+        url: `${b}/gmail/v1/users/${encodeURIComponent(u)}/threads/${encodeURIComponent(i.threadId)}${qs}`,
+      };
+    },
+  } satisfies ToolDef<typeof ThreadsGetParams>,
 } as const;
 
 export type GmailTool = keyof typeof TOOLS;

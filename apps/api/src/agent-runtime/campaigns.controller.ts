@@ -18,6 +18,7 @@ import {
   BATCH_MAX_LEADS,
   type RunRow,
 } from './agent-runs.service.js';
+import { EmailsService } from './emails.service.js';
 import { JobRegistry } from './job.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
@@ -49,6 +50,7 @@ export class CampaignsController {
     private readonly registry: JobRegistry,
     @Inject(forwardRef(() => AgentsService))
     private readonly agents: AgentsService,
+    private readonly emails: EmailsService,
   ) {}
 
   // Lists the jobs registered with the runtime. Used by the dashboard's
@@ -140,6 +142,34 @@ export class CampaignsController {
       run_count: result.run_ids.length,
       run_ids: result.run_ids,
     };
+  }
+
+  // Manual "check for replies" trigger. Enqueues a poll scoped to the
+  // current org (and optionally a specific run). The poller backfills
+  // any newly-discovered gmail.send actions and then checks each
+  // tracked thread for replies; if found, it kicks off an
+  // ai-reply-handler agent run automatically. The endpoint returns
+  // immediately — progress shows up on the dashboard via the existing
+  // run-polling loop.
+  @Post('runs/:id/check-replies')
+  async checkRepliesForRun(
+    @Param('id', new ParseUUIDPipe()) runId: string,
+  ): Promise<{ enqueued: true; run_id: string }> {
+    const orgId = await this.agents.ensureDefaultOrg();
+    await this.emails.enqueuePoll({ org_id: orgId, run_id: runId });
+    return { enqueued: true, run_id: runId };
+  }
+
+  @Post('batches/:id/check-replies')
+  async checkRepliesForBatch(
+    @Param('id', new ParseUUIDPipe()) batchId: string,
+  ): Promise<{ enqueued: true; batch_id: string }> {
+    const orgId = await this.agents.ensureDefaultOrg();
+    // Batch-level: scope to org and let the poller scan all this org's
+    // pending threads. A per-batch filter would require run_id lookups
+    // which we skip for v1 simplicity.
+    await this.emails.enqueuePoll({ org_id: orgId });
+    return { enqueued: true, batch_id: batchId };
   }
 
   @Get('batches/:id')

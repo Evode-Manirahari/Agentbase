@@ -12,3 +12,15 @@ export interface AgentRunJobData {
   // result is already attached to the row.
   mode: 'start' | 'resume';
 }
+
+export const EMAIL_REPLY_POLL_JOB = 'emails.poll_replies';
+
+export interface EmailReplyPollJobData {
+  // Optional org filter. Omitted by the recurring sweeper (scans every
+  // org); set by the manual "Check now" trigger to scope to one org's
+  // sent emails.
+  org_id?: string;
+  // Optional run filter. Set by the per-run "Check replies" button to
+  // poll only the emails this run sent.
+  run_id?: string;
+}

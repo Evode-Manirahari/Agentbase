@@ -2,12 +2,15 @@ import { Module, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ActionsModule } from '../actions/actions.module.js';
 import { AgentsModule } from '../agents/agents.module.js';
+import { ConnectorsModule } from '../connectors/connectors.module.js';
 import { AgentRunProcessor } from './agent-run.processor.js';
 import { AgentRunsService } from './agent-runs.service.js';
 import { AgentRuntimeService } from './agent-runtime.service.js';
 import { CampaignsController } from './campaigns.controller.js';
+import { EmailsService } from './emails.service.js';
 import { JobRegistry } from './job.js';
 import { AI_CRM_HYGIENE_JOB } from './jobs/ai-crm-hygiene.js';
+import { AI_REPLY_HANDLER_JOB } from './jobs/ai-reply-handler.js';
 import { AI_SDR_OUTBOUND_JOB } from './jobs/ai-sdr-outbound.js';
 import { AnthropicLlmClient, LLM_CLIENT, type LlmClient } from './llm-client.js';
 
@@ -25,18 +28,20 @@ class UnconfiguredLlmClient implements LlmClient {
 }
 
 @Module({
-  imports: [ActionsModule, forwardRef(() => AgentsModule)],
+  imports: [ActionsModule, ConnectorsModule, forwardRef(() => AgentsModule)],
   controllers: [CampaignsController],
   providers: [
     AgentRuntimeService,
     AgentRunsService,
     AgentRunProcessor,
+    EmailsService,
     {
       provide: JobRegistry,
       useFactory: () => {
         const registry = new JobRegistry();
         registry.register(AI_SDR_OUTBOUND_JOB);
         registry.register(AI_CRM_HYGIENE_JOB);
+        registry.register(AI_REPLY_HANDLER_JOB);
         return registry;
       },
     },
@@ -57,12 +62,13 @@ class UnconfiguredLlmClient implements LlmClient {
     },
   ],
   // Export AgentRunsService so ApprovalsService can notify on
-  // action resolution. Export AgentRunProcessor so QueueModule can
-  // inject it for the worker dispatch table.
+  // action resolution. Export AgentRunProcessor + EmailsService so
+  // QueueModule can inject them for the worker dispatch table.
   exports: [
     AgentRuntimeService,
     AgentRunsService,
     AgentRunProcessor,
+    EmailsService,
     JobRegistry,
   ],
 })
