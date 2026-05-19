@@ -10,6 +10,7 @@ import type {
   LlmContentBlock,
 } from './llm-client.js';
 import { AI_SDR_OUTBOUND_JOB } from './jobs/ai-sdr-outbound.js';
+import { AI_CRM_HYGIENE_JOB } from './jobs/ai-crm-hygiene.js';
 import type { ActionsService } from '../actions/actions.service.js';
 import type { ExecuteInput, ExecuteOutput } from '../actions/actions.service.js';
 
@@ -526,5 +527,172 @@ describe('AgentRuntimeService.resumeRun', () => {
     } else {
       assert.fail('expected tool_result block');
     }
+  });
+});
+
+describe('AI CRM hygiene job — config sanity', () => {
+  it('registers without conflict and declares the expected Dejavas tools', () => {
+    const r = new JobRegistry();
+    r.register(AI_CRM_HYGIENE_JOB);
+    assert.deepEqual(r.keys(), ['ai-crm-hygiene']);
+    const tools = AI_CRM_HYGIENE_JOB.tools.map((t) => t.dejavasTool).sort();
+    assert.deepEqual(tools, [
+      'apollo.people.match',
+      'hubspot.contacts.search',
+      'hubspot.contacts.update',
+    ]);
+  });
+
+  it('initial message lists every input contact and the operator notes', () => {
+    const msg = AI_CRM_HYGIENE_JOB.buildInitialMessage({
+      contact_emails: ['ada@acme.com', 'bob@globex.io', 'carol@initech.com'],
+      notes: 'pre-Q3 cleanup',
+    });
+    assert.ok(msg.includes('ada@acme.com'));
+    assert.ok(msg.includes('bob@globex.io'));
+    assert.ok(msg.includes('carol@initech.com'));
+    assert.ok(msg.includes('pre-Q3 cleanup'));
+  });
+
+  it('handles an empty contact list gracefully without crashing', () => {
+    const msg = AI_CRM_HYGIENE_JOB.buildInitialMessage({});
+    assert.ok(msg.includes('no contacts provided'));
+  });
+
+  it('find_hubspot_contact paramMapper wraps email in a HubSpot search filter', () => {
+    const find = AI_CRM_HYGIENE_JOB.tools.find(
+      (t) => t.name === 'find_hubspot_contact',
+    );
+    assert.ok(find?.paramMapper);
+    const mapped = find!.paramMapper!({ email: 'ada@acme.com' });
+    assert.deepEqual(mapped, {
+      filters: [{ propertyName: 'email', operator: 'EQ', value: 'ada@acme.com' }],
+      limit: 1,
+    });
+  });
+
+  it('fill_missing_contact_fields paramMapper omits empty values', () => {
+    const fill = AI_CRM_HYGIENE_JOB.tools.find(
+      (t) => t.name === 'fill_missing_contact_fields',
+    );
+    assert.ok(fill?.paramMapper);
+    const mapped = fill!.paramMapper!({
+      email: 'ada@acme.com',
+      firstname: 'Ada',
+      lastname: '',
+      company: 'Acme',
+      jobtitle: undefined as unknown as string,
+    });
+    assert.equal(mapped.email, 'ada@acme.com');
+    const props = mapped.properties as Record<string, unknown>;
+    assert.equal(props.firstname, 'Ada');
+    assert.equal(props.company, 'Acme');
+    assert.equal('lastname' in props, false, 'empty strings should be dropped');
+    assert.equal('jobtitle' in props, false, 'undefined should be dropped');
+  });
+});
+
+describe('Bundle expansion sanity — runtime hosts both jobs', () => {
+  it('JobRegistry holds AI SDR + AI CRM hygiene side-by-side', () => {
+    const r = new JobRegistry();
+    r.register(AI_SDR_OUTBOUND_JOB);
+    r.register(AI_CRM_HYGIENE_JOB);
+    assert.deepEqual(r.keys().sort(), ['ai-crm-hygiene', 'ai-sdr-outbound']);
+  });
+
+  it('both jobs share the same model + structural shape (same runtime path)', () => {
+    for (const job of [AI_SDR_OUTBOUND_JOB, AI_CRM_HYGIENE_JOB]) {
+      assert.equal(job.model, 'claude-opus-4-7');
+      assert.ok(job.systemPrompt.length > 0);
+      assert.ok(job.tools.length > 0);
+      assert.equal(typeof job.buildInitialMessage, 'function');
+    }
+  });
+});
+
+describe('AgentRuntimeService — AI CRM hygiene end-to-end loop', () => {
+  it('walks a single contact through find → enrich → update → done', async () => {
+    const { service, actionsCalls } = makeService(
+      registryWith(AI_CRM_HYGIENE_JOB),
+      [
+        llm([
+          {
+            type: 'tool_use',
+            id: 'tu_find',
+            name: 'find_hubspot_contact',
+            input: { email: 'ada@acme.com' },
+          },
+        ]),
+        llm([
+          {
+            type: 'tool_use',
+            id: 'tu_enrich',
+            name: 'enrich_person',
+            input: { email: 'ada@acme.com' },
+          },
+        ]),
+        llm([
+          {
+            type: 'tool_use',
+            id: 'tu_fill',
+            name: 'fill_missing_contact_fields',
+            input: { email: 'ada@acme.com', firstname: 'Ada', company: 'Acme' },
+          },
+        ]),
+        llm([
+          {
+            type: 'text',
+            text: 'Processed 1 contact, filled 2 fields. Done.',
+          },
+        ]),
+      ],
+      [
+        {
+          action_id: 'act_find',
+          status: 'executed',
+          result: { ok: true, items: [{ id: 'contact_123' }] },
+          policy_decision: decision('allow'),
+        },
+        {
+          action_id: 'act_enrich',
+          status: 'executed',
+          result: { ok: true, person: { first_name: 'Ada', company: 'Acme' } },
+          policy_decision: decision('allow'),
+        },
+        {
+          action_id: 'act_fill',
+          status: 'executed',
+          result: { ok: true, updated: true },
+          policy_decision: decision('allow'),
+        },
+      ],
+    );
+
+    const result = await service.runJob({
+      jobKey: 'ai-crm-hygiene',
+      orgId: 'org_1',
+      agentId: 'agent_1',
+      context: { contact_emails: ['ada@acme.com'] },
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.equal(actionsCalls.length, 3);
+    assert.deepEqual(
+      actionsCalls.map((c) => c.input.tool),
+      [
+        'hubspot.contacts.search',
+        'apollo.people.match',
+        'hubspot.contacts.update',
+      ],
+    );
+    // The fill call should have been mapped to {email, properties}.
+    const fillCall = actionsCalls[2]!.input;
+    assert.equal(fillCall.params['email'], 'ada@acme.com');
+    const props = fillCall.params['properties'] as Record<string, unknown>;
+    assert.equal(props.firstname, 'Ada');
+    assert.equal(props.company, 'Acme');
+
+    const finalMsg = result.transcript.find((t) => t.type === 'agent_message');
+    assert.ok(finalMsg);
   });
 });
