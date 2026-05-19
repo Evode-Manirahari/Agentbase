@@ -13,5 +13,6 @@ import { ApiKeyGuard } from '../auth/api-key.guard.js';
   imports: [AuditModule, PolicyModule, AgentsModule],
   controllers: [ActionsController],
   providers: [ActionsService, RateLimitService, ApiKeyGuard],
+  exports: [ActionsService],
 })
 export class ActionsModule {}
