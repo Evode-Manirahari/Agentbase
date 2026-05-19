@@ -2,6 +2,8 @@ import { Module, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ActionsModule } from '../actions/actions.module.js';
 import { AgentsModule } from '../agents/agents.module.js';
+import { AgentRunProcessor } from './agent-run.processor.js';
+import { AgentRunsService } from './agent-runs.service.js';
 import { AgentRuntimeService } from './agent-runtime.service.js';
 import { CampaignsController } from './campaigns.controller.js';
 import { JobRegistry } from './job.js';
@@ -26,6 +28,8 @@ class UnconfiguredLlmClient implements LlmClient {
   controllers: [CampaignsController],
   providers: [
     AgentRuntimeService,
+    AgentRunsService,
+    AgentRunProcessor,
     {
       provide: JobRegistry,
       useFactory: () => {
@@ -50,6 +54,14 @@ class UnconfiguredLlmClient implements LlmClient {
       },
     },
   ],
-  exports: [AgentRuntimeService, JobRegistry],
+  // Export AgentRunsService so ApprovalsService can notify on
+  // action resolution. Export AgentRunProcessor so QueueModule can
+  // inject it for the worker dispatch table.
+  exports: [
+    AgentRuntimeService,
+    AgentRunsService,
+    AgentRunProcessor,
+    JobRegistry,
+  ],
 })
 export class AgentRuntimeModule {}

@@ -13,11 +13,14 @@ import { Redis } from 'ioredis';
 import { ExpiryProcessor } from './expiry.processor.js';
 import { QueueController } from './queue.controller.js';
 import {
+  AGENT_RUN_JOB,
   EXPIRY_JOB,
   QUEUE,
   QUEUE_NAME,
   REDIS_CONNECTION,
+  type AgentRunJobData,
 } from './queue.tokens.js';
+import { AgentRunProcessor } from '../agent-runtime/agent-run.processor.js';
 import { AuditModule } from '../audit/audit.module.js';
 import {
   WebhookService,
@@ -62,6 +65,9 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
     // the webhook module. In production WebhookModule is @Global and will
     // always be wired.
     @Optional() private readonly webhooks?: WebhookService,
+    // Same pattern for agent runs — AgentRuntimeModule provides this in
+    // production; absent in test contexts that don't import it.
+    @Optional() private readonly agentRuns?: AgentRunProcessor,
   ) {}
 
   async onModuleInit() {
@@ -90,6 +96,12 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
             return { skipped: true, reason: 'webhook service not wired' };
           }
           return this.webhooks.deliver(job.data as DeliverJobData);
+        }
+        if (job.name === AGENT_RUN_JOB) {
+          if (!this.agentRuns) {
+            return { skipped: true, reason: 'agent runtime not wired' };
+          }
+          return this.agentRuns.process(job.data as AgentRunJobData);
         }
         return { skipped: true, reason: `unknown job ${job.name}` };
       },

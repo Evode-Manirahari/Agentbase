@@ -50,6 +50,11 @@ export interface LlmChatRequest {
   systemPrompt: string;
   tools: LlmToolDefinition[];
   messages: LlmMessage[];
+  // Forces Claude to call at most one tool per turn (Anthropic's
+  // `tool_choice.disable_parallel_tool_use`). The runtime relies on this
+  // to keep pause state simple — at most one pending tool_use per
+  // paused run. Defaulted to true by the runtime.
+  disableParallelToolUse?: boolean;
 }
 
 export type LlmStopReason =
@@ -114,6 +119,9 @@ export class AnthropicLlmClient implements LlmClient {
         description: t.description,
         input_schema: t.input_schema as Anthropic.Messages.Tool.InputSchema,
       })),
+      tool_choice: req.disableParallelToolUse
+        ? { type: 'auto', disable_parallel_tool_use: true }
+        : { type: 'auto' },
       messages: req.messages.map((m) => ({
         role: m.role,
         content: m.content.map((block) => block as Anthropic.Messages.ContentBlockParam),

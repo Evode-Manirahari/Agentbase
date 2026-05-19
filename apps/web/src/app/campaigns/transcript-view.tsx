@@ -22,7 +22,9 @@ function StatusBanner({ result }: { result: AgentRunResult }) {
       ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300'
       : result.status === 'paused'
         ? 'border-amber-500/30 bg-amber-500/5 text-amber-300'
-        : 'border-rose-500/30 bg-rose-500/5 text-rose-300';
+        : result.status === 'pending' || result.status === 'running'
+          ? 'border-sky-500/30 bg-sky-500/5 text-sky-300'
+          : 'border-rose-500/30 bg-rose-500/5 text-rose-300';
   return (
     <div className={`rounded border p-3 text-sm ${tone}`}>
       <div className="font-medium uppercase tracking-wider text-xs mb-1">
