@@ -310,6 +310,10 @@ If you really need an unauthenticated production deploy (demos behind a VPN, sec
 
 For local dev (`NODE_ENV !== 'production'`), Clerk env vars are still optional and the dev-passthrough mode is the default — the dashboard, API, and SDK behave as today.
 
+## Security
+
+A one-page brief for security and IT reviewing a pilot lives in [SECURITY.md](./SECURITY.md). It covers Clerk JWT enforcement, AES-256-GCM credential encryption, per-org tenant isolation, audit logging + export, the current subprocessor list, and what's deliberately not done yet (retention policy, SOC 2, single-tenant deploy, PII redaction, pen test).
+
 ## What's deliberately NOT done yet
 
 - **Broader Web E2E tests** — route smoke, connector credential mutation, OAuth env-state, permission profile flows, and dev auth-state coverage exist; approval decisions, action runner flows, and real OAuth redirect browser tests should be added next.
