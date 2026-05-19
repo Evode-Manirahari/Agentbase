@@ -30,6 +30,15 @@ import {
 } from '@dejavas/db';
 import type { Connector, ConnectorResult } from '@dejavas/connector-hubspot';
 import { ApprovalsService } from './approvals.service.js';
+import type { AgentRunsService } from '../agent-runtime/agent-runs.service.js';
+
+// Tests don't exercise the resume hook — they just need a no-op stub so
+// the ApprovalsService constructor signature is satisfied.
+const noopAgentRuns = {
+  async notifyActionResolved() {
+    /* noop */
+  },
+} as unknown as AgentRunsService;
 import { AuditService } from '../audit/audit.service.js';
 import type { ConnectorRegistry } from '../connectors/connector-registry.js';
 import type { SlackService } from '../slack/slack.service.js';
@@ -137,6 +146,7 @@ describe('ApprovalsService.decide', () => {
       audit,
       registry as unknown as ConnectorRegistry,
       new StubSlack() as unknown as SlackService,
+      noopAgentRuns,
     );
   });
 
@@ -290,6 +300,7 @@ describe('ApprovalsService.decide', () => {
       audit,
       registry as unknown as ConnectorRegistry,
       slackStub as unknown as SlackService,
+      noopAgentRuns,
     );
 
     const result = await svcWithSlack.decide({
@@ -317,6 +328,7 @@ describe('ApprovalsService.decide', () => {
       audit,
       registry as unknown as ConnectorRegistry,
       slackStub as unknown as SlackService,
+      noopAgentRuns,
     );
     await svcWithSlack.decide({ approvalId, orgId, decision: 'deny' });
     assert.equal(slackStub.updates.length, 0);
@@ -368,6 +380,7 @@ describe('ApprovalsService.list / getOne', () => {
       audit,
       new StubRegistry() as unknown as ConnectorRegistry,
       new StubSlack() as unknown as SlackService,
+      noopAgentRuns,
     );
   });
 

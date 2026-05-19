@@ -163,7 +163,12 @@ export interface ConnectorStatus {
   } | null;
 }
 
-export type AgentRunStatus = 'completed' | 'paused' | 'failed';
+export type AgentRunStatus =
+  | 'pending'
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'failed';
 
 export type TranscriptEntry =
   | { type: 'agent_thinking'; text: string }
@@ -187,17 +192,30 @@ export type TranscriptEntry =
       result?: Record<string, unknown> | null;
     };
 
+// Persisted agent run. Matches /v1/campaigns/runs/:id shape.
 export interface AgentRunResult {
+  id: string;
+  org_id: string;
+  agent_id: string;
+  job_key: string;
+  context: Record<string, unknown>;
   status: AgentRunStatus;
   transcript: TranscriptEntry[];
-  paused_on?: { action_id: string; tool_use_id: string; dejavas_tool: string };
-  error?: string | null;
-  usage?: {
+  paused_on: {
+    action_id: string;
+    tool_use_id: string;
+    dejavas_tool: string;
+  } | null;
+  usage: {
     input_tokens: number;
     output_tokens: number;
     cache_creation_input_tokens?: number | null;
     cache_read_input_tokens?: number | null;
-  };
+  } | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
 }
 
 export interface CampaignJobSummary {
@@ -382,7 +400,7 @@ export const api = {
   },
   campaigns: {
     jobs: () => req<{ items: CampaignJobSummary[] }>(`/v1/campaigns/jobs`),
-    run: (body: {
+    createRun: (body: {
       job_key: string;
       agent_id: string;
       context: Record<string, unknown>;
@@ -391,5 +409,9 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    getRun: (runId: string) =>
+      req<AgentRunResult>(`/v1/campaigns/runs/${runId}`),
+    listRuns: (limit = 50) =>
+      req<{ items: AgentRunResult[] }>(`/v1/campaigns/runs?limit=${limit}`),
   },
 };

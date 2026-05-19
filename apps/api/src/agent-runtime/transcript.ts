@@ -28,13 +28,19 @@ export type TranscriptEntry =
 
 export type AgentRunStatus = 'completed' | 'paused' | 'failed';
 
+export interface AgentRunUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number | undefined;
+  cache_read_input_tokens?: number | undefined;
+}
+
 export interface AgentRunResult {
   status: AgentRunStatus;
   transcript: TranscriptEntry[];
-  // Set when status === 'paused'. The action that triggered the pause is
-  // awaiting human approval. Resume happens in a later PR — the resume
-  // entry point will look up the action and continue the loop with the
-  // resolved tool_result.
+  // Set when status === 'paused'. The action that triggered the pause
+  // is awaiting human approval. The resume entry point looks up the
+  // action and continues the loop with the resolved tool_result.
   paused_on?: {
     action_id: string;
     tool_use_id: string;
@@ -42,12 +48,7 @@ export interface AgentRunResult {
   };
   // Set when status === 'failed'.
   error?: string;
-  // Tokens spent across all LLM calls. Only populated when the LLM adapter
-  // reports usage. Useful for the audit log and cost dashboard.
-  usage?: {
-    input_tokens: number;
-    output_tokens: number;
-    cache_creation_input_tokens?: number | undefined;
-    cache_read_input_tokens?: number | undefined;
-  };
+  // Tokens spent across all LLM calls. Useful for the audit log and cost
+  // dashboard.
+  usage?: AgentRunUsage;
 }

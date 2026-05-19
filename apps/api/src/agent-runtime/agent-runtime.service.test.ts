@@ -379,3 +379,152 @@ describe('AI SDR job — config sanity', () => {
     assert.ok(msg.includes('demo request'));
   });
 });
+
+describe('AgentRuntimeService.resumeRun', () => {
+  it('continues the loop with the resolved tool_result appended', async () => {
+    // First half of the run: tool_use → awaiting_approval → pause.
+    const { service, llm: pauseLlm } = makeService(
+      registryWith(tinyJob),
+      [
+        llm([
+          { type: 'tool_use', id: 'tu_pause', name: 'do_thing', input: { value: 'risky' } },
+        ]),
+      ],
+      [
+        {
+          action_id: 'act_pending',
+          status: 'awaiting_approval',
+          policy_decision: decision('require_approval'),
+        },
+      ],
+    );
+    const paused = await service.runJob({
+      jobKey: 'test-tiny',
+      orgId: 'org_1',
+      agentId: 'agent_1',
+      context: {},
+    });
+    assert.equal(paused.status, 'paused');
+    assert.equal(pauseLlm.requests.length, 1);
+
+    // Resume: build a new service with another canned LLM response that
+    // wraps up the run, plus reuse the saved state from the pause.
+    const fakeLlm = new FakeLlmClient([
+      llm([{ type: 'text', text: 'Approved, moving on.' }]),
+    ]);
+    const fakeActions = makeFakeActions([]);
+    const resumeService = new AgentRuntimeService(
+      fakeActions.service as ActionsService,
+      registryWith(tinyJob),
+      fakeLlm,
+    );
+    const resumed = await resumeService.resumeRun({
+      jobKey: 'test-tiny',
+      orgId: 'org_1',
+      agentId: 'agent_1',
+      savedMessages: paused.messages,
+      savedTranscript: paused.transcript,
+      savedUsage: paused.usage ?? {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+      resolvedAction: {
+        tool_use_id: paused.paused_on!.tool_use_id,
+        action_id: paused.paused_on!.action_id,
+        status: 'executed',
+        policy_decision: decision('require_approval'),
+        result: { ok: true, sent: true },
+      },
+    });
+
+    assert.equal(resumed.status, 'completed');
+    // Transcript should now end with the agent's final message.
+    const last = resumed.transcript.at(-1);
+    assert.equal(last?.type, 'agent_message');
+    // The resolved tool_result should have replaced the awaiting_approval
+    // entry on the transcript.
+    const toolResult = resumed.transcript.find(
+      (t) => t.type === 'tool_result' && t.action_id === 'act_pending',
+    );
+    assert.ok(toolResult);
+    if (toolResult?.type === 'tool_result') {
+      assert.equal(toolResult.status, 'executed');
+    }
+    // Resume LLM call should have seen a tool_result block as the last
+    // user message.
+    assert.equal(fakeLlm.requests.length, 1);
+    const lastMsg = fakeLlm.requests[0]?.messages.at(-1);
+    assert.equal(lastMsg?.role, 'user');
+    assert.ok(
+      lastMsg?.content.some(
+        (b) => b.type === 'tool_result' && b.tool_use_id === paused.paused_on!.tool_use_id,
+      ),
+    );
+    // Usage should be additive across both calls.
+    assert.equal(resumed.usage?.input_tokens, 200);
+    assert.equal(resumed.usage?.output_tokens, 80);
+  });
+
+  it('feeds is_error: true when the action was denied', async () => {
+    const { service } = makeService(
+      registryWith(tinyJob),
+      [
+        llm([
+          { type: 'tool_use', id: 'tu_pause', name: 'do_thing', input: { value: 'x' } },
+        ]),
+      ],
+      [
+        {
+          action_id: 'act_pending',
+          status: 'awaiting_approval',
+          policy_decision: decision('require_approval'),
+        },
+      ],
+    );
+    const paused = await service.runJob({
+      jobKey: 'test-tiny',
+      orgId: 'org_1',
+      agentId: 'agent_1',
+      context: {},
+    });
+
+    const fakeLlm = new FakeLlmClient([
+      llm([{ type: 'text', text: 'Acknowledged denial.' }]),
+    ]);
+    const resumeService = new AgentRuntimeService(
+      makeFakeActions([]).service as ActionsService,
+      registryWith(tinyJob),
+      fakeLlm,
+    );
+    await resumeService.resumeRun({
+      jobKey: 'test-tiny',
+      orgId: 'org_1',
+      agentId: 'agent_1',
+      savedMessages: paused.messages,
+      savedTranscript: paused.transcript,
+      savedUsage: paused.usage ?? {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+      resolvedAction: {
+        tool_use_id: paused.paused_on!.tool_use_id,
+        action_id: paused.paused_on!.action_id,
+        status: 'denied',
+        policy_decision: decision('require_approval'),
+      },
+    });
+
+    const lastUserMsg = fakeLlm.requests[0]?.messages.at(-1);
+    assert.equal(lastUserMsg?.role, 'user');
+    const block = lastUserMsg?.content[0];
+    if (block?.type === 'tool_result') {
+      assert.equal(block.is_error, true);
+    } else {
+      assert.fail('expected tool_result block');
+    }
+  });
+});

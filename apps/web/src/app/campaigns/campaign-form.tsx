@@ -1,11 +1,10 @@
 'use client';
 
 import { useActionState } from 'react';
-import { runCampaignAction, type RunCampaignState } from './actions';
-import { TranscriptView } from './transcript-view';
+import { startCampaignAction, type RunCampaignState } from './actions';
 import type { AgentRow, CampaignJobSummary } from '../../lib/api';
 
-const initial: RunCampaignState = { result: null, error: null };
+const initial: RunCampaignState = { error: null };
 
 export function CampaignForm({
   agents,
@@ -14,7 +13,7 @@ export function CampaignForm({
   agents: AgentRow[];
   jobs: CampaignJobSummary[];
 }) {
-  const [state, action, pending] = useActionState(runCampaignAction, initial);
+  const [state, action, pending] = useActionState(startCampaignAction, initial);
   const activeAgents = agents.filter((a) => a.status === 'active');
   const selectedJob = jobs[0];
 
@@ -89,7 +88,7 @@ export function CampaignForm({
             disabled={pending || activeAgents.length === 0 || jobs.length === 0}
             className="px-4 py-2 rounded-md text-sm font-medium bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {pending ? 'Running…' : 'Run campaign'}
+            {pending ? 'Starting…' : 'Run campaign'}
           </button>
           <span className="text-xs text-[var(--color-muted)]">
             The agent calls Apollo + HubSpot + Gmail through Dejavas. Risky writes
@@ -103,8 +102,6 @@ export function CampaignForm({
           {state.error}
         </div>
       ) : null}
-
-      {state.result ? <TranscriptView result={state.result} /> : null}
     </div>
   );
 }

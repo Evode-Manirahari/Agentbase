@@ -12,6 +12,7 @@ import { actions, agents, approvals, users } from '@dejavas/db';
 import { AuditService } from '../audit/audit.service.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
 import { SlackService } from '../slack/slack.service.js';
+import { AgentRunsService } from '../agent-runtime/agent-runs.service.js';
 import type {
   ActionStatus,
   ApprovalDecisionResponse,
@@ -35,6 +36,7 @@ export class ApprovalsService {
     private readonly audit: AuditService,
     private readonly connectors: ConnectorRegistry,
     private readonly slack: SlackService,
+    private readonly agentRuns: AgentRunsService,
   ) {}
 
   async list(orgId: string, limit = 100): Promise<ApprovalListResponse> {
@@ -209,6 +211,9 @@ export class ApprovalsService {
         actionStatus: 'denied',
         errorCode: null,
       });
+      // Resume any agent runs paused on this action. Fire-and-forget —
+      // the approval response should not wait on the worker queue.
+      void this.agentRuns.notifyActionResolved(phase1.action.id);
       return {
         approval_id: phase1.approval.id,
         decision: 'denied',
@@ -280,6 +285,9 @@ export class ApprovalsService {
       actionStatus: finalStatus,
       errorCode: result.ok ? null : result.error?.code ?? null,
     });
+
+    // Resume any agent runs paused on this action. Fire-and-forget.
+    void this.agentRuns.notifyActionResolved(action.id);
 
     return {
       approval_id: phase1.approval.id,
