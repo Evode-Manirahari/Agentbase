@@ -4,6 +4,7 @@ import { SignedIn, UserButton } from '@clerk/nextjs';
 
 const items = [
   { href: '/', label: 'Overview' },
+  { href: '/campaigns', label: 'Campaigns' },
   { href: '/agents', label: 'Agents' },
   { href: '/policies', label: 'Policies' },
   { href: '/approvals', label: 'Approvals' },
