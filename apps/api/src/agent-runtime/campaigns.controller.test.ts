@@ -5,7 +5,14 @@ import { CampaignsController } from './campaigns.controller.js';
 import { JobRegistry } from './job.js';
 import { AI_SDR_OUTBOUND_JOB } from './jobs/ai-sdr-outbound.js';
 import type { AgentRunsService, RunRow } from './agent-runs.service.js';
+import type { EmailsService } from './emails.service.js';
 import type { AgentsService } from '../agents/agents.service.js';
+
+const noopEmails = {
+  async enqueuePoll() {
+    /* noop */
+  },
+} as unknown as EmailsService;
 
 function makeRegistry(): JobRegistry {
   const r = new JobRegistry();
@@ -95,6 +102,7 @@ function makeController(opts: {
       runs as AgentRunsService,
       registry,
       agents as AgentsService,
+      noopEmails,
     ),
     createCalls,
     createBatchCalls,

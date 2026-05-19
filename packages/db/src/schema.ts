@@ -325,3 +325,53 @@ export type WebhookSubscription = typeof webhookSubscriptions.$inferSelect;
 export type ConnectorCredential = typeof connectorCredentials.$inferSelect;
 export type OAuthState = typeof oauthStates.$inferSelect;
 export type AgentRun = typeof agentRuns.$inferSelect;
+
+// One row per email the agent sent through gmail.send. Tracks the
+// Gmail thread + message ids so the reply poller can detect when the
+// recipient replies and trigger a handler run.
+export const agentEmails = pgTable(
+  'agent_emails',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    // The agent run that triggered the send.
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: 'cascade' }),
+    // The original gmail.send action.
+    sendActionId: uuid('send_action_id')
+      .notNull()
+      .references(() => actions.id, { onDelete: 'cascade' }),
+    gmailThreadId: text('gmail_thread_id').notNull(),
+    gmailMessageId: text('gmail_message_id').notNull(),
+    toEmail: text('to_email').notNull(),
+    subject: text('subject'),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+    // Poller bookkeeping. lastPolledAt is null until we've checked at
+    // least once.
+    lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
+    replyReceived: boolean('reply_received').notNull().default(false),
+    replyMessageId: text('reply_message_id'),
+    replyReceivedAt: timestamp('reply_received_at', { withTimezone: true }),
+    // The agent run created to handle the reply (if any).
+    replyHandlerRunId: uuid('reply_handler_run_id').references(
+      () => agentRuns.id,
+      { onDelete: 'set null' },
+    ),
+  },
+  (t) => ({
+    threadIdx: uniqueIndex('agent_emails_thread_idx').on(t.gmailThreadId),
+    orgRunIdx: index('agent_emails_org_run_idx').on(t.orgId, t.runId),
+    needsPollIdx: index('agent_emails_needs_poll_idx').on(
+      t.replyReceived,
+      t.lastPolledAt,
+    ),
+  }),
+);
+
+export type AgentEmail = typeof agentEmails.$inferSelect;
