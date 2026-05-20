@@ -219,6 +219,35 @@ export interface AgentRunResult {
   completed_at: string | null;
 }
 
+export type BulkApprovalDecisionItem =
+  | {
+      approval_id: string;
+      outcome: 'decided';
+      decision: string;
+      action_id: string;
+      action_status: string;
+      result: unknown;
+    }
+  | {
+      approval_id: string;
+      outcome: 'skipped_already_decided';
+      decision: string;
+    }
+  | {
+      approval_id: string;
+      outcome: 'failed';
+      error: { code: string; message: string };
+    };
+
+export interface BulkApprovalDecisionResponse {
+  items: BulkApprovalDecisionItem[];
+  summary: {
+    decided: number;
+    skipped_already_decided: number;
+    failed: number;
+  };
+}
+
 export interface CampaignJobSummary {
   key: string;
   label: string;
@@ -312,6 +341,16 @@ export const api = {
         action_status: string;
         result: unknown;
       }>(`/v1/approvals/${approvalId}/decision`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    bulkDecide: (body: {
+      approval_ids: string[];
+      decision: 'approve' | 'deny';
+      decided_by_email?: string;
+      notes?: string;
+    }) =>
+      req<BulkApprovalDecisionResponse>(`/v1/approvals/bulk-decide`, {
         method: 'POST',
         body: JSON.stringify(body),
       }),

@@ -357,6 +357,72 @@ describe('ApprovalsService.decide', () => {
       await db.delete(orgs).where(eq(orgs.id, otherOrg!.id));
     }
   });
+
+  it('bulkDecide approves N pending approvals and reports a summary', async () => {
+    const seeds = await Promise.all([seedAction(), seedAction(), seedAction()]);
+    const ids = seeds.map((s) => s.approvalId);
+    registry.result = { ok: true, data: { ok: true } };
+
+    const out = await svc.bulkDecide({
+      orgId,
+      approvalIds: ids,
+      decision: 'approve',
+      decidedByEmail: 'rev@dejavas.test',
+    });
+
+    assert.equal(out.summary.decided, 3);
+    assert.equal(out.summary.failed, 0);
+    assert.equal(out.summary.skipped_already_decided, 0);
+    assert.equal(out.items.length, 3);
+    for (const item of out.items) {
+      if (item.outcome !== 'decided') {
+        throw new Error(`expected decided, got ${item.outcome}`);
+      }
+      assert.equal(item.action_status, 'executed');
+    }
+  });
+
+  it('bulkDecide surfaces already-decided rows as skipped, not failed', async () => {
+    const seeds = await Promise.all([seedAction(), seedAction()]);
+    registry.result = { ok: true, data: { ok: true } };
+
+    // Decide the first one individually first.
+    await svc.decide({
+      approvalId: seeds[0]!.approvalId,
+      orgId,
+      decision: 'approve',
+      decidedByEmail: 'rev@dejavas.test',
+    });
+
+    const out = await svc.bulkDecide({
+      orgId,
+      approvalIds: [seeds[0]!.approvalId, seeds[1]!.approvalId],
+      decision: 'approve',
+      decidedByEmail: 'rev@dejavas.test',
+    });
+
+    assert.equal(out.summary.decided, 1);
+    assert.equal(out.summary.skipped_already_decided, 1);
+    assert.equal(out.summary.failed, 0);
+  });
+
+  it('bulkDecide reports per-id failure (unknown id) without blocking the rest', async () => {
+    const { approvalId } = await seedAction();
+    registry.result = { ok: true, data: { ok: true } };
+
+    const out = await svc.bulkDecide({
+      orgId,
+      approvalIds: [approvalId, randomUUID()],
+      decision: 'approve',
+      decidedByEmail: 'rev@dejavas.test',
+    });
+
+    assert.equal(out.summary.decided, 1);
+    assert.equal(out.summary.failed, 1);
+    const failed = out.items.find((it) => it.outcome === 'failed');
+    if (!failed || failed.outcome !== 'failed') throw new Error('expected failed item');
+    assert.equal(failed.error.code, 'not_found');
+  });
 });
 
 describe('ApprovalsService.list / getOne', () => {

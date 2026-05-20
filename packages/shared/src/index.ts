@@ -309,6 +309,60 @@ export const ApprovalDecisionRequest = z.object({
 });
 export type ApprovalDecisionRequest = z.infer<typeof ApprovalDecisionRequest>;
 
+export const APPROVAL_BULK_DECIDE_MAX = 50;
+
+export const BulkApprovalDecisionRequest = z.object({
+  approval_ids: z.array(z.string().uuid()).min(1).max(APPROVAL_BULK_DECIDE_MAX),
+  decision: ApprovalDecisionAction,
+  decided_by_email: z.string().email().optional(),
+  notes: z.string().max(1000).optional(),
+});
+export type BulkApprovalDecisionRequest = z.infer<
+  typeof BulkApprovalDecisionRequest
+>;
+
+// Per-id outcome for bulk decide. Mirrors ApprovalDecisionResponse on
+// success and surfaces a structured error otherwise. One failure
+// doesn't block the rest — operators get a row-by-row picture.
+export const BulkApprovalDecisionItem = z.union([
+  z.object({
+    approval_id: z.string().uuid(),
+    outcome: z.literal('decided'),
+    decision: ApprovalDecision,
+    action_id: z.string().uuid(),
+    action_status: ActionStatus,
+    result: z.unknown().nullable(),
+  }),
+  z.object({
+    approval_id: z.string().uuid(),
+    outcome: z.literal('skipped_already_decided'),
+    decision: ApprovalDecision,
+  }),
+  z.object({
+    approval_id: z.string().uuid(),
+    outcome: z.literal('failed'),
+    error: z.object({
+      code: z.string(),
+      message: z.string(),
+    }),
+  }),
+]);
+export type BulkApprovalDecisionItem = z.infer<
+  typeof BulkApprovalDecisionItem
+>;
+
+export const BulkApprovalDecisionResponse = z.object({
+  items: z.array(BulkApprovalDecisionItem),
+  summary: z.object({
+    decided: z.number().int().nonnegative(),
+    skipped_already_decided: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+  }),
+});
+export type BulkApprovalDecisionResponse = z.infer<
+  typeof BulkApprovalDecisionResponse
+>;
+
 export const ApprovalView = z.object({
   approval_id: z.string().uuid(),
   action_id: z.string().uuid(),

@@ -29,6 +29,26 @@ interface DecideInput {
   notes?: string | undefined;
 }
 
+export type BulkDecideItem =
+  | {
+      approval_id: string;
+      outcome: 'decided';
+      decision: 'approved' | 'denied';
+      action_id: string;
+      action_status: ActionStatus;
+      result: Record<string, unknown> | null;
+    }
+  | {
+      approval_id: string;
+      outcome: 'skipped_already_decided';
+      decision: 'approved' | 'denied';
+    }
+  | {
+      approval_id: string;
+      outcome: 'failed';
+      error: { code: string; message: string };
+    };
+
 @Injectable()
 export class ApprovalsService {
   constructor(
@@ -296,6 +316,81 @@ export class ApprovalsService {
       action_status: finalStatus,
       result: storedResult,
     };
+  }
+
+  // Approve / deny N pending approvals in one call. Each id is processed
+  // sequentially through decide() so audit log + Slack card update +
+  // agent-run resume all fire correctly per approval. One failure
+  // doesn't block the rest — the caller gets a row-by-row picture.
+  // BulkDecideItem is locally typed; the wire shape lives in @dejavas/shared
+  // (BulkApprovalDecisionItem) and the controller maps between them.
+  //
+  // Already-decided approvals are surfaced as a distinct outcome
+  // ("skipped_already_decided") rather than failed, so a stale
+  // dashboard re-clicking the same set doesn't read as a fault.
+  async bulkDecide(input: {
+    orgId: string;
+    approvalIds: string[];
+    decision: 'approve' | 'deny';
+    decidedByEmail?: string | undefined;
+    notes?: string | undefined;
+  }): Promise<{
+    items: BulkDecideItem[];
+    summary: { decided: number; skipped_already_decided: number; failed: number };
+  }> {
+    const items: BulkDecideItem[] = [];
+    const summary = { decided: 0, skipped_already_decided: 0, failed: 0 };
+    for (const approvalId of input.approvalIds) {
+      try {
+        const out = await this.decide({
+          approvalId,
+          orgId: input.orgId,
+          decision: input.decision,
+          ...(input.decidedByEmail ? { decidedByEmail: input.decidedByEmail } : {}),
+          ...(input.notes ? { notes: input.notes } : {}),
+        });
+        items.push({
+          approval_id: approvalId,
+          outcome: 'decided',
+          // decide() can only return 'approved' or 'denied' on the
+          // success path — the ApprovalDecision enum is wider than the
+          // outcome bulkDecide cares about, so we narrow here.
+          decision: out.decision as 'approved' | 'denied',
+          action_id: out.action_id,
+          action_status: out.action_status,
+          result: (out.result ?? null) as Record<string, unknown> | null,
+        });
+        summary.decided += 1;
+      } catch (err) {
+        if (err instanceof ConflictException) {
+          // The approval was already decided (or just finished resolving
+          // mid-loop). That's not a fault; surface it so the dashboard
+          // can refresh and show the final state.
+          items.push({
+            approval_id: approvalId,
+            outcome: 'skipped_already_decided',
+            decision: 'approved',
+          });
+          summary.skipped_already_decided += 1;
+          continue;
+        }
+        const message =
+          err instanceof Error ? err.message : 'unknown error during bulk decide';
+        const code =
+          err instanceof NotFoundException
+            ? 'not_found'
+            : err instanceof GoneException
+              ? 'expired'
+              : 'internal';
+        items.push({
+          approval_id: approvalId,
+          outcome: 'failed',
+          error: { code, message },
+        });
+        summary.failed += 1;
+      }
+    }
+    return { items, summary };
   }
 
   private async maybeUpdateSlackCard(input: {
