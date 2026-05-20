@@ -12,6 +12,7 @@ import type {
 import { AI_SDR_OUTBOUND_JOB } from './jobs/ai-sdr-outbound.js';
 import { AI_CRM_HYGIENE_JOB } from './jobs/ai-crm-hygiene.js';
 import { AI_REPLY_HANDLER_JOB } from './jobs/ai-reply-handler.js';
+import { AI_SDR_FOLLOWUP_JOB } from './jobs/ai-sdr-followup.js';
 import type { ActionsService } from '../actions/actions.service.js';
 import type { ExecuteInput, ExecuteOutput } from '../actions/actions.service.js';
 
@@ -757,16 +758,79 @@ describe('AI reply-handler job — config sanity', () => {
   });
 });
 
-describe('Bundle expansion sanity — runtime hosts all three jobs', () => {
-  it('JobRegistry holds SDR + hygiene + reply-handler side-by-side', () => {
+describe('Bundle expansion sanity — runtime hosts all four jobs', () => {
+  it('JobRegistry holds SDR + hygiene + reply-handler + sdr-followup side-by-side', () => {
     const r = new JobRegistry();
     r.register(AI_SDR_OUTBOUND_JOB);
     r.register(AI_CRM_HYGIENE_JOB);
     r.register(AI_REPLY_HANDLER_JOB);
+    r.register(AI_SDR_FOLLOWUP_JOB);
     assert.deepEqual(r.keys().sort(), [
       'ai-crm-hygiene',
       'ai-reply-handler',
+      'ai-sdr-followup',
       'ai-sdr-outbound',
     ]);
+  });
+});
+
+describe('AI SDR follow-up job — config sanity', () => {
+  it('registers without conflict and declares the expected Dejavas tools', () => {
+    const r = new JobRegistry();
+    r.register(AI_SDR_FOLLOWUP_JOB);
+    assert.deepEqual(r.keys(), ['ai-sdr-followup']);
+    const tools = AI_SDR_FOLLOWUP_JOB.tools.map((t) => t.dejavasTool).sort();
+    assert.deepEqual(tools, [
+      'gmail.messages.get',
+      'gmail.send',
+      'gmail.threads.get',
+    ]);
+  });
+
+  it('initial message includes the touch number, thread id, and recipient', () => {
+    const msg = AI_SDR_FOLLOWUP_JOB.buildInitialMessage({
+      thread_id: 'thr_seq_123',
+      to_email: 'cto@globex.com',
+      subject: 'AI SDR you can run in prod',
+      touch_number: 2,
+      original_run_id: '99999999-9999-9999-9999-999999999999',
+    });
+    assert.ok(msg.includes('touch 2'));
+    assert.ok(msg.includes('thr_seq_123'));
+    assert.ok(msg.includes('cto@globex.com'));
+    assert.ok(msg.includes('AI SDR you can run in prod'));
+    assert.ok(msg.includes('original_run_id'));
+  });
+
+  it('initial message handles missing fields gracefully', () => {
+    const msg = AI_SDR_FOLLOWUP_JOB.buildInitialMessage({});
+    assert.ok(msg.includes('(missing)'));
+    assert.ok(msg.includes('(unknown)'));
+  });
+
+  it('read_thread_metadata paramMapper wraps the thread id with format=metadata', () => {
+    const tool = AI_SDR_FOLLOWUP_JOB.tools.find(
+      (t) => t.name === 'read_thread_metadata',
+    );
+    assert.ok(tool?.paramMapper);
+    const mapped = tool!.paramMapper!({ thread_id: 'thr_abc' });
+    assert.deepEqual(mapped, { threadId: 'thr_abc', format: 'metadata' });
+  });
+
+  it('send_followup paramMapper threads correctly via gmail.send + threadId', () => {
+    const tool = AI_SDR_FOLLOWUP_JOB.tools.find(
+      (t) => t.name === 'send_followup',
+    );
+    assert.ok(tool?.paramMapper);
+    const mapped = tool!.paramMapper!({
+      to: 'cto@globex.com',
+      subject: 'AI SDR you can run in prod',
+      body: 'still relevant?',
+      thread_id: 'thr_seq_123',
+    });
+    assert.equal(mapped.to, 'cto@globex.com');
+    assert.equal(mapped.subject, 'AI SDR you can run in prod');
+    assert.equal(mapped.body, 'still relevant?');
+    assert.equal(mapped.threadId, 'thr_seq_123');
   });
 });

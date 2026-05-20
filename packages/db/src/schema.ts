@@ -351,6 +351,11 @@ export const agentEmails = pgTable(
     gmailMessageId: text('gmail_message_id').notNull(),
     toEmail: text('to_email').notNull(),
     subject: text('subject'),
+    // 1 = original SDR send; 2 = first follow-up; 3 = second follow-up.
+    // Drives whether discoverNewSends schedules additional touches —
+    // only touch-1 SDR rows fan out, preventing infinite loops on
+    // follow-up sends.
+    sequenceTouch: integer('sequence_touch').notNull().default(1),
     sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
     // Poller bookkeeping. lastPolledAt is null until we've checked at
     // least once.
