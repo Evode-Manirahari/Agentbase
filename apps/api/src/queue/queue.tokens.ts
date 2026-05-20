@@ -24,3 +24,16 @@ export interface EmailReplyPollJobData {
   // poll only the emails this run sent.
   run_id?: string;
 }
+
+// Delayed BullMQ job — fires +3d / +7d after a touch-1 SDR send to
+// kick off the next outbound touch in the sequence. See
+// agent-runtime/sequence.constants.ts for intervals.
+export const SDR_FOLLOWUP_JOB = 'sdr.followup_due';
+
+export interface SdrFollowupJobData {
+  // The touch-1 agent_emails row that anchors this sequence. The
+  // worker loads it, checks reply_received, and uses thread_id +
+  // to_email to seed the follow-up agent run.
+  agent_email_id: string;
+  touch_number: 2 | 3;
+}

@@ -3,14 +3,21 @@ import { Queue } from 'bullmq';
 import { and, desc, eq, gte, isNull, lt, or } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '@dejavas/db';
-import { actions, agentEmails, type AgentEmail } from '@dejavas/db';
+import {
+  actions,
+  agentEmails,
+  type AgentEmail,
+} from '@dejavas/db';
 import {
   EMAIL_REPLY_POLL_JOB,
   QUEUE,
+  SDR_FOLLOWUP_JOB,
   type EmailReplyPollJobData,
+  type SdrFollowupJobData,
 } from '../queue/queue.tokens.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
 import { AgentRunsService } from './agent-runs.service.js';
+import { SEQUENCE_TOUCH_INTERVALS_MS } from './sequence.constants.js';
 
 // How long after a send we keep polling for replies. Replies arriving
 // after this window get manually re-triggered by the operator.
@@ -118,6 +125,14 @@ export class EmailsService {
   // tracked in agent_emails. Pulls the threadId + messageId out of the
   // stored connector result. Best-effort: skips rows where the result
   // shape doesn't match Gmail's response.
+  //
+  // When the inserted row is a touch-1 outbound send (i.e., the
+  // original gmail.send had no threadId in its params — only initial
+  // SDR sends are unthreaded; follow-ups and reply-handler sends always
+  // pass threadId), we ALSO enqueue two delayed BullMQ jobs at +3d and
+  // +7d to fire the next touches in the sequence. The "no threadId"
+  // gate is what stops follow-up sends from re-fanning-out (they all
+  // carry a threadId), so we don't get an infinite cascade.
   private async discoverNewSends(filter: EmailReplyPollJobData): Promise<number> {
     const windowStart = new Date(
       Date.now() - REPLY_POLL_WINDOW_DAYS * 24 * 60 * 60 * 1000,
@@ -150,24 +165,33 @@ export class EmailsService {
       if (existingSet.has(row.id)) continue;
       const extracted = extractSendMetadata(row);
       if (!extracted) continue;
-      // We don't have the runId on the action row directly today.
-      // For v1 we attribute every discovered send to the run that's
-      // listed in the action's audit row payload (the runtime always
-      // sets it via the same agentId). PR-future: add run_id to
-      // actions table for direct lookup.
+      // Touch-1 = unthreaded send (no params.threadId). Follow-ups
+      // and reply-handler sends pass threadId, so they get
+      // sequence_touch=1 by column default but won't re-schedule.
+      const isInitialSend = extracted.priorThreadId === undefined;
       try {
-        await this.db.insert(agentEmails).values({
-          orgId: row.orgId,
-          agentId: row.agentId,
-          runId: row.id, // placeholder: tying to actionId for now —
-                          // when run_id lands on actions row, swap.
-          sendActionId: row.id,
-          gmailThreadId: extracted.threadId,
-          gmailMessageId: extracted.messageId,
-          toEmail: extracted.toEmail,
-          subject: extracted.subject ?? null,
-        }).onConflictDoNothing();
+        const [inserted] = await this.db
+          .insert(agentEmails)
+          .values({
+            orgId: row.orgId,
+            agentId: row.agentId,
+            // We don't have the agent_runs.id on actions yet — for
+            // sequence scheduling we anchor on agent_emails.id, not
+            // run_id, so this placeholder is harmless. PR-future:
+            // add run_id to actions for direct lookup.
+            runId: row.id,
+            sendActionId: row.id,
+            gmailThreadId: extracted.threadId,
+            gmailMessageId: extracted.messageId,
+            toEmail: extracted.toEmail,
+            subject: extracted.subject ?? null,
+          })
+          .onConflictDoNothing()
+          .returning({ id: agentEmails.id });
         discovered += 1;
+        if (inserted && isInitialSend) {
+          await this.scheduleSequenceFollowups(inserted.id);
+        }
       } catch (err) {
         this.log.warn(
           `discoverNewSends insert failed for action ${row.id}: ${(err as Error).message}`,
@@ -175,6 +199,77 @@ export class EmailsService {
       }
     }
     return discovered;
+  }
+
+  private async scheduleSequenceFollowups(
+    agentEmailId: string,
+  ): Promise<void> {
+    for (const [idx, delay] of SEQUENCE_TOUCH_INTERVALS_MS.entries()) {
+      const touchNumber = (idx + 2) as 2 | 3;
+      try {
+        await this.queue.add(
+          SDR_FOLLOWUP_JOB,
+          {
+            agent_email_id: agentEmailId,
+            touch_number: touchNumber,
+          } satisfies SdrFollowupJobData,
+          {
+            delay,
+            attempts: 1,
+            removeOnComplete: 50,
+            removeOnFail: 50,
+          },
+        );
+      } catch (err) {
+        this.log.warn(
+          `failed to schedule touch ${touchNumber} for email ${agentEmailId}: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  // Worker entry point for SDR_FOLLOWUP_JOB. Fires +3d or +7d after a
+  // touch-1 send. Skip if the prospect already replied (the
+  // reply-handler is now in charge of that thread); otherwise create
+  // a new agent run on the ai-sdr-followup job with thread context.
+  async processFollowup(
+    data: SdrFollowupJobData,
+  ): Promise<{ status: string; run_id?: string }> {
+    const [row] = await this.db
+      .select()
+      .from(agentEmails)
+      .where(eq(agentEmails.id, data.agent_email_id))
+      .limit(1);
+    if (!row) {
+      return { status: 'not_found' };
+    }
+    if (row.replyReceived) {
+      this.log.log(
+        `sequence stopped: touch ${data.touch_number} skipped because reply landed on thread ${row.gmailThreadId}`,
+      );
+      return { status: 'stopped_replied' };
+    }
+    try {
+      const handlerRun = await this.runs.create({
+        orgId: row.orgId,
+        agentId: row.agentId,
+        jobKey: 'ai-sdr-followup',
+        context: {
+          thread_id: row.gmailThreadId,
+          original_message_id: row.gmailMessageId,
+          to_email: row.toEmail,
+          subject: row.subject ?? '',
+          touch_number: data.touch_number,
+          original_run_id: row.runId,
+        },
+      });
+      return { status: 'enqueued', run_id: handlerRun.id };
+    } catch (err) {
+      this.log.warn(
+        `failed to enqueue follow-up run for email ${row.id}: ${(err as Error).message}`,
+      );
+      return { status: 'failed' };
+    }
   }
 
   async listForRun(orgId: string, runId: string): Promise<AgentEmail[]> {
@@ -296,14 +391,26 @@ export class EmailsService {
 // Gmail's messages.send returns { id, threadId, labelIds } as the
 // `data` field of our ConnectorResult; the `to` recipient lives in
 // the action's params. Returns null if the shape doesn't match.
+//
+// `priorThreadId` is the threadId the agent PASSED INTO gmail.send,
+// not the one Gmail returned. It's only set when the agent threaded
+// its send to an existing conversation (follow-ups, replies). Touch-1
+// SDR sends omit threadId entirely; we use that signal to gate the
+// sequence-scheduling fan-out in discoverNewSends.
 function extractSendMetadata(
   row: typeof actions.$inferSelect,
-): { threadId: string; messageId: string; toEmail: string; subject?: string } | null {
+): {
+  threadId: string;
+  messageId: string;
+  toEmail: string;
+  subject?: string;
+  priorThreadId?: string;
+} | null {
   const result = row.result as
     | { ok?: boolean; data?: { id?: string; threadId?: string } }
     | null;
   const params = row.params as
-    | { to?: string; subject?: string }
+    | { to?: string; subject?: string; threadId?: string }
     | null;
   if (!result?.ok) return null;
   const threadId = result.data?.threadId;
@@ -315,5 +422,6 @@ function extractSendMetadata(
     messageId,
     toEmail,
     ...(params?.subject ? { subject: params.subject } : {}),
+    ...(params?.threadId ? { priorThreadId: params.threadId } : {}),
   };
 }

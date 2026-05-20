@@ -19,8 +19,10 @@ import {
   QUEUE,
   QUEUE_NAME,
   REDIS_CONNECTION,
+  SDR_FOLLOWUP_JOB,
   type AgentRunJobData,
   type EmailReplyPollJobData,
+  type SdrFollowupJobData,
 } from './queue.tokens.js';
 import { AgentRunProcessor } from '../agent-runtime/agent-run.processor.js';
 import { EmailsService } from '../agent-runtime/emails.service.js';
@@ -133,6 +135,12 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
           return this.emails.scanForReplies(
             job.data as EmailReplyPollJobData,
           );
+        }
+        if (job.name === SDR_FOLLOWUP_JOB) {
+          if (!this.emails) {
+            return { skipped: true, reason: 'emails service not wired' };
+          }
+          return this.emails.processFollowup(job.data as SdrFollowupJobData);
         }
         return { skipped: true, reason: `unknown job ${job.name}` };
       },
