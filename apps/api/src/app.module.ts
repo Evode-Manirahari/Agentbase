@@ -25,13 +25,17 @@ import { AgentRuntimeModule } from './agent-runtime/agent-runtime.module.js';
     ActionsModule,
     ApprovalsModule,
     SlackModule,
-    // WebhookModule must come before QueueModule so WebhookService is
-    // available when QueueModule.onModuleInit boots the worker.
+    // WebhookModule + AgentRuntimeModule must come before QueueModule
+    // so their providers (WebhookService, AgentRunProcessor,
+    // EmailsService) are in the DI container when QueueModule's
+    // constructor resolves its @Optional injections at worker-boot
+    // time. Otherwise the worker silently drops their job types with
+    // "service not wired".
     WebhookModule,
+    AgentRuntimeModule,
     QueueModule,
     AuditModule,
     MetricsModule,
-    AgentRuntimeModule,
   ],
 })
 export class AppModule {}
