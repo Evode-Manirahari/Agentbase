@@ -1,4 +1,4 @@
-import { Module, Logger, forwardRef } from '@nestjs/common';
+import { Global, Module, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ActionsModule } from '../actions/actions.module.js';
 import { AgentsModule } from '../agents/agents.module.js';
@@ -28,6 +28,12 @@ class UnconfiguredLlmClient implements LlmClient {
   }
 }
 
+// @Global so QueueModule's worker can @Optional-inject AgentRunProcessor
+// and EmailsService at boot. Without this, the worker silently drops
+// `agent.run` and `emails.poll_replies` jobs with "service not wired"
+// even though the providers are registered — Nest only resolves
+// cross-module DI through explicit imports or Global.
+@Global()
 @Module({
   imports: [ActionsModule, ConnectorsModule, forwardRef(() => AgentsModule)],
   controllers: [CampaignsController],
