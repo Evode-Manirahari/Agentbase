@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
-    "test": "node --import @swc-node/register/esm-register --test 'src/**/*.test.ts'",
+    "test": "node --import @swc-node/register/esm-register --test --test-force-exit 'src/**/*.test.ts'",
     "lint": "eslint src --max-warnings=0"
   },
   "dependencies": {
