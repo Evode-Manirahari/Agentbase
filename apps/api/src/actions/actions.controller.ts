@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -66,6 +67,23 @@ export class ActionsController {
       params: body.params,
       idempotencyKey: body.idempotency_key,
     });
+  }
+
+  // External-agent poll path. After /execute returns awaiting_approval the
+  // calling agent polls this to learn the final outcome. Org-scoped via the
+  // API key guard so cross-tenant reads are impossible.
+  @Get(':id')
+  @UseGuards(ApiKeyGuard)
+  async getOne(
+    @Req() req: FastifyRequest,
+    @Param('id') id: string,
+  ): Promise<ExecuteActionResponse> {
+    const agent = req.agent!;
+    const row = await this.actions.getForOrg(agent.orgId, id);
+    if (!row) {
+      throw new NotFoundException(`action ${id} not found`);
+    }
+    return row;
   }
 
   @Post('demo/hubspot-lead')
