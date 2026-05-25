@@ -1,6 +1,6 @@
 # Discovery call script (20 minutes)
 
-For the first call with a qualified RevOps prospect who said "yes, we have this pain" on the outbound touch.
+For the first call with a qualified RevOps prospect who said "yes, we have this blocked-agent pain" on the outbound touch.
 
 ## Goal of the call
 
@@ -30,7 +30,7 @@ You don't need a "no" — silence is a no. What you can't survive is leaving the
 
 ## 0–2: Open
 
-> "Quick context: solo founder, building Dejavas — an AI SDR that comes with the safety rails to actually run it in prod. I've got six questions that should take about ten minutes, then I'll show you a 60-second slice of the demo, and then we can talk about whether a pilot makes sense. Sound good?"
+> "Quick context: solo founder, building Agentbase — the secure action layer for AI sales agents across CRM, email, and sales tools. I've got six questions that should take about ten minutes, then I'll show you a 60-second slice of the demo, and then we can talk about whether a pilot makes sense. Sound good?"
 
 That's it. Don't pitch yet. They said yes to the call because they're already curious — the call is for **you to qualify them**, not for them to qualify you.
 
@@ -42,7 +42,7 @@ Ask all six. Take notes. Resist the urge to pitch in between.
 
 > "Walk me through what's actually happening. What agent or workflow do you have today that's blocked from production writes?"
 
-Listen for: a specific product name (11x, Artisan, Regie, custom-built), a specific stuck workflow (outbound email, deal updates, sequence enrollment, lead routing). Vague answers like "we're exploring AI" = not a buyer.
+Listen for: a specific product name (11x, Artisan, Regie, Agentforce, HubSpot Breeze, custom-built), a specific stuck workflow (outbound email, CRM updates, sequence enrollment, lead routing, deal summaries). Vague answers like "we're exploring AI" = not a buyer.
 
 ### Q2 — Status quo
 
@@ -87,7 +87,7 @@ Listen for:
 
 Restate their pain in your words:
 
-> "OK — so today {{paraphrased Q1}}, the workaround is {{Q2}}, and the action you'd never auto-approve is {{Q3}}. The pilot for you would be: we put Dejavas in front of {{Q4}}, your agent proposes it, our policy decides risk, your {{security/RevOps person}} approves the risky ones in Slack, action executes, audit log captures everything for {{Q5's person}}. Did I get that right?"
+> "OK — so today {{paraphrased Q1}}, the workaround is {{Q2}}, and the action you'd never auto-approve is {{Q3}}. The pilot for you would be: we put Agentbase in front of {{Q4}}, your agent proposes it, our policy decides risk, your {{security/RevOps person}} approves the risky ones in Slack, action executes, audit log captures everything for {{Q5's person}}. Did I get that right?"
 
 Wait for their nod or correction. Then play the 60-second demo slice that matches their exact workflow. Don't show the whole 6 minutes — show the part that mirrors their answer.
 
@@ -96,8 +96,8 @@ Wait for their nod or correction. Then play the 60-second demo slice that matche
 ```
 "What I'm offering: $7,500 paid design partner pilot, 60 days,
 one workflow — the one you just named. You keep your existing
-{{Salesforce/HubSpot}} and existing agent if you have one; we sit
-in front of one risky action. End of 60 days, you either expand
+{{Salesforce/HubSpot/Gmail/Outreach}} and existing agent if you have one; we sit
+in front of the risky actions. End of 60 days, you either expand
 or you don't. No annual commit, no procurement gauntlet.
 
 Two questions:
@@ -136,8 +136,8 @@ If you do 8–10 calls and only 1–2 land in "high probability," the wedge isn'
 
 ## What NOT to do on the call
 
-- Don't demo the dashboard tour (Agents/Policies/Connectors/etc.). Show the campaign run only.
-- Don't pitch identity / API keys / policy DSL features. They are plumbing; not the buying trigger.
-- Don't say "Okta + Zapier + Datadog for AI sales agents." It sounds expensive and confused.
-- Don't promise features that aren't shipped. The roadmap is "AI SDR today, CRM hygiene v1.1, deal-update v1.2" — anything else is hand-waving until a paid pilot demands it.
+- Don't demo the dashboard tour (Agents/Policies/Connectors/etc.). Show the governed action path only.
+- Don't pitch identity / API keys / policy DSL features before the pain is clear. They are the trust mechanism, not the cold-open buying trigger.
+- Use "Okta + Zapier + Datadog for AI sales agents" only after they understand the category: identity, governed execution, and observability.
+- Don't promise features that aren't shipped. The shipped wedge is governed revenue-agent actions across HubSpot/Salesforce/Gmail/Outreach/Apollo with approval, revocation, and audit.
 - Don't talk pricing in vague terms. $7,500 is the number; the only flexibility is "$1,500/month for 3 months on a department card" if procurement is the blocker.

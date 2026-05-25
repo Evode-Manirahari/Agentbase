@@ -4,7 +4,7 @@ import {
   SetActivePolicyRequest,
   type SetActivePolicyRequest as SetActivePolicyRequestT,
   type ActivePolicyResponse,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 import { PolicyService } from './policy.service.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';

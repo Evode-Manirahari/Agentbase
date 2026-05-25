@@ -3,8 +3,8 @@ import { and, desc, eq } from 'drizzle-orm';
 import { Queue } from 'bullmq';
 import { createHmac, randomBytes } from 'node:crypto';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@dejavas/db';
-import { webhookSubscriptions } from '@dejavas/db';
+import type { Database } from '@agentbase/db';
+import { webhookSubscriptions } from '@agentbase/db';
 import { QUEUE } from '../queue/queue.tokens.js';
 
 export interface WebhookEvent {
@@ -107,10 +107,10 @@ export class WebhookService {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
-            'x-dejavas-event-type': data.event.eventType,
-            'x-dejavas-subscription-id': sub.id,
-            'x-dejavas-timestamp': timestamp,
-            'x-dejavas-signature': `sha256=${signature}`,
+            'x-agentbase-event-type': data.event.eventType,
+            'x-agentbase-subscription-id': sub.id,
+            'x-agentbase-timestamp': timestamp,
+            'x-agentbase-signature': `sha256=${signature}`,
           },
           body,
           signal: ctrl.signal,

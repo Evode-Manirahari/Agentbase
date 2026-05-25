@@ -23,7 +23,7 @@ class UnconfiguredLlmClient implements LlmClient {
   async chat(): Promise<never> {
     throw new Error(
       'ANTHROPIC_API_KEY is not set. The agent runtime cannot make LLM calls. ' +
-        'Set ANTHROPIC_API_KEY on the API process to run AI SDR campaigns.',
+        'Set ANTHROPIC_API_KEY on the API process to run governed revenue-agent workflows.',
     );
   }
 }
@@ -61,7 +61,7 @@ class UnconfiguredLlmClient implements LlmClient {
         const apiKey = config.get<string>('ANTHROPIC_API_KEY');
         if (!apiKey || apiKey.trim().length === 0) {
           log.warn(
-            'ANTHROPIC_API_KEY not set — agent runtime will return an error on any run. Set the key to enable AI SDR campaigns.',
+            'ANTHROPIC_API_KEY not set — agent runtime will return an error on any run. Set the key to enable governed revenue-agent workflows.',
           );
           return new UnconfiguredLlmClient();
         }

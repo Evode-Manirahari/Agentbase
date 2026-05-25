@@ -20,12 +20,12 @@ import {
   actions,
   approvals,
   auditLog,
-} from '@dejavas/db';
+} from '@agentbase/db';
 import { ExpiryProcessor } from './expiry.processor.js';
 import { AuditService } from '../audit/audit.service.js';
 
 const DB_URL =
-  process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
+  process.env.DATABASE_URL ?? 'postgresql://agentbase:agentbase@localhost:5433/agentbase';
 
 let client: ReturnType<typeof postgres>;
 let db: ReturnType<typeof drizzle<typeof schema>>;

@@ -33,7 +33,7 @@ function StatusBanner({ result }: { result: AgentRunResult }) {
       {result.status === 'paused' && result.paused_on ? (
         <div className="text-xs">
           Waiting on human approval for{' '}
-          <span className="mono">{result.paused_on.dejavas_tool}</span> (action{' '}
+          <span className="mono">{result.paused_on.agentbase_tool}</span> (action{' '}
           <span className="mono">{result.paused_on.action_id}</span>). Approve in
           Slack or on the{' '}
           <a href="/approvals" className="underline">
@@ -73,7 +73,7 @@ function EntryRow({ entry }: { entry: TranscriptEntry }) {
               <span className="mono text-xs">{entry.job_tool_name}</span>{' '}
               <span className="text-xs text-[var(--color-muted)]">
                 →{' '}
-                <span className="mono">{entry.dejavas_tool}</span>
+                <span className="mono">{entry.agentbase_tool}</span>
               </span>
             </div>
             <pre className="mono text-xs text-[var(--color-muted)] overflow-x-auto">

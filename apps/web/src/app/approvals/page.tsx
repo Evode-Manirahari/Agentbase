@@ -18,7 +18,8 @@ export default async function ApprovalsPage() {
       <H1>Approvals</H1>
       <Subtitle>
         Pending actions waiting for human sign-off. Select multiple rows to
-        approve or deny in one go — useful for a batch of 30 outbound emails.
+        approve or deny in one go when a batch of outbound email, CRM updates,
+        or sequence actions needs operator review.
       </Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}

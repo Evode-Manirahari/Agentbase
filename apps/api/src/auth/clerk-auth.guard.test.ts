@@ -155,11 +155,11 @@ describe('ClerkAuthGuard — production refusal', () => {
     );
   });
 
-  it('accepts DEJAVAS_ALLOW_UNAUTHENTICATED=1 as an explicit prod opt-in', () => {
+  it('accepts AGENTBASE_ALLOW_UNAUTHENTICATED=1 as an explicit prod opt-in', () => {
     const guard = new ClerkAuthGuard(
       new FakeConfig({
         NODE_ENV: 'production',
-        DEJAVAS_ALLOW_UNAUTHENTICATED: '1',
+        AGENTBASE_ALLOW_UNAUTHENTICATED: '1',
       }) as unknown as ConfigService,
     );
     // No throw at construction; behaves like dev passthrough at request time.

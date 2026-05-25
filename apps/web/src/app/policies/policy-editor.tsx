@@ -9,7 +9,7 @@ import {
   policyTemplateStandaloneYaml,
   type PolicyEffect,
   type PolicyTemplate,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 
 type ValidationOk = {
   ok: true;

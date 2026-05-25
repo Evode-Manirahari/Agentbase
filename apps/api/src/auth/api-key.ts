@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-const KEY_PREFIX = 'dvk_';
+const KEY_PREFIX = 'agb_';
 
 export function generateApiKey(): { plaintext: string; prefix: string; hash: string } {
   const raw = randomBytes(32).toString('base64url');

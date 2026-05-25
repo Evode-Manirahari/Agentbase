@@ -61,7 +61,7 @@ describe('resolveAuthMode', () => {
         resolveAuthMode(
           env({
             NODE_ENV: 'production',
-            DEJAVAS_ALLOW_UNAUTHENTICATED: '0',
+            AGENTBASE_ALLOW_UNAUTHENTICATED: '0',
           }),
         ),
       UnauthenticatedProductionError,
@@ -72,7 +72,7 @@ describe('resolveAuthMode', () => {
         resolveAuthMode(
           env({
             NODE_ENV: 'production',
-            DEJAVAS_ALLOW_UNAUTHENTICATED: 'true',
+            AGENTBASE_ALLOW_UNAUTHENTICATED: 'true',
           }),
         ),
       UnauthenticatedProductionError,
@@ -80,12 +80,12 @@ describe('resolveAuthMode', () => {
     );
   });
 
-  it("accepts DEJAVAS_ALLOW_UNAUTHENTICATED=1 as an explicit production opt-in", () => {
+  it("accepts AGENTBASE_ALLOW_UNAUTHENTICATED=1 as an explicit production opt-in", () => {
     assert.equal(
       resolveAuthMode(
         env({
           NODE_ENV: 'production',
-          DEJAVAS_ALLOW_UNAUTHENTICATED: '1',
+          AGENTBASE_ALLOW_UNAUTHENTICATED: '1',
         }),
       ),
       'dev_passthrough',
@@ -95,7 +95,7 @@ describe('resolveAuthMode', () => {
       resolveAuthMode(
         env({
           NODE_ENV: 'production',
-          DEJAVAS_ALLOW_UNAUTHENTICATED: ' 1 ',
+          AGENTBASE_ALLOW_UNAUTHENTICATED: ' 1 ',
         }),
       ),
       'dev_passthrough',
@@ -108,7 +108,7 @@ describe('resolveAuthMode', () => {
         env({
           NODE_ENV: 'production',
           CLERK_SECRET_KEY: 'sk_live_y',
-          DEJAVAS_ALLOW_UNAUTHENTICATED: '1',
+          AGENTBASE_ALLOW_UNAUTHENTICATED: '1',
         }),
       ),
       'enforced',

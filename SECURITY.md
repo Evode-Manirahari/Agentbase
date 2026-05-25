@@ -1,10 +1,10 @@
-# Dejavas Security Brief
+# Agentbase Security Brief
 
-One-pager for security and IT reviewing a Dejavas pilot. Honest about what's in place and what isn't.
+One-pager for security and IT reviewing an Agentbase pilot. Honest about what's in place and what isn't.
 
 ## Threat model
 
-The pilot question is: *can we let an AI agent take a write action on a revenue system without giving it unsupervised write access?* Dejavas exists to make that question answerable as "yes, under these constraints."
+The pilot question is: *can we let AI sales agents act across CRM, email, sales-engagement, and enrichment tools without giving them unsupervised write access?* Agentbase exists to make that question answerable as "yes, under these constraints."
 
 The constraints we enforce:
 
@@ -17,8 +17,8 @@ The constraints we enforce:
 
 ### Authentication & identity
 
-- **Management API + dashboard** — Clerk session tokens verified server-side via `@clerk/backend`'s `verifyToken` with the configured Clerk secret key. In `NODE_ENV=production`, the API's `ClerkAuthGuard` and the Next dashboard middleware **refuse to boot** without `CLERK_SECRET_KEY` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` respectively. `DEJAVAS_ALLOW_UNAUTHENTICATED=1` is the only way to opt out, and it logs a boot warning.
-- **Agent → API** — scoped `dvk_…` API keys. SHA-256-hashed at rest, never logged, revealed once at creation, idempotently revocable.
+- **Management API + dashboard** — Clerk session tokens verified server-side via `@clerk/backend`'s `verifyToken` with the configured Clerk secret key. In `NODE_ENV=production`, the API's `ClerkAuthGuard` and the Next dashboard middleware **refuse to boot** without `CLERK_SECRET_KEY` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` respectively. `AGENTBASE_ALLOW_UNAUTHENTICATED=1` is the only way to opt out, and it logs a boot warning.
+- **Agent → API** — scoped `agb_…` API keys. SHA-256-hashed at rest, never logged, revealed once at creation, idempotently revocable.
 - **Slack → API** — every interactive payload HMAC-signed with the workspace signing secret; a 5-minute replay window is enforced.
 - **Outbound webhooks** — each event HMAC-signed with the subscription secret so customer endpoints can verify origin.
 
@@ -40,7 +40,7 @@ Every domain table — `agents`, `policies`, `approvals`, `actions`, `audit_log`
 
 ### Deployment model
 
-Pilots run on Dejavas-managed multi-tenant infrastructure (Fly.io: Postgres + Redis + API + dashboard). Single-tenant deployment, VPC peering, and customer-cloud delivery are on the roadmap — not built today.
+Pilots run on Agentbase-managed multi-tenant infrastructure (Fly.io: Postgres + Redis + API + dashboard). Single-tenant deployment, VPC peering, and customer-cloud delivery are on the roadmap — not built today.
 
 ## Subprocessors
 
@@ -63,8 +63,8 @@ Pilots run on Dejavas-managed multi-tenant infrastructure (Fly.io: Postgres + Re
 
 ## Vulnerability disclosure
 
-Email **security@dejavas.ai** with reproduction steps. We don't run a paid bounty program yet but will credit reporters on request, and we treat disclosure under safe harbor terms (no legal action for good-faith research).
+Email **security@agentbase.ai** with reproduction steps. We don't run a paid bounty program yet but will credit reporters on request, and we treat disclosure under safe harbor terms (no legal action for good-faith research).
 
 ## Operating contacts
 
-- Security & incident response — **security@dejavas.ai** (24-hour target during pilots; faster on request).
+- Security & incident response — **security@agentbase.ai** (24-hour target during pilots; faster on request).

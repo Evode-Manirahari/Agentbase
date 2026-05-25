@@ -9,7 +9,7 @@ import {
   type ApprovalView,
   type BulkApprovalDecisionRequest as BulkApprovalDecisionRequestT,
   type BulkApprovalDecisionResponse,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 import { ApprovalsService } from './approvals.service.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';

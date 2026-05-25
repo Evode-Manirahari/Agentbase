@@ -9,13 +9,13 @@ import type { Job } from '../job.js';
 //   4. Sends the reply through gmail.send — which the existing
 //      approval-before-external-email template pauses for human review
 //
-// Same runtime as SDR + hygiene. Same approval gate. Same audit log.
+// Same runtime as outbound + hygiene. Same secure action layer. Same audit log.
 // The reply itself doesn't bypass any safety; it just keeps the
 // conversation alive when it makes sense.
 
 const SYSTEM_PROMPT = `You are an AI sales-development agent handling a reply to outbound email you sent earlier. Your job: read the thread, decide what the reply means, and either draft a brief contextual follow-up or hand off to a human.
 
-Every action you take goes through Dejavas — an approval gate that mediates each tool call against an organization-defined policy. Sending email pauses for human review; that's expected. Trust the policy.
+Every action you take goes through Agentbase — a secure action layer that mediates each tool call against an organization-defined policy. Sending email pauses for human review; that's expected. Trust the policy.
 
 The reply context is in the user message. The thread id and recipient email are provided. To read the thread:
 1. Call gmail.threads.get with the thread id, format=metadata, to see the message list and headers.
@@ -78,7 +78,7 @@ export const AI_REPLY_HANDLER_JOB: Job = {
         },
         required: ['thread_id'],
       },
-      dejavasTool: 'gmail.threads.get',
+      agentbaseTool: 'gmail.threads.get',
       paramMapper: (input) => ({
         threadId: input['thread_id'],
         format: 'metadata',
@@ -95,7 +95,7 @@ export const AI_REPLY_HANDLER_JOB: Job = {
         },
         required: ['message_id'],
       },
-      dejavasTool: 'gmail.messages.get',
+      agentbaseTool: 'gmail.messages.get',
       paramMapper: (input) => ({
         messageId: input['message_id'],
         format: 'full',
@@ -118,7 +118,7 @@ export const AI_REPLY_HANDLER_JOB: Job = {
         },
         required: ['to', 'subject', 'body', 'thread_id'],
       },
-      dejavasTool: 'gmail.send',
+      agentbaseTool: 'gmail.send',
       paramMapper: (input) => ({
         to: input['to'],
         subject: input['subject'],

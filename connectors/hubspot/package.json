@@ -1,5 +1,5 @@
 {
-  "name": "@dejavas/connector-hubspot",
+  "name": "@agentbase/connector-hubspot",
   "version": "0.0.0",
   "private": true,
   "type": "module",

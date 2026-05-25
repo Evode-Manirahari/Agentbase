@@ -1,15 +1,15 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { HubspotConnector, type Connector } from '@dejavas/connector-hubspot';
-import { SalesforceConnector } from '@dejavas/connector-salesforce';
-import { GmailConnector } from '@dejavas/connector-gmail';
-import { OutreachConnector } from '@dejavas/connector-outreach';
-import { ApolloConnector } from '@dejavas/connector-apollo';
+import { HubspotConnector, type Connector } from '@agentbase/connector-hubspot';
+import { SalesforceConnector } from '@agentbase/connector-salesforce';
+import { GmailConnector } from '@agentbase/connector-gmail';
+import { OutreachConnector } from '@agentbase/connector-outreach';
+import { ApolloConnector } from '@agentbase/connector-apollo';
 import {
   ConnectorCredentialsService,
   type ConnectorConfig,
 } from './connector-credentials.service.js';
-import type { ConnectorProvider } from '@dejavas/shared';
+import type { ConnectorProvider } from '@agentbase/shared';
 
 @Injectable()
 export class ConnectorRegistry {

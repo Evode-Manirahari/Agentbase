@@ -15,12 +15,12 @@ test.describe('register an agent', () => {
     await page.getByLabel('Permission profile').first().selectOption('read_only_analyst');
     await page.getByRole('button', { name: 'Register' }).click();
 
-    // Banner appears with the dvk_ key. CI cold-compiles /agents on first
+    // Banner appears with the agb_ key. CI cold-compiles /agents on first
     // hit, so allow extra time before falling back to a retry.
     const banner = page.locator('text=/Agent .* registered/').first();
     await expect(banner).toBeVisible({ timeout: 20_000 });
     await expect(page.locator(`text=${name}`).first()).toBeVisible();
-    const key = page.locator('code').filter({ hasText: /^dvk_/ }).first();
+    const key = page.locator('code').filter({ hasText: /^agb_/ }).first();
     await expect(key).toBeVisible();
 
     // Copy button is present
@@ -98,7 +98,7 @@ test.describe('type-to-confirm revoke', () => {
     await expect(confirmBtn).toBeDisabled();
 
     // Email alone isn't enough — name still wrong
-    await row.getByPlaceholder('your@email.com').fill('alice@dejavas.test');
+    await row.getByPlaceholder('your@email.com').fill('alice@agentbase.test');
     await expect(confirmBtn).toBeDisabled();
 
     // Exact name + valid email → enabled

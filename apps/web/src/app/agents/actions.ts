@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import {
   AgentPermissionProfile,
   buildAgentPermissionProfilePolicyYaml,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 import { api } from '../../lib/api';
 
 export type RegisterState =

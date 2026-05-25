@@ -19,10 +19,10 @@ async function bootstrap() {
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen({ port, host: '0.0.0.0' });
-  console.log(`[dejavas-api] listening on :${port}`);
+  console.log(`[agentbase-api] listening on :${port}`);
 }
 
 bootstrap().catch((err) => {
-  console.error('[dejavas-api] fatal', err);
+  console.error('[agentbase-api] fatal', err);
   process.exit(1);
 });

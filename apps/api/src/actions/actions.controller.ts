@@ -15,7 +15,7 @@ import {
   ExecuteActionRequest,
   type ExecuteActionRequest as ExecuteActionRequestT,
   type ExecuteActionResponse,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 import { ApiKeyGuard } from '../auth/api-key.guard.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { ActionsService } from './actions.service.js';

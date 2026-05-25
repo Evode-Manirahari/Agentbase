@@ -6,10 +6,10 @@ import {
   PolicyDocument,
   type ActivePolicyResponse,
   type PolicyDecision,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@dejavas/db';
-import { agents, policies } from '@dejavas/db';
+import type { Database } from '@agentbase/db';
+import { agents, policies } from '@agentbase/db';
 import { evaluatePolicy, FALLBACK_POLICY } from './policy-engine.js';
 
 @Injectable()

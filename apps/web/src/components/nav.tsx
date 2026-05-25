@@ -4,7 +4,7 @@ import { SignedIn, UserButton } from '@clerk/nextjs';
 
 const items = [
   { href: '/', label: 'Overview' },
-  { href: '/campaigns', label: 'Campaigns' },
+  { href: '/campaigns', label: 'Runs' },
   { href: '/agents', label: 'Agents' },
   { href: '/policies', label: 'Policies' },
   { href: '/approvals', label: 'Approvals' },
@@ -21,8 +21,8 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="min-h-screen flex flex-col md:flex-row">
       <aside className="w-full md:w-56 shrink-0 border-b md:border-b-0 md:border-r border-[var(--color-border)] bg-[var(--color-panel)] p-4 flex flex-col gap-1">
         <div className="px-2 pb-4 mb-2 border-b border-[var(--color-border)]">
-          <div className="text-lg font-semibold tracking-tight">Dejavas</div>
-          <div className="text-xs text-[var(--color-muted)]">approval gate</div>
+          <div className="text-lg font-semibold tracking-tight">Agentbase</div>
+          <div className="text-xs text-[var(--color-muted)]">secure action layer</div>
         </div>
         {items.map((it) => (
           <Link

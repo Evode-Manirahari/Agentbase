@@ -5,7 +5,7 @@ Storyboard for the recorded demo video you'll attach to outbound touch 2 and pla
 ## Constraints
 
 - **One lead, not a batch.** Multi-lead is impressive but you don't have a feature for it yet, and a single lead is enough to show the whole loop.
-- **One stack, not five.** Use HubSpot + Gmail + Slack — that's the slice the SDR job ships with. If a prospect runs Salesforce, do a custom recording for them; don't try to be everything for everyone in the public video.
+- **One stack, not five.** Use HubSpot + Gmail + Slack — that's the slice the outbound revenue-agent job ships with. If a prospect runs Salesforce, do a custom recording for them; don't try to be everything for everyone in the public video.
 - **Show one approval pause.** That's the demo's payoff moment. Don't show three.
 - **No talking-head intro.** Cold open on the dashboard. The viewer is on touch 2 — they've read the message, they don't need to know who you are yet.
 - **Show real text, not Lorem Ipsum.** The agent's email draft should be plausibly something a buyer would send. Pre-record with `cto@globex.com` so the prospect's eye lands on something recognizable.
@@ -14,34 +14,34 @@ Storyboard for the recorded demo video you'll attach to outbound touch 2 and pla
 
 ### Scene 1 — The blocked pilot (0:00 – 0:45)
 
-**Visual:** A single side-by-side: left, a Slack channel called `#ai-sdr-pilot` with one human message ("@RevOps the agent's been in draft-only for 3 weeks, when does it actually send?"); right, a CRM showing a stalled lead.
+**Visual:** A single side-by-side: left, a Slack channel called `#sales-agent-pilot` with one human message ("@RevOps the agent's been in draft-only for 3 weeks, when does it actually send?"); right, a CRM showing a stalled lead.
 
 **Voiceover (45 sec):**
 
-> "Here's the thing every AI SDR pilot in 2026 looks like:
+> "Here's the thing every AI sales-agent pilot in 2026 looks like:
 >
-> RevOps buys the agent. The agent works. It enriches the lead, drafts a great email, opens a contact record in HubSpot. Then it tries to send.
+> RevOps deploys the agent. The agent works. It enriches the lead, drafts a great email, opens a contact record in HubSpot. Then it tries to send.
 >
 > And security pulls the OAuth scopes.
 >
 > So the pilot sits in draft-only mode. Three weeks. Six weeks. Eventually the team gives up.
 >
-> Dejavas ships the agent and the safety rails together. Let me show you."
+> Agentbase gives that agent a secure action layer. Let me show you."
 
-### Scene 2 — Start a campaign (0:45 – 1:30)
+### Scene 2 — Start a governed run (0:45 – 1:30)
 
-**Visual:** Cut to the Dejavas dashboard at `/campaigns`. Show the form: Job dropdown (AI SDR — outbound), Agent identity dropdown (Sales SDR profile selected), Lead email field, Notes field. You type:
+**Visual:** Cut to the Agentbase dashboard at `/campaigns`. Show the form: Job dropdown (Revenue Agent — outbound), Agent identity dropdown (Sales Agent profile selected), Lead email field, Notes field. You type:
 
 - Email: `cto@globex.com`
 - Notes: `Downloaded our pricing PDF this morning. Hit our docs from a Google search for "Salesforce AI agent governance." Series B fintech, ~280 employees.`
 
-Click **Run campaign**. Page redirects to `/campaigns/[id]`.
+Click **Start governed run**. Page redirects to `/campaigns/batch/[id]`.
 
 **Voiceover (45 sec):**
 
-> "I'm running our AI SDR against one inbound lead — a CTO at a fintech who downloaded our pricing PDF this morning.
+> "I'm running a governed revenue agent against one inbound lead — a CTO at a fintech who downloaded our pricing PDF this morning.
 >
-> The agent identity is registered in Dejavas with a Sales SDR permission profile — that profile says what the agent can do on its own and what needs a human.
+> The agent identity is registered in Agentbase with a Sales Agent permission profile — that profile says what the agent can do on its own and what needs a human.
 >
 > One click."
 
@@ -78,7 +78,7 @@ Run status banner flips to **paused — waiting on human approval**. Cut to Slac
 
 **Voiceover (60 sec):**
 
-> "And here's the moment. The agent tries to actually send the email — and Dejavas pauses the entire run.
+> "And here's the moment. The agent tries to actually send the email — and Agentbase pauses the entire run.
 >
 > The policy template fired: outbound email needs human approval before it leaves the outbox.
 >
@@ -98,7 +98,7 @@ Run status banner flips to **paused — waiting on human approval**. Cut to Slac
 
 > "I click approve in Slack.
 >
-> Couple seconds later, the action transitions to executed in Dejavas, the worker enqueues a resume job, and the agent loop continues — picks up exactly where it left off, no replay, no re-running Apollo or HubSpot.
+> Couple seconds later, the action transitions to executed in Agentbase, the worker enqueues a resume job, and the agent loop continues — picks up exactly where it left off, no replay, no re-running Apollo or HubSpot.
 >
 > Claude acknowledges the approval, writes a one-paragraph summary of what happened, and the run completes.
 >
@@ -118,7 +118,7 @@ Run status banner flips to **paused — waiting on human approval**. Cut to Slac
 >
 > Download as CSV. Hand it to your security team. This is what they'll want for SOC 2 review, customer security questionnaires, anything else that asks "show me what your AI agents actually did last week."
 >
-> If you've got an AI SDR pilot that's been stuck in draft-only mode, this is the unblock. Twenty-minute call to scope a pilot — link in the description."
+> If you've got an AI sales-agent pilot that's been blocked from production actions, this is the unblock. Twenty-minute call to scope a pilot — link in the description."
 
 ## Production notes
 
@@ -128,7 +128,7 @@ Run status banner flips to **paused — waiting on human approval**. Cut to Slac
 - **Cursor:** Add a cursor highlight (Cursor Pro or built into Loom). The viewer is following your clicks; make them findable.
 - **Captions:** Auto-generate, then proofread. ~30% of recipients will watch with sound off the first time.
 - **Total length:** 6 minutes hard cap. If the first cut is 7:30, you have at least 90 seconds of throat-clearing to cut — usually scene 1 or scene 3.
-- **Filename:** `dejavas-demo-6min.mp4`. Host on Loom or Mux; **don't** attach the file to an email — it gets stripped by half of mail servers.
+- **Filename:** `agentbase-demo-6min.mp4`. Host on Loom or Mux; **don't** attach the file to an email — it gets stripped by half of mail servers.
 
 ## What to record in case prospects ask for them later
 

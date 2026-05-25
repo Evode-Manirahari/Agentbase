@@ -1,9 +1,9 @@
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@dejavas/db';
-import { agents, agentApiKeys, orgs } from '@dejavas/db';
-import { AgentPermissionProfile } from '@dejavas/shared';
+import type { Database } from '@agentbase/db';
+import { agents, agentApiKeys, orgs } from '@agentbase/db';
+import { AgentPermissionProfile } from '@agentbase/shared';
 import { generateApiKey } from '../auth/api-key.js';
 import { AuditService } from '../audit/audit.service.js';
 

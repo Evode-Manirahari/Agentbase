@@ -6,12 +6,12 @@
 
 set -euo pipefail
 
-API="${DEJAVAS_BASE_URL:-http://localhost:3002}"
+API="${AGENTBASE_BASE_URL:-http://localhost:3002}"
 
 # Sanity check
 if ! curl -fsS "$API/health" >/dev/null 2>&1; then
-  echo "✗ Dejavas API is not responding at $API"
-  echo "  start it with: pnpm --filter '@dejavas/api' dev"
+  echo "✗ Agentbase API is not responding at $API"
+  echo "  start it with: pnpm --filter '@agentbase/api' dev"
   exit 1
 fi
 
@@ -37,6 +37,6 @@ echo "  key:      $(echo "$KEY" | cut -c1-12)…"
 echo
 echo "✓ Setup complete. Run the agent:"
 echo
-echo "  export DEJAVAS_API_KEY=$KEY"
-echo "  pnpm --filter '@dejavas/demo-agent' exec tsx src/index.ts"
+echo "  export AGENTBASE_API_KEY=$KEY"
+echo "  pnpm --filter '@agentbase/demo-agent' exec tsx src/index.ts"
 echo

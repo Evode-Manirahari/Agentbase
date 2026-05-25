@@ -141,7 +141,7 @@ describe('formatAuditJson', () => {
 describe('exportFilename', () => {
   it('produces filesystem-safe filenames with the requested extension', () => {
     const now = new Date('2026-05-18T13:14:15.678Z');
-    assert.equal(exportFilename('csv', now), 'dejavas-audit-2026-05-18T13-14-15Z.csv');
-    assert.equal(exportFilename('json', now), 'dejavas-audit-2026-05-18T13-14-15Z.json');
+    assert.equal(exportFilename('csv', now), 'agentbase-audit-2026-05-18T13-14-15Z.csv');
+    assert.equal(exportFilename('json', now), 'agentbase-audit-2026-05-18T13-14-15Z.json');
   });
 });

@@ -2,24 +2,24 @@
 //
 // Same lead-processing flow as src/index.ts, but the order of operations is
 // chosen by Claude (via Anthropic tool use) rather than hard-coded. Every
-// tool the model calls still goes through @dejavas/sdk, so policy /
+// tool the model calls still goes through @agentbase/sdk, so policy /
 // approval / audit / connector mediation is identical — the difference is
 // the reasoning layer on top.
 //
 // Run:
-//   ANTHROPIC_API_KEY=sk-ant-... DEJAVAS_API_KEY=dvk_... \
-//     pnpm --filter @dejavas/demo-agent run start:claude [email]
+//   ANTHROPIC_API_KEY=sk-ant-... AGENTBASE_API_KEY=agb_... \
+//     pnpm --filter @agentbase/demo-agent run start:claude [email]
 
 import Anthropic from '@anthropic-ai/sdk';
 import { betaZodTool } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod';
-import { DejavasClient } from '@dejavas/sdk';
+import { AgentbaseClient } from '@agentbase/sdk';
 
-const dejavasKey = process.env.DEJAVAS_API_KEY;
+const agentbaseKey = process.env.AGENTBASE_API_KEY;
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
-if (!dejavasKey) {
-  console.error('Set DEJAVAS_API_KEY (run examples/demo-agent/setup.sh first)');
+if (!agentbaseKey) {
+  console.error('Set AGENTBASE_API_KEY (run examples/demo-agent/setup.sh first)');
   process.exit(1);
 }
 if (!anthropicKey) {
@@ -27,14 +27,14 @@ if (!anthropicKey) {
   process.exit(1);
 }
 
-const dejavas = new DejavasClient({
-  apiKey: dejavasKey,
-  baseUrl: process.env.DEJAVAS_BASE_URL ?? 'http://localhost:3002',
+const agentbase = new AgentbaseClient({
+  apiKey: agentbaseKey,
+  baseUrl: process.env.AGENTBASE_BASE_URL ?? 'http://localhost:3002',
 });
 
 const anthropic = new Anthropic({ apiKey: anthropicKey });
 
-interface DejavasResult {
+interface AgentbaseResult {
   action_id: string;
   status:
     | 'pending'
@@ -50,7 +50,7 @@ interface DejavasResult {
   };
 }
 
-const STATUS_ICONS: Record<DejavasResult['status'], string> = {
+const STATUS_ICONS: Record<AgentbaseResult['status'], string> = {
   pending: '⏳',
   awaiting_approval: '🛂',
   approved: '✅',
@@ -59,14 +59,14 @@ const STATUS_ICONS: Record<DejavasResult['status'], string> = {
   failed: '✗',
 };
 
-async function callDejavas(
+async function callAgentbase(
   label: string,
   tool: string,
   params: Record<string, unknown>,
 ): Promise<string> {
   process.stdout.write(`\n→ ${label}\n  ${tool}\n`);
   const start = Date.now();
-  const r = (await dejavas.execute({ tool, params })) as unknown as DejavasResult;
+  const r = (await agentbase.execute({ tool, params })) as unknown as AgentbaseResult;
   const ms = Date.now() - start;
   const icon = STATUS_ICONS[r.status] ?? '?';
   console.log(`  ${icon} ${r.status} (${ms}ms)`);
@@ -90,7 +90,7 @@ async function callDejavas(
   });
 }
 
-// Tool definitions — each one is a thin wrapper around dejavas.execute().
+// Tool definitions — each one is a thin wrapper around agentbase.execute().
 // Claude sees these schemas and decides what to call when.
 
 const enrichPerson = betaZodTool({
@@ -101,7 +101,7 @@ const enrichPerson = betaZodTool({
     email: z.string().email().describe('The lead\'s email address'),
   }),
   run: async ({ email }) =>
-    callDejavas('Enrich the lead via Apollo', 'apollo.people.match', { email }),
+    callAgentbase('Enrich the lead via Apollo', 'apollo.people.match', { email }),
 });
 
 const enrichCompany = betaZodTool({
@@ -112,7 +112,7 @@ const enrichCompany = betaZodTool({
     domain: z.string().min(1).describe('Company domain, e.g. acme.com'),
   }),
   run: async ({ domain }) =>
-    callDejavas(
+    callAgentbase(
       'Enrich the company via Apollo',
       'apollo.organizations.match',
       { domain },
@@ -139,7 +139,7 @@ const createHubspotContact = betaZodTool({
     if (lastname) properties.lastname = lastname;
     if (company) properties.company = company;
     if (jobtitle) properties.jobtitle = jobtitle;
-    return callDejavas(
+    return callAgentbase(
       'Create or update the contact in HubSpot CRM',
       'hubspot.contacts.upsert',
       { email, properties },
@@ -160,7 +160,7 @@ const createHubspotDealFromLead = betaZodTool({
     note: z.string().optional(),
   }),
   run: async ({ email, company, dealname, amount, dealstage, note }) =>
-    callDejavas(
+    callAgentbase(
       'Create HubSpot contact + deal workflow',
       'hubspot.leads.create_deal',
       omitUndefined({
@@ -185,7 +185,7 @@ const draftGmailEmail = betaZodTool({
     body: z.string().min(1),
   }),
   run: async ({ to, subject, body }) =>
-    callDejavas(
+    callAgentbase(
       'Draft a personalized outreach email in Gmail',
       'gmail.draft.create',
       { to, subject, body },
@@ -202,7 +202,7 @@ const enrollOutreachSequence = betaZodTool({
     mailboxId: z.string().min(1),
   }),
   run: async ({ prospectId, sequenceId, mailboxId }) =>
-    callDejavas(
+    callAgentbase(
       'Enroll the prospect in an Outreach sequence',
       'outreach.sequences.enroll',
       { prospectId, sequenceId, mailboxId },
@@ -222,7 +222,7 @@ const updateHubspotDeal = betaZodTool({
     const properties: Record<string, unknown> = {};
     if (amount !== undefined) properties.amount = amount;
     if (dealstage !== undefined) properties.dealstage = dealstage;
-    return callDejavas(
+    return callAgentbase(
       'Update high-value deal in HubSpot',
       'hubspot.deals.update',
       { dealId, properties },
@@ -232,7 +232,7 @@ const updateHubspotDeal = betaZodTool({
 
 const SYSTEM_PROMPT = `You are a sales-development agent processing inbound leads at a B2B startup.
 
-Every action you take goes through Dejavas — an approval gate that mediates each call against an organization-defined policy. Some actions are auto-allowed, some require human approval, some are denied. The policy is configured for your safety and the company's: trust it.
+Every action you take goes through Agentbase — a secure action layer that mediates each call against an organization-defined policy. Some actions are auto-allowed, some require human approval, some are denied. The policy is configured for your safety and the company's: trust it.
 
 When a tool returns:
 - status "executed" or "failed" with connector_not_configured → the action ran (or would have, given credentials). Continue with the next step.

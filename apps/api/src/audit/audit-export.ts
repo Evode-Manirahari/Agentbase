@@ -48,7 +48,7 @@ export function* auditJsonChunks(
 
 export function exportFilename(format: AuditExportFormat, now: Date = new Date()): string {
   const stamp = now.toISOString().replace(/[:.]/g, '-').replace(/-\d{3}Z$/, 'Z');
-  return `dejavas-audit-${stamp}.${format}`;
+  return `agentbase-audit-${stamp}.${format}`;
 }
 
 function csvCell(row: AuditExportRow, col: (typeof AUDIT_EXPORT_COLUMNS)[number]): string {

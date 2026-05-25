@@ -1,5 +1,5 @@
 {
-  "name": "@dejavas/connector-salesforce",
+  "name": "@agentbase/connector-salesforce",
   "version": "0.0.0",
   "private": true,
   "type": "module",

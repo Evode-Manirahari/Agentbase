@@ -43,7 +43,7 @@ export function CreateWebhookForm() {
                 Receivers verify requests by computing
                 HMAC-SHA256(<code>${'{'}timestamp{'}'}.${'{'}body{'}'}</code>) with
                 this secret and comparing to the
-                <code>x-dejavas-signature</code> header.
+                <code>x-agentbase-signature</code> header.
               </p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 px-3 py-2 rounded bg-[var(--color-bg)] border border-[var(--color-border)] text-xs break-all mono text-[var(--color-text)]">

@@ -1,11 +1,11 @@
 // Transcript types emitted by the agent runtime.
 //
-// These describe what the LLM did and what each Dejavas tool call returned.
+// These describe what the LLM did and what each Agentbase tool call returned.
 // The shape is deliberately decoupled from Anthropic's SDK types so the
 // runtime's public surface doesn't leak the LLM provider — that lets us
 // swap LLMs or mock the loop without touching consumers.
 
-import type { ActionStatus, PolicyDecision } from '@dejavas/shared';
+import type { ActionStatus, PolicyDecision } from '@agentbase/shared';
 
 export type TranscriptEntry =
   | { type: 'agent_thinking'; text: string }
@@ -14,7 +14,7 @@ export type TranscriptEntry =
       type: 'tool_call';
       tool_use_id: string;
       job_tool_name: string;
-      dejavas_tool: string;
+      agentbase_tool: string;
       params: Record<string, unknown>;
     }
   | {
@@ -44,7 +44,7 @@ export interface AgentRunResult {
   paused_on?: {
     action_id: string;
     tool_use_id: string;
-    dejavas_tool: string;
+    agentbase_tool: string;
   };
   // Set when status === 'failed'.
   error?: string;

@@ -48,7 +48,7 @@ export async function startCampaignAction(
     });
     batchId = created.batch_id;
   } catch (e) {
-    return { error: (e as Error).message ?? 'campaign batch create failed' };
+    return { error: (e as Error).message ?? 'governed batch create failed' };
   }
 
   revalidatePath('/campaigns');

@@ -1,6 +1,6 @@
 export const QUEUE = Symbol('QUEUE');
 export const REDIS_CONNECTION = Symbol('REDIS_CONNECTION');
-export const QUEUE_NAME = 'dejavas';
+export const QUEUE_NAME = 'agentbase';
 export const EXPIRY_JOB = 'approval.expiry_sweep';
 export const AGENT_RUN_JOB = 'agent.run';
 

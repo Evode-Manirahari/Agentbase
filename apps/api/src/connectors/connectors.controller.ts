@@ -20,7 +20,7 @@ import {
   ConnectorProvider,
   type ConnectorCredentialRequest as ConnectorCredentialRequestT,
   type ConnectorProvider as ConnectorProviderT,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { ConnectorRegistry } from './connector-registry.js';

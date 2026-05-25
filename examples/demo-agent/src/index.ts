@@ -1,23 +1,23 @@
-// Reference agent that exercises five connectors through @dejavas/sdk in
+// Reference agent that exercises five connectors through @agentbase/sdk in
 // the typical "inbound lead" flow. Prints the policy decision + outcome
-// for each step so you can see exactly where Dejavas mediates.
+// for each step so you can see exactly where Agentbase mediates.
 //
 // Run:
-//   DEJAVAS_API_KEY=dvk_... pnpm --filter @dejavas/demo-agent exec tsx src/index.ts [email]
+//   AGENTBASE_API_KEY=agb_... pnpm --filter @agentbase/demo-agent exec tsx src/index.ts [email]
 
-import { DejavasClient, DejavasError } from '@dejavas/sdk';
+import { AgentbaseClient, AgentbaseError } from '@agentbase/sdk';
 
-const apiKey = process.env.DEJAVAS_API_KEY;
-const baseUrl = process.env.DEJAVAS_BASE_URL ?? 'http://localhost:3002';
+const apiKey = process.env.AGENTBASE_API_KEY;
+const baseUrl = process.env.AGENTBASE_BASE_URL ?? 'http://localhost:3002';
 
 if (!apiKey) {
-  console.error('Set DEJAVAS_API_KEY (register an agent via examples/demo-agent/setup.sh)');
+  console.error('Set AGENTBASE_API_KEY (register an agent via examples/demo-agent/setup.sh)');
   process.exit(1);
 }
 
-const dejavas = new DejavasClient({ apiKey, baseUrl });
+const agentbase = new AgentbaseClient({ apiKey, baseUrl });
 
-interface DejavasStepResult {
+interface AgentbaseStepResult {
   action_id: string;
   status:
     | 'pending'
@@ -33,7 +33,7 @@ interface DejavasStepResult {
   };
 }
 
-const STATUS_ICONS: Record<DejavasStepResult['status'], string> = {
+const STATUS_ICONS: Record<AgentbaseStepResult['status'], string> = {
   pending: '⏳',
   awaiting_approval: '🛂',
   approved: '✅',
@@ -45,11 +45,11 @@ const STATUS_ICONS: Record<DejavasStepResult['status'], string> = {
 async function step(
   label: string,
   body: { tool: string; params: Record<string, unknown> },
-): Promise<DejavasStepResult | null> {
+): Promise<AgentbaseStepResult | null> {
   process.stdout.write(`\n→ ${label}\n  ${body.tool}\n`);
   const start = Date.now();
   try {
-    const r = (await dejavas.execute(body)) as unknown as DejavasStepResult;
+    const r = (await agentbase.execute(body)) as unknown as AgentbaseStepResult;
     const ms = Date.now() - start;
     const icon = STATUS_ICONS[r.status] ?? '?';
     console.log(`  ${icon} ${r.status} (${ms}ms)`);
@@ -67,7 +67,7 @@ async function step(
     return r;
   } catch (err) {
     const ms = Date.now() - start;
-    if (err instanceof DejavasError) {
+    if (err instanceof AgentbaseError) {
       console.log(`  ✗ HTTP ${err.status} (${ms}ms)`);
       console.log(`  ↳ ${JSON.stringify(err.body).slice(0, 160)}`);
     } else {
@@ -82,7 +82,7 @@ async function main() {
   const domain = email.split('@')[1] ?? 'acme.com';
 
   console.log(`\n🤖 demo-agent — processing inbound lead\n   ${email}`);
-  console.log(`   (every action is mediated by Dejavas)\n`);
+  console.log(`   (every action is mediated by Agentbase)\n`);
 
   // 1. Enrich the person via Apollo (low-stakes read; should auto-allow)
   await step('Enrich the lead via Apollo', {
@@ -147,7 +147,7 @@ async function main() {
         `Hi,`,
         ``,
         `Saw you're at ${domain} and noticed you're deploying AI sales agents.`,
-        `We're building Dejavas — Okta + Zapier + Datadog for AI sales agents.`,
+        `We're building Agentbase — Okta + Zapier + Datadog for AI sales agents.`,
         `Worth 15 min next week?`,
         ``,
         `— demo-agent`,

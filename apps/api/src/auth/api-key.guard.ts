@@ -7,8 +7,8 @@ import {
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@dejavas/db';
-import { agents, agentApiKeys } from '@dejavas/db';
+import type { Database } from '@agentbase/db';
+import { agents, agentApiKeys } from '@agentbase/db';
 import { hashApiKey, isValidKeyShape } from './api-key.js';
 
 export interface AuthedAgent {

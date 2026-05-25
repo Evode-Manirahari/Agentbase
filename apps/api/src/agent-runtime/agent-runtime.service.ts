@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import type { ActionStatus, PolicyDecision } from '@dejavas/shared';
+import type { ActionStatus, PolicyDecision } from '@agentbase/shared';
 import { ActionsService } from '../actions/actions.service.js';
 import { JobRegistry, type Job, type JobTool } from './job.js';
 import {
@@ -233,14 +233,14 @@ export class AgentRuntimeService {
         type: 'tool_call',
         tool_use_id: toolUse.id,
         job_tool_name: toolUse.name,
-        dejavas_tool: jobTool.dejavasTool,
+        agentbase_tool: jobTool.agentbaseTool,
         params,
       });
 
       const result = await this.actions.execute({
         orgId,
         agentId,
-        tool: jobTool.dejavasTool,
+        tool: jobTool.agentbaseTool,
         params,
       });
 
@@ -260,7 +260,7 @@ export class AgentRuntimeService {
           paused_on: {
             action_id: result.action_id,
             tool_use_id: toolUse.id,
-            dejavas_tool: jobTool.dejavasTool,
+            agentbase_tool: jobTool.agentbaseTool,
           },
           usage,
           messages,

@@ -35,33 +35,33 @@ importers:
 
   apps/api:
     dependencies:
+      '@agentbase/connector-apollo':
+        specifier: workspace:*
+        version: link:../../connectors/apollo
+      '@agentbase/connector-gmail':
+        specifier: workspace:*
+        version: link:../../connectors/gmail
+      '@agentbase/connector-hubspot':
+        specifier: workspace:*
+        version: link:../../connectors/hubspot
+      '@agentbase/connector-outreach':
+        specifier: workspace:*
+        version: link:../../connectors/outreach
+      '@agentbase/connector-salesforce':
+        specifier: workspace:*
+        version: link:../../connectors/salesforce
+      '@agentbase/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@agentbase/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@anthropic-ai/sdk':
         specifier: ^0.92.0
         version: 0.92.0(zod@3.25.76)
       '@clerk/backend':
         specifier: ^1.21.0
         version: 1.34.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@dejavas/connector-apollo':
-        specifier: workspace:*
-        version: link:../../connectors/apollo
-      '@dejavas/connector-gmail':
-        specifier: workspace:*
-        version: link:../../connectors/gmail
-      '@dejavas/connector-hubspot':
-        specifier: workspace:*
-        version: link:../../connectors/hubspot
-      '@dejavas/connector-outreach':
-        specifier: workspace:*
-        version: link:../../connectors/outreach
-      '@dejavas/connector-salesforce':
-        specifier: workspace:*
-        version: link:../../connectors/salesforce
-      '@dejavas/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@dejavas/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@fastify/helmet':
         specifier: ^11.1.1
         version: 11.1.1
@@ -129,12 +129,12 @@ importers:
 
   apps/web:
     dependencies:
+      '@agentbase/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@clerk/nextjs':
         specifier: ^6.10.0
         version: 6.39.3(next@15.5.15(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@dejavas/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       next:
         specifier: ^15.1.3
         version: 15.5.15(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -222,12 +222,12 @@ importers:
 
   examples/demo-agent:
     dependencies:
+      '@agentbase/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@anthropic-ai/sdk':
         specifier: ^0.92.0
         version: 0.92.0(zod@3.25.76)
-      '@dejavas/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -263,7 +263,7 @@ importers:
 
   packages/sdk:
     dependencies:
-      '@dejavas/shared':
+      '@agentbase/shared':
         specifier: workspace:*
         version: link:../shared
     devDependencies:

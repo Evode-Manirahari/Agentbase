@@ -80,7 +80,7 @@ export class RateLimitService {
 
     try {
       // Per-tool first — narrower scope catches single-endpoint abuse early.
-      const toolKey = `dejavas:rl:tool:${input.orgId}:${input.agentId}:${input.tool}`;
+      const toolKey = `agentbase:rl:tool:${input.orgId}:${input.agentId}:${input.tool}`;
       const toolRes = await this.run(toolKey, now, this.perToolPerMin, member);
       if (!toolRes.ok) {
         return {
@@ -91,7 +91,7 @@ export class RateLimitService {
         };
       }
 
-      const agentKey = `dejavas:rl:agent:${input.orgId}:${input.agentId}`;
+      const agentKey = `agentbase:rl:agent:${input.orgId}:${input.agentId}`;
       const agentRes = await this.run(agentKey, now, this.perAgentPerMin, member);
       if (!agentRes.ok) {
         return {

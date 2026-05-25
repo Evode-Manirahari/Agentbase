@@ -8,7 +8,7 @@ import {
   policyTemplateStandaloneYaml,
   type PolicyTemplate,
   type PolicyTemplateKey,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 import { evaluatePolicy } from './policy-engine.js';
 
 function findTemplate(key: PolicyTemplateKey): PolicyTemplate {

@@ -2,7 +2,7 @@
 
 import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { HubspotConnector } from '@dejavas/connector-hubspot';
+import { HubspotConnector } from '@agentbase/connector-hubspot';
 
 interface FetchCall {
   url: string;

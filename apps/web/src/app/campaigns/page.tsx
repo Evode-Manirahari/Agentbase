@@ -25,10 +25,10 @@ export default async function CampaignsPage() {
 
   return (
     <div className="max-w-5xl">
-      <H1>Campaigns</H1>
+      <H1>Agent runs</H1>
       <Subtitle>
-        Run an AI SDR agent against one lead. Risky writes pause for human approval —
-        the safety story is wired at the code level, not marketing.
+        Launch governed revenue-agent jobs. Each tool call is mediated by
+        identity, policy, approval routing, connector dispatch, and audit.
       </Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}
@@ -38,7 +38,7 @@ export default async function CampaignsPage() {
       </Card>
 
       <div className="mt-8">
-        <div className="text-sm font-medium mb-2">Recent runs</div>
+        <div className="text-sm font-medium mb-2">Recent agent runs</div>
         {runs.length === 0 ? (
           <EmptyState>No runs yet.</EmptyState>
         ) : (

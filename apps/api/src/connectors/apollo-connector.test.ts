@@ -2,7 +2,7 @@
 
 import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { ApolloConnector } from '@dejavas/connector-apollo';
+import { ApolloConnector } from '@agentbase/connector-apollo';
 
 interface FetchCall {
   url: string;

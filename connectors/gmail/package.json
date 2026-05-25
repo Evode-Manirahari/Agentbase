@@ -1,5 +1,5 @@
 {
-  "name": "@dejavas/connector-gmail",
+  "name": "@agentbase/connector-gmail",
   "version": "0.0.0",
   "private": true,
   "type": "module",

@@ -27,8 +27,8 @@ import {
   actions,
   approvals,
   auditLog,
-} from '@dejavas/db';
-import type { Connector, ConnectorResult } from '@dejavas/connector-hubspot';
+} from '@agentbase/db';
+import type { Connector, ConnectorResult } from '@agentbase/connector-hubspot';
 import { ApprovalsService } from './approvals.service.js';
 import type { AgentRunsService } from '../agent-runtime/agent-runs.service.js';
 
@@ -44,7 +44,7 @@ import type { ConnectorRegistry } from '../connectors/connector-registry.js';
 import type { SlackService } from '../slack/slack.service.js';
 
 const DB_URL =
-  process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
+  process.env.DATABASE_URL ?? 'postgresql://agentbase:agentbase@localhost:5433/agentbase';
 
 class StubRegistry {
   invocations: { tool: string; params: Record<string, unknown> }[] = [];
@@ -161,7 +161,7 @@ describe('ApprovalsService.decide', () => {
       approvalId,
       orgId,
       decision: 'deny',
-      decidedByEmail: 'alice@dejavas.test',
+      decidedByEmail: 'alice@agentbase.test',
     });
 
     assert.equal(result.decision, 'denied');
@@ -193,7 +193,7 @@ describe('ApprovalsService.decide', () => {
       approvalId,
       orgId,
       decision: 'approve',
-      decidedByEmail: 'alice@dejavas.test',
+      decidedByEmail: 'alice@agentbase.test',
     });
 
     assert.equal(result.decision, 'approved');
@@ -307,7 +307,7 @@ describe('ApprovalsService.decide', () => {
       approvalId,
       orgId,
       decision: 'approve',
-      decidedByEmail: 'alice@dejavas.test',
+      decidedByEmail: 'alice@agentbase.test',
     });
     assert.equal(result.action_status, 'executed');
 
@@ -367,7 +367,7 @@ describe('ApprovalsService.decide', () => {
       orgId,
       approvalIds: ids,
       decision: 'approve',
-      decidedByEmail: 'rev@dejavas.test',
+      decidedByEmail: 'rev@agentbase.test',
     });
 
     assert.equal(out.summary.decided, 3);
@@ -391,14 +391,14 @@ describe('ApprovalsService.decide', () => {
       approvalId: seeds[0]!.approvalId,
       orgId,
       decision: 'approve',
-      decidedByEmail: 'rev@dejavas.test',
+      decidedByEmail: 'rev@agentbase.test',
     });
 
     const out = await svc.bulkDecide({
       orgId,
       approvalIds: [seeds[0]!.approvalId, seeds[1]!.approvalId],
       decision: 'approve',
-      decidedByEmail: 'rev@dejavas.test',
+      decidedByEmail: 'rev@agentbase.test',
     });
 
     assert.equal(out.summary.decided, 1);
@@ -414,7 +414,7 @@ describe('ApprovalsService.decide', () => {
       orgId,
       approvalIds: [approvalId, randomUUID()],
       decision: 'approve',
-      decidedByEmail: 'rev@dejavas.test',
+      decidedByEmail: 'rev@agentbase.test',
     });
 
     assert.equal(out.summary.decided, 1);

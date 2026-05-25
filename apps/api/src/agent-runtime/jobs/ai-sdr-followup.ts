@@ -1,7 +1,7 @@
 import type { Job } from '../job.js';
 
 // Fourth job in the bundle. Triggered automatically by the BullMQ
-// scheduler when a touch-1 SDR send has gone 3 days (touch 2) or
+// scheduler when a touch-1 outbound send has gone 3 days (touch 2) or
 // 7 days (touch 3) without a reply.
 //
 // Architecturally identical to ai-reply-handler: it takes thread
@@ -16,9 +16,9 @@ import type { Job } from '../job.js';
 // created. By the time this job's runtime is executing, the
 // prospect has not replied.
 
-const SYSTEM_PROMPT = `You are an AI SDR sending a follow-up to a prospect who did not reply to your earlier outbound email. This is touch {touch_number} of a 3-touch sequence.
+const SYSTEM_PROMPT = `You are an AI sales agent sending a follow-up to a prospect who did not reply to your earlier outbound email. This is touch {touch_number} of a 3-touch sequence.
 
-Every action you take goes through Dejavas — an approval gate that mediates each tool call against an organization-defined policy. Sending email pauses for human review; that's expected.
+Every action you take goes through Agentbase — a secure action layer that mediates each tool call against an organization-defined policy. Sending email pauses for human review; that's expected.
 
 The thread id and recipient email are in the user message. To work the follow-up:
 1. Call read_thread_metadata with the thread id to see the message list.
@@ -36,9 +36,9 @@ When done, produce a one-sentence summary noting what angle you used.`;
 
 export const AI_SDR_FOLLOWUP_JOB: Job = {
   key: 'ai-sdr-followup',
-  label: 'AI SDR — follow-up',
+  label: 'Revenue Agent — follow-up',
   description:
-    'Sends touch 2 or 3 of a 3-touch outbound sequence. Reads the original thread, drafts a short contextual bump, sends via the same approval gate.',
+    'Sends touch 2 or 3 of a 3-touch outbound sequence. Reads the original thread, drafts a short contextual bump, sends through the same secure action layer.',
   model: 'claude-opus-4-7',
   maxIterations: 10,
   systemPrompt: SYSTEM_PROMPT,
@@ -83,7 +83,7 @@ export const AI_SDR_FOLLOWUP_JOB: Job = {
         },
         required: ['thread_id'],
       },
-      dejavasTool: 'gmail.threads.get',
+      agentbaseTool: 'gmail.threads.get',
       paramMapper: (input) => ({
         threadId: input['thread_id'],
         format: 'metadata',
@@ -100,7 +100,7 @@ export const AI_SDR_FOLLOWUP_JOB: Job = {
         },
         required: ['message_id'],
       },
-      dejavasTool: 'gmail.messages.get',
+      agentbaseTool: 'gmail.messages.get',
       paramMapper: (input) => ({
         messageId: input['message_id'],
         format: 'full',
@@ -123,7 +123,7 @@ export const AI_SDR_FOLLOWUP_JOB: Job = {
         },
         required: ['to', 'subject', 'body', 'thread_id'],
       },
-      dejavasTool: 'gmail.send',
+      agentbaseTool: 'gmail.send',
       paramMapper: (input) => ({
         to: input['to'],
         subject: input['subject'],

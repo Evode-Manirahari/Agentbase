@@ -1,34 +1,41 @@
-# Dejavas
+# Agentbase
 
-> An AI SDR you can run in production — because every risky action is approval-gated and audit-ready by default.
+> Cross-stack governance for revenue agents before they touch CRM, email, and sales tools.
 
 [![CI](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml/badge.svg)](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml)
 
-> The product name is **Dejavas**. The repository is named **Agentbase**.
+Agentbase is the secure action layer for AI sales agents.
+
+The product direction source of truth lives in [docs/positioning.md](./docs/positioning.md).
 
 ## What this is
 
-RevOps teams are buying AI SDRs and watching them stall. The pattern is consistent: the agent works in demos, but the moment it tries to write to Salesforce, update a HubSpot deal, or send a real email, security pulls the OAuth scopes and the pilot dies in draft-only mode.
+Sales teams are deploying AI agents into Salesforce, Gmail, Slack, Outreach, Apollo, and enrichment tools. The agents can research accounts, enrich leads, update CRM fields, draft emails, create tasks, summarize deal activity, and keep follow-up moving. Security and IT block them before they can touch revenue systems because the agents lack scoped identity, approval rules, revocation, and audit trails.
 
-Dejavas ships the **agent and the safety rails together**:
+Agentbase is the control plane those teams can trust:
 
-- The agent is an AI SDR that enriches inbound leads (Apollo), upserts CRM contacts (HubSpot or Salesforce), drafts personalized outreach (Claude `claude-opus-4-7`), and sends — through the gate.
-- The gate is the approval workflow, policy templates, audit export, and Slack-driven human-in-the-loop that PR-1-through-3 of this repo wired. Every tool call the agent makes runs through the same `ActionsService.execute` path an external customer would — so the safety story is true at the code level, not marketing.
+- Give every sales agent an identity and scoped API key.
+- Govern what it can do across CRM, email, Slack-adjacent approvals, sequencing, and enrichment tools.
+- Route sensitive actions to humans before execution.
+- Revoke compromised or over-scoped agents quickly.
+- Monitor every attempted action with policy decisions, connector outcomes, and exportable audit trails.
 
 The pitch:
 
-> **An AI SDR a RevOps team can run in production today, because security can read the policy YAML, audit the export, and approve every risky write in Slack before it touches a CRM record.**
+> **Agentbase is Okta + Zapier + Datadog for AI sales agents: identity, governed execution, and observability across the revenue stack.**
 
-Buyer is RevOps / Revenue Systems leaders; security and IT are the required sign-off. Expansion jobs (AI CRM hygiene v1.1, AI deal-update agent v1.2) sit on the same runtime — adding a new "job" is data + prompts, not a new product.
+Buyer is RevOps / Revenue Systems teams deploying agents. Security and IT are the required sign-off. Salesforce, HubSpot, Outreach, and Gmail can govern agents inside their own products; Agentbase governs agents across the full revenue workflow.
+
+The bundled outbound, follow-up, reply-handler, CRM hygiene, and lead-list flows are proof points for the platform. The product is not "an AI SDR." The product is the cross-stack action layer that lets any revenue agent act safely.
 
 ## How the demo works
 
 End-to-end in <2 minutes once the API is up:
 
 1. Open `http://localhost:3000/campaigns`.
-2. Pick the **AI SDR — outbound** job and an active agent identity.
-3. Paste a lead email + optional notes. Click **Run**.
-4. You're redirected to `/campaigns/[id]`, which polls live as Claude:
+2. Pick the **Revenue Agent — outbound** job and an active agent identity.
+3. Paste lead emails + optional notes. Click **Start governed run**.
+4. You're redirected to `/campaigns/batch/[id]`, which polls live as Claude:
    - calls `apollo.people.match` and `apollo.organizations.match` (auto-execute)
    - calls `hubspot.contacts.upsert` (auto-execute)
    - calls `gmail.draft.create` (auto-execute)
@@ -37,7 +44,7 @@ End-to-end in <2 minutes once the API is up:
 6. Approver clicks ✓. The action transitions to `executed`, the worker picks up the resume job, the loop continues, and the dashboard timeline updates to `completed` with a final summary from Claude.
 7. Every state transition is in the audit log; **Download CSV** on `/audit` hands security the evidence.
 
-The same loop runs on Salesforce + Gmail + Slack instead of HubSpot if that's the customer's stack — the SDR job uses Apollo + HubSpot today, but the runtime is connector-agnostic.
+The same control loop applies to Salesforce + Gmail + Slack, HubSpot + Gmail + Slack, Outreach sequencing, Apollo enrichment, and future revenue-stack connectors. The current outbound job is one workflow on top of a generic runtime and connector gate.
 
 ## Status
 
@@ -45,29 +52,29 @@ Early. The full demoable loop works end-to-end locally. Production auth now fail
 
 ## What works today
 
-The agent:
+The governed runtime:
 
-- **Agent runtime** — generic loop on the API (`apps/api/src/agent-runtime/`) that takes a `Job` config (system prompt + tool list + initial-message builder) and a context, calls Claude via the Anthropic SDK with adaptive thinking and `xhigh` effort, dispatches every tool call through the existing approval gate, and returns a transcript. Pauses cleanly on `awaiting_approval`; resumes when the approval lands. Single tool per turn via `disable_parallel_tool_use` so pause state stays simple.
-- **AI SDR job (v1)** — the first job. Enrich the lead, upsert the CRM contact, draft a personalized email, send it. The send hits the `approval-before-external-email` template (auto-paused for human review). System prompt forces sequential tool calls and concise reasoning.
+- **Agent runtime** — generic loop on the API (`apps/api/src/agent-runtime/`) that takes a `Job` config (system prompt + tool list + initial-message builder) and a context, calls Claude via the Anthropic SDK with adaptive thinking and `xhigh` effort, dispatches every tool call through the same `ActionsService.execute` path an external agent would use, and returns a transcript. Pauses cleanly on `awaiting_approval`; resumes when the approval lands. Single tool per turn via `disable_parallel_tool_use` so pause state stays simple.
+- **Revenue-agent jobs** — outbound lead handling, follow-up, reply handling, and CRM hygiene prove that one runtime can govern research, enrichment, CRM writes, task creation, and email sending. Adding a new workflow is data + prompts, not a new product.
 - **Async runs + resume** — `agent_runs` table persists conversation state. `POST /v1/campaigns/runs` enqueues a BullMQ job, returns the run id immediately. `GET /v1/campaigns/runs/:id` is polled by the dashboard. When a Slack approval (or the expiry sweeper) transitions the action out of `awaiting_approval`, `ApprovalsService` notifies `AgentRunsService` and a resume job continues the loop with the resolved tool_result.
-- **Campaigns dashboard** — `/campaigns` form to paste a lead, redirect to `/campaigns/[id]` with live polling. Recent runs table on the index page. Transcript view tones agent_thinking / agent_message / tool_call / tool_result blocks by status (allow=green, require_approval=amber, deny/failed=rose).
+- **Runs dashboard** — `/campaigns` launches governed runs, including batches from lead lists. Recent runs table on the index page. Transcript view tones agent_thinking / agent_message / tool_call / tool_result blocks by status (allow=green, require_approval=amber, deny/failed=rose).
 
-The safety rails:
+The secure action layer:
 
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
 - **Slack approval cards** — interactive Approve / Deny buttons with the full action payload, signed webhook (HMAC + 5-min replay window), per-rule channel routing, two-way consistency (web decisions update the Slack card via `chat.update`)
 - **Policy templates** — three one-click templates that cover the most common pilot questions: require approval before external email, require approval on CRM writes over $10k, and deny delete/export/bulk actions. Sit above the YAML editor so the RevOps buyer never has to write Rego on call one.
 - **Audit log + export** — every state transition recorded with actor type/id, exportable as RFC 4180 CSV or JSON straight from the dashboard, so security teams can take evidence into SOC 2 reviews and questionnaires
-- **Production auth refusal** — `ClerkAuthGuard` and the Next middleware both throw at boot if `NODE_ENV=production` and Clerk env vars aren't set; explicit `DEJAVAS_ALLOW_UNAUTHENTICATED=1` is the only way to opt out
+- **Production auth refusal** — `ClerkAuthGuard` and the Next middleware both throw at boot if `NODE_ENV=production` and Clerk env vars aren't set; explicit `AGENTBASE_ALLOW_UNAUTHENTICATED=1` is the only way to opt out
 
 The plumbing both sides share:
 
-- **Identity & API keys** — register agents, assign permission profiles, issue scoped `dvk_…` tokens (sha256-hashed at rest), and revoke agents idempotently
-- **Permission profiles** — Sales SDR, RevOps Admin, Support Agent, Read-only Analyst, and Custom — used to seed policy templates per agent role
+- **Identity & API keys** — register agents, assign permission profiles, issue scoped `agb_…` tokens (sha256-hashed at rest), and revoke agents idempotently
+- **Permission profiles** — Sales Agent, RevOps Admin, Support Agent, Read-only Analyst, and Custom — used to seed policy templates per agent role
 - **Policy DSL** — YAML + Zod, rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, agent id/name/profile matching, dotted-path conditions with `eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`; the templates compile to this, and security can read it
-- **GTM connectors** — Salesforce, HubSpot, Gmail, Outreach, and Apollo, all behind the same approval gate, with Zod-validated params and structured connector errors. Pilots ship on Salesforce + Gmail + Slack or HubSpot + Gmail + Slack; the rest are available if a customer asks.
+- **Revenue-stack connectors** — Salesforce, HubSpot, Gmail, Outreach, and Apollo, all behind the same secure action layer, with Zod-validated params and structured connector errors. Pilots ship on Salesforce + Gmail + Slack or HubSpot + Gmail + Slack; the rest are available if a customer asks.
 - **Org-scoped connector credentials** — HubSpot, Salesforce, Gmail, and Outreach OAuth install/reconnect plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, refresh access tokens before connector dispatch, show account/expiry metadata, can be tested from the dashboard, and can be disabled to block inherited env fallback
-- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Campaigns, Agents, Policies (templates + YAML editor), Approvals (web inbox alongside Slack), Actions, Connectors, Webhooks, Audit
+- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Runs, Lead lists, Agents, Policies (templates + YAML editor), Approvals (web inbox alongside Slack), Actions, Connectors, Webhooks, Audit
 - **CI + tests** — GitHub Actions gates lint, typecheck, production build, the API test suite, and Playwright dashboard E2E including connector credential/OAuth-state and permission-profile coverage
 
 ## Quick start
@@ -102,17 +109,17 @@ pnpm install
 docker compose -f infra/docker-compose.yml up -d
 
 # Apply schema
-DATABASE_URL=postgresql://dejavas:dejavas@localhost:5433/dejavas \
-  pnpm --filter '@dejavas/db' exec drizzle-kit push --force
+DATABASE_URL=postgresql://agentbase:agentbase@localhost:5433/agentbase \
+  pnpm --filter '@agentbase/db' exec drizzle-kit push --force
 
 # Env
 cp apps/api/.env.example apps/api/.env
 
 # API on :3002
-pnpm --filter '@dejavas/api' dev
+pnpm --filter '@agentbase/api' dev
 
 # Web on :3000 (in another terminal)
-pnpm --filter '@dejavas/web' dev
+pnpm --filter '@agentbase/web' dev
 ```
 
 ### Deploy to Fly.io
@@ -121,18 +128,18 @@ Two Fly apps (api + web) wired by setting `API_URL` on the web app to point at t
 
 ```bash
 # API
-fly apps create dejavas-api-CHANGEME --config infra/fly.api.toml
-fly postgres create --name dejavas-pg-CHANGEME --region iad
-fly postgres attach dejavas-pg-CHANGEME --app dejavas-api-CHANGEME       # sets DATABASE_URL
-fly redis create --name dejavas-redis-CHANGEME --region iad
+fly apps create agentbase-api-CHANGEME --config infra/fly.api.toml
+fly postgres create --name agentbase-pg-CHANGEME --region iad
+fly postgres attach agentbase-pg-CHANGEME --app agentbase-api-CHANGEME   # sets DATABASE_URL
+fly redis create --name agentbase-redis-CHANGEME --region iad
 fly secrets set REDIS_URL=redis://... --config infra/fly.api.toml
 fly secrets set CONNECTOR_CREDENTIALS_KEY="base64:$(openssl rand -base64 32)" --config infra/fly.api.toml
-fly secrets set API_PUBLIC_URL=https://dejavas-api-CHANGEME.fly.dev DASHBOARD_URL=https://dejavas-web-CHANGEME.fly.dev --config infra/fly.api.toml
+fly secrets set API_PUBLIC_URL=https://agentbase-api-CHANGEME.fly.dev DASHBOARD_URL=https://agentbase-web-CHANGEME.fly.dev --config infra/fly.api.toml
 fly deploy --config infra/fly.api.toml --remote-only
 
 # Web (after the API is live)
-fly apps create dejavas-web-CHANGEME --config infra/fly.web.toml
-fly secrets set API_URL=https://dejavas-api-CHANGEME.fly.dev --config infra/fly.web.toml
+fly apps create agentbase-web-CHANGEME --config infra/fly.web.toml
+fly secrets set API_URL=https://agentbase-api-CHANGEME.fly.dev --config infra/fly.web.toml
 fly deploy --config infra/fly.web.toml --remote-only
 ```
 
@@ -143,10 +150,10 @@ To plug in real connectors after deploy, connect HubSpot, Salesforce, Gmail, or 
 For connector OAuth, register the matching redirect URLs in each provider app:
 
 ```text
-https://dejavas-api-CHANGEME.fly.dev/v1/connectors/hubspot/oauth/callback
-https://dejavas-api-CHANGEME.fly.dev/v1/connectors/salesforce/oauth/callback
-https://dejavas-api-CHANGEME.fly.dev/v1/connectors/gmail/oauth/callback
-https://dejavas-api-CHANGEME.fly.dev/v1/connectors/outreach/oauth/callback
+https://agentbase-api-CHANGEME.fly.dev/v1/connectors/hubspot/oauth/callback
+https://agentbase-api-CHANGEME.fly.dev/v1/connectors/salesforce/oauth/callback
+https://agentbase-api-CHANGEME.fly.dev/v1/connectors/gmail/oauth/callback
+https://agentbase-api-CHANGEME.fly.dev/v1/connectors/outreach/oauth/callback
 ```
 
 Then set the provider's `*_CLIENT_ID` and `*_CLIENT_SECRET` on the API app.
@@ -154,7 +161,7 @@ Then set the provider's `*_CLIENT_ID` and `*_CLIENT_SECRET` on the API app.
 ## Smoke-test the loop
 
 ```bash
-# 1. Register an agent and capture the dvk_ key
+# 1. Register an agent and capture the agb_ key
 REG=$(curl -s -X POST localhost:3002/v1/agents \
   -H 'content-type: application/json' \
   -d '{"name":"demo-agent"}')
@@ -179,7 +186,7 @@ curl -s localhost:3002/v1/approvals | jq
 APPROVAL=$(curl -s localhost:3002/v1/approvals | jq -r '.items[0].approval_id')
 curl -s -X POST "localhost:3002/v1/approvals/$APPROVAL/decision" \
   -H 'content-type: application/json' \
-  -d '{"decision":"approve","decided_by_email":"alice@dejavas.test"}'
+  -d '{"decision":"approve","decided_by_email":"alice@agentbase.test"}'
 # → action transitions to executed (or failed/connector_not_configured if no HubSpot token set)
 ```
 
@@ -214,7 +221,7 @@ apps/
 packages/
 ├── db/                  Drizzle schema + client (orgs/users/agents/keys/policies/actions/approvals/connectors/audit_log)
 ├── shared/              Zod schemas + types (used by API, SDK, web)
-└── sdk/                 @dejavas/sdk client (what agents import)
+└── sdk/                 @agentbase/sdk client (what agents import)
 
 connectors/
 ├── hubspot/             HubspotConnector (CRM v3)
@@ -224,7 +231,7 @@ connectors/
 └── apollo/              ApolloConnector (v1; X-Api-Key auth)
 
 examples/
-└── demo-agent/          Reference agent that uses @dejavas/sdk
+└── demo-agent/          Reference agent that uses @agentbase/sdk
 
 infra/
 └── docker-compose.yml   Postgres + Redis for local dev
@@ -240,7 +247,7 @@ infra/
 | Frontend | Next.js 15 + React 19 + Tailwind v4 |
 | Validation | Zod (shared API ↔ SDK ↔ web) |
 | Tests | `node:test` via @swc-node/register |
-| Agent auth | sha256-hashed API keys (`dvk_…` prefix) |
+| Agent auth | sha256-hashed API keys (`agb_…` prefix) |
 | Human auth | Clerk JWT verification on the API + dashboard token forwarding |
 | Build | pnpm workspaces + Turborepo |
 
@@ -250,15 +257,15 @@ infra/
 pnpm lint                                     # ESLint for API + web
 pnpm typecheck                                # whole monorepo
 pnpm build                                    # production build
-pnpm --filter '@dejavas/api' test             # API test suite
-pnpm --filter '@dejavas/web' test:e2e         # dashboard Playwright tests
-pnpm --filter '@dejavas/api' dev              # API on :3002 (watch + swc-register)
-pnpm --filter '@dejavas/web' dev              # web on :3000
-pnpm --filter '@dejavas/db' db:push           # apply schema (interactive)
-pnpm --filter '@dejavas/db' db:studio         # Drizzle Studio
+pnpm --filter '@agentbase/api' test             # API test suite
+pnpm --filter '@agentbase/web' test:e2e         # dashboard Playwright tests
+pnpm --filter '@agentbase/api' dev              # API on :3002 (watch + swc-register)
+pnpm --filter '@agentbase/web' dev              # web on :3000
+pnpm --filter '@agentbase/db' db:push           # apply schema (interactive)
+pnpm --filter '@agentbase/db' db:studio         # Drizzle Studio
 ```
 
-The test suite requires Postgres on `$DATABASE_URL` (default `postgresql://dejavas:dejavas@localhost:5433/dejavas`). Bring it up via `docker compose -f infra/docker-compose.yml up -d`.
+The test suite requires Postgres on `$DATABASE_URL` (default `postgresql://agentbase:agentbase@localhost:5433/agentbase`). Bring it up via `docker compose -f infra/docker-compose.yml up -d`.
 
 ## CI
 
@@ -274,14 +281,14 @@ Both workflows use Node 22, pnpm 10, Postgres 16, Redis 7, and the same localhos
 `apps/api/.env`:
 
 ```bash
-DATABASE_URL=postgresql://dejavas:dejavas@localhost:5433/dejavas
+DATABASE_URL=postgresql://agentbase:agentbase@localhost:5433/agentbase
 REDIS_URL=redis://localhost:6380
 PORT=3002
 CONNECTOR_CREDENTIALS_KEY=hex:64656a617661732d6c6f63616c2d646f636b65722d6b65792d33326279746521
 API_PUBLIC_URL=http://localhost:3002
 DASHBOARD_URL=http://localhost:3000
 
-# Required for the AI SDR agent runtime. Without it, /v1/campaigns/runs
+# Required for the governed revenue-agent runtime. Without it, /v1/campaigns/runs
 # enqueues a run but the worker fails the run with a clear error. The
 # rest of the platform (policy editor, approvals, audit, connectors)
 # works without this key.
@@ -347,7 +354,7 @@ In `NODE_ENV=production`, both the API and the dashboard **refuse to boot** if C
 - API needs `CLERK_SECRET_KEY` — `ClerkAuthGuard` throws `UnauthenticatedProductionError` at construction.
 - Dashboard needs `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` — the Next middleware throws on module load.
 
-If you really need an unauthenticated production deploy (demos behind a VPN, security-test fixtures, etc.), opt in explicitly with `DEJAVAS_ALLOW_UNAUTHENTICATED=1`. The boot warning makes the mode visible in logs.
+If you really need an unauthenticated production deploy (demos behind a VPN, security-test fixtures, etc.), opt in explicitly with `AGENTBASE_ALLOW_UNAUTHENTICATED=1`. The legacy env var name is retained for compatibility; the boot warning makes the mode visible in logs.
 
 For Fly.io deployments:
 
@@ -359,8 +366,8 @@ fly secrets set CLERK_SECRET_KEY=... --config infra/fly.api.toml
 fly secrets set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=... --config infra/fly.web.toml
 
 # Optional escape hatch: explicitly unauthenticated production
-fly secrets set DEJAVAS_ALLOW_UNAUTHENTICATED=1 --config infra/fly.api.toml
-fly secrets set DEJAVAS_ALLOW_UNAUTHENTICATED=1 --config infra/fly.web.toml
+fly secrets set AGENTBASE_ALLOW_UNAUTHENTICATED=1 --config infra/fly.api.toml
+fly secrets set AGENTBASE_ALLOW_UNAUTHENTICATED=1 --config infra/fly.web.toml
 ```
 
 For local dev (`NODE_ENV !== 'production'`), Clerk env vars are still optional and the dev-passthrough mode is the default — the dashboard, API, and SDK behave as today.

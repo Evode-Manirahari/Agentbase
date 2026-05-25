@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { and, asc, desc, eq } from 'drizzle-orm';
-import type { ActionStatus, PolicyDecision } from '@dejavas/shared';
+import type { ActionStatus, PolicyDecision } from '@agentbase/shared';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@dejavas/db';
-import { actions, agentRuns } from '@dejavas/db';
+import type { Database } from '@agentbase/db';
+import { actions, agentRuns } from '@agentbase/db';
 import {
   AGENT_RUN_JOB,
   QUEUE,
@@ -58,7 +58,7 @@ export interface RunRow {
   messages: LlmMessage[];
   paused_on_action_id: string | null;
   paused_on_tool_use_id: string | null;
-  paused_on_dejavas_tool: string | null;
+  paused_on_agentbase_tool: string | null;
   usage: AgentRunUsage | null;
   error: string | null;
   batch_id: string | null;
@@ -105,7 +105,7 @@ export class AgentRunsService {
 
   // Fans one batch submission out into N agent runs, all tagged with
   // the same batchId so the dashboard can show per-lead progress
-  // grouped under one "campaign batch." Each run executes independently
+  // grouped under one governed batch. Each run executes independently
   // through the worker; a pause on one doesn't block the others.
   async createBatch(input: CreateBatchInput): Promise<CreateBatchResult> {
     if (input.leads.length === 0) {
@@ -205,7 +205,7 @@ export class AgentRunsService {
         usage: (result.usage as unknown as Record<string, number>) ?? null,
         pausedOnActionId: result.paused_on?.action_id ?? null,
         pausedOnToolUseId: result.paused_on?.tool_use_id ?? null,
-        pausedOnDejavasTool: result.paused_on?.dejavas_tool ?? null,
+        pausedOnAgentbaseTool: result.paused_on?.agentbase_tool ?? null,
         error: result.error ?? null,
         completedAt: dbStatus === 'paused' ? null : new Date(),
         updatedAt: new Date(),
@@ -296,7 +296,7 @@ function toRunRow(row: typeof agentRuns.$inferSelect): RunRow {
     messages: (row.messages as LlmMessage[]) ?? [],
     paused_on_action_id: row.pausedOnActionId,
     paused_on_tool_use_id: row.pausedOnToolUseId,
-    paused_on_dejavas_tool: row.pausedOnDejavasTool,
+    paused_on_agentbase_tool: row.pausedOnAgentbaseTool,
     usage: (row.usage as AgentRunUsage | null) ?? null,
     error: row.error,
     batch_id: row.batchId,

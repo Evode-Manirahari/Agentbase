@@ -1,5 +1,5 @@
 {
-  "name": "@dejavas/demo-agent",
+  "name": "@agentbase/demo-agent",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
-    "@dejavas/sdk": "workspace:*",
+    "@agentbase/sdk": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {

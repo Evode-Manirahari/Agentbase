@@ -8,7 +8,7 @@
 //                       JWKS).
 // - 'dev_passthrough' → passes every request through; logs a warning once at
 //                       boot. Reserved for local development; refused in
-//                       production unless DEJAVAS_ALLOW_UNAUTHENTICATED=1 is
+//                       production unless AGENTBASE_ALLOW_UNAUTHENTICATED=1 is
 //                       explicitly set.
 //
 // On success in enforced mode, attaches { userId, sessionId } to req.clerkUser
@@ -51,9 +51,9 @@ export class ClerkAuthGuard implements CanActivate {
     this.mode = resolveAuthMode({
       NODE_ENV: config.get<string>('NODE_ENV') ?? process.env.NODE_ENV,
       CLERK_SECRET_KEY: this.secretKey ?? undefined,
-      DEJAVAS_ALLOW_UNAUTHENTICATED:
-        config.get<string>('DEJAVAS_ALLOW_UNAUTHENTICATED') ??
-        process.env.DEJAVAS_ALLOW_UNAUTHENTICATED,
+      AGENTBASE_ALLOW_UNAUTHENTICATED:
+        config.get<string>('AGENTBASE_ALLOW_UNAUTHENTICATED') ??
+        process.env.AGENTBASE_ALLOW_UNAUTHENTICATED,
     });
     if (this.mode === 'dev_passthrough') {
       this.log.warn(

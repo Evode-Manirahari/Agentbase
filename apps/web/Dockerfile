@@ -12,7 +12,7 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 
 # Build the Next.js app (compiles server components + client bundle)
-RUN pnpm --filter '@dejavas/web' run build
+RUN pnpm --filter '@agentbase/web' run build
 
 ENV NODE_ENV=production \
     PORT=3000 \
@@ -21,7 +21,7 @@ ENV NODE_ENV=production \
 EXPOSE 3000
 
 # next start serves the .next/ build on $PORT
-CMD ["pnpm", "--filter", "@dejavas/web", "run", "start"]
+CMD ["pnpm", "--filter", "@agentbase/web", "run", "start"]
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -q -O - http://127.0.0.1:3000 | grep -q 'Dejavas' || exit 1
+  CMD wget -q -O - http://127.0.0.1:3000 | grep -q 'Agentbase' || exit 1

@@ -17,13 +17,13 @@ import {
   UnauthorizedException,
   type ExecutionContext,
 } from '@nestjs/common';
-import { schema, orgs, agents, agentApiKeys } from '@dejavas/db';
+import { schema, orgs, agents, agentApiKeys } from '@agentbase/db';
 import { ApiKeyGuard, type AuthedAgent } from './api-key.guard.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { AuditService } from '../audit/audit.service.js';
 
 const DB_URL =
-  process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
+  process.env.DATABASE_URL ?? 'postgresql://agentbase:agentbase@localhost:5433/agentbase';
 
 interface FakeReq {
   headers: Record<string, string>;
@@ -65,19 +65,19 @@ describe('ApiKeyGuard — header shape', () => {
   });
 
   it('rejects Authorization without Bearer prefix', async () => {
-    const { ctx } = makeContext({ authorization: 'dvk_anything-here-long-enough' });
+    const { ctx } = makeContext({ authorization: 'agb_anything-here-long-enough' });
     await assert.rejects(() => guard.canActivate(ctx), UnauthorizedException);
   });
 
-  it('rejects Bearer with malformed key (no dvk_ prefix)', async () => {
+  it('rejects Bearer with malformed key (no agb_ prefix)', async () => {
     const { ctx } = makeContext({
-      authorization: 'Bearer not-a-dejavas-key-but-long-enough-to-try',
+      authorization: 'Bearer not-a-agentbase-key-but-long-enough-to-try',
     });
     await assert.rejects(() => guard.canActivate(ctx), UnauthorizedException);
   });
 
   it('rejects Bearer with valid prefix but too short', async () => {
-    const { ctx } = makeContext({ authorization: 'Bearer dvk_short' });
+    const { ctx } = makeContext({ authorization: 'Bearer agb_short' });
     await assert.rejects(() => guard.canActivate(ctx), UnauthorizedException);
   });
 });
@@ -99,7 +99,7 @@ describe('ApiKeyGuard — DB lookup', () => {
   });
 
   it('rejects a valid-shape key whose hash is not in the DB', async () => {
-    const fake = `dvk_${randomUUID().replace(/-/g, '')}-and-some-extra-padding`;
+    const fake = `agb_${randomUUID().replace(/-/g, '')}-and-some-extra-padding`;
     const { ctx } = makeContext({ authorization: `Bearer ${fake}` });
     await assert.rejects(() => guard.canActivate(ctx), UnauthorizedException);
   });

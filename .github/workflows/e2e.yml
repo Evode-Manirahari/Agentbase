@@ -22,13 +22,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: dejavas
-          POSTGRES_PASSWORD: dejavas
-          POSTGRES_DB: dejavas
+          POSTGRES_USER: agentbase
+          POSTGRES_PASSWORD: agentbase
+          POSTGRES_DB: agentbase
         ports:
           - 5433:5432
         options: >-
-          --health-cmd "pg_isready -U dejavas -d dejavas"
+          --health-cmd "pg_isready -U agentbase -d agentbase"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
@@ -43,7 +43,7 @@ jobs:
           --health-retries 10
 
     env:
-      DATABASE_URL: postgresql://dejavas:dejavas@localhost:5433/dejavas
+      DATABASE_URL: postgresql://agentbase:agentbase@localhost:5433/agentbase
       REDIS_URL: redis://localhost:6380
       API_URL: http://localhost:3002
       API_PUBLIC_URL: http://localhost:3002
@@ -68,13 +68,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Apply database schema
-        run: pnpm --filter '@dejavas/db' exec drizzle-kit push --force
+        run: pnpm --filter '@agentbase/db' exec drizzle-kit push --force
 
       - name: Install Playwright browser and system dependencies
-        run: pnpm --filter '@dejavas/web' run test:e2e:install
+        run: pnpm --filter '@agentbase/web' run test:e2e:install
 
       - name: Run Playwright tests
-        run: pnpm --filter '@dejavas/web' run test:e2e
+        run: pnpm --filter '@agentbase/web' run test:e2e
 
       - name: Upload Playwright report on failure
         if: failure()

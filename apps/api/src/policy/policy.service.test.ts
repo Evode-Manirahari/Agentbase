@@ -14,12 +14,12 @@ import { and, desc, eq } from 'drizzle-orm';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { BadRequestException } from '@nestjs/common';
-import { schema, orgs, policies, agents } from '@dejavas/db';
-import { buildAgentPermissionProfilePolicyYaml } from '@dejavas/shared';
+import { schema, orgs, policies, agents } from '@agentbase/db';
+import { buildAgentPermissionProfilePolicyYaml } from '@agentbase/shared';
 import { PolicyService } from './policy.service.js';
 
 const DB_URL =
-  process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
+  process.env.DATABASE_URL ?? 'postgresql://agentbase:agentbase@localhost:5433/agentbase';
 
 let client: ReturnType<typeof postgres>;
 let db: ReturnType<typeof drizzle<typeof schema>>;

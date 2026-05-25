@@ -21,9 +21,9 @@ import {
   actions,
   approvals,
   auditLog,
-} from '@dejavas/db';
-import type { Connector, ConnectorResult } from '@dejavas/connector-hubspot';
-import type { PolicyDecision } from '@dejavas/shared';
+} from '@agentbase/db';
+import type { Connector, ConnectorResult } from '@agentbase/connector-hubspot';
+import type { PolicyDecision } from '@agentbase/shared';
 import { ActionsService } from './actions.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { PolicyService } from '../policy/policy.service.js';
@@ -35,7 +35,7 @@ import type {
 } from './rate-limit.service.js';
 
 const DB_URL =
-  process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
+  process.env.DATABASE_URL ?? 'postgresql://agentbase:agentbase@localhost:5433/agentbase';
 
 function makeDecision(overrides: Partial<PolicyDecision> = {}): PolicyDecision {
   return {

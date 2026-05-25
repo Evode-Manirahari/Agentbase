@@ -1,7 +1,7 @@
 version: 1
 default: deny
 
-# Demo policy that exercises every Dejavas effect:
+# Demo policy that exercises every Agentbase effect:
 # - allow:           safe reads (Apollo) and most CRM writes
 # - require_approval: high-value deal updates and Outreach enrollment
 # - deny:            anything destructive (e.g. *.delete)

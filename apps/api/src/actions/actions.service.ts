@@ -7,15 +7,15 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@dejavas/db';
-import { actions, agents, approvals } from '@dejavas/db';
+import type { Database } from '@agentbase/db';
+import { actions, agents, approvals } from '@agentbase/db';
 import { AuditService } from '../audit/audit.service.js';
 import { PolicyService } from '../policy/policy.service.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
 import { SlackService } from '../slack/slack.service.js';
 import { RateLimitService } from './rate-limit.service.js';
-import type { Connector, ConnectorResult } from '@dejavas/connector-hubspot';
-import type { ActionStatus, PolicyDecision } from '@dejavas/shared';
+import type { Connector, ConnectorResult } from '@agentbase/connector-hubspot';
+import type { ActionStatus, PolicyDecision } from '@agentbase/shared';
 
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 

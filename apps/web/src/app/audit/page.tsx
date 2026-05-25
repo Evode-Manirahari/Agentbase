@@ -62,7 +62,10 @@ export default async function AuditPage({
   return (
     <div className="max-w-6xl">
       <H1>Audit log</H1>
-      <Subtitle>Every state transition. Source of truth for compliance.</Subtitle>
+      <Subtitle>
+        Every identity, policy, approval, connector, and execution event. Source
+        of truth for security review and compliance export.
+      </Subtitle>
 
       <Card className="mb-6 p-4">
         <form method="GET" className="flex flex-wrap gap-3 items-end">
