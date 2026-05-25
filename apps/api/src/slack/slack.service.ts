@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { WebClient, type KnownBlock } from '@slack/web-api';
-import type { ApprovalView, PolicyDecision } from '@dejavas/shared';
+import type { ApprovalView, PolicyDecision } from '@agentbase/shared';
 
 export interface ApprovalCardInput {
   approvalId: string;
@@ -151,7 +151,7 @@ function buildPendingBlocks(input: ApprovalCardInput): KnownBlock[] {
     },
     {
       type: 'actions',
-      block_id: 'dejavas_approval_actions',
+      block_id: 'agentbase_approval_actions',
       elements: [
         {
           type: 'button',

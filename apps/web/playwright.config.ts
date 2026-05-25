@@ -32,7 +32,7 @@ export default defineConfig({
   // local dev fast; CI starts fresh.
   webServer: [
     {
-      command: 'pnpm --filter @dejavas/api run dev',
+      command: 'pnpm --filter @agentbase/api run dev',
       url: `${apiURL}/health`,
       cwd: '../..',
       timeout: 60_000,
@@ -46,7 +46,7 @@ export default defineConfig({
       },
     },
     {
-      command: 'pnpm --filter @dejavas/web run dev',
+      command: 'pnpm --filter @agentbase/web run dev',
       url: baseURL,
       cwd: '../..',
       timeout: 60_000,

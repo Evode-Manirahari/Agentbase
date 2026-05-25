@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test.describe('dashboard renders every route', () => {
   test('overview page', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle('Dejavas');
+    await expect(page).toHaveTitle('Agentbase');
     await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
     // Sidebar navigation lists every route
     for (const label of [

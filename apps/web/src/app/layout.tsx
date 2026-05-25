@@ -5,9 +5,9 @@ import { ClerkProvider } from '@clerk/nextjs';
 import { Shell } from '../components/nav';
 
 export const metadata: Metadata = {
-  title: 'Dejavas',
+  title: 'Agentbase',
   description:
-    'An AI SDR you can run in production — every risky action is approval-gated and audit-ready by default.',
+    'Secure action layer for AI sales agents across CRM, email, and sales tools.',
 };
 
 export const viewport: Viewport = {

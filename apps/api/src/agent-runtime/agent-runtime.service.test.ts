@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
-import type { PolicyDecision } from '@dejavas/shared';
+import type { PolicyDecision } from '@agentbase/shared';
 import { AgentRuntimeService } from './agent-runtime.service.js';
 import { JobRegistry, type Job } from './job.js';
 import type {
@@ -117,7 +117,7 @@ const tinyJob: Job = {
         properties: { value: { type: 'string' } },
         required: ['value'],
       },
-      dejavasTool: 'test.do_thing',
+      agentbaseTool: 'test.do_thing',
     },
   ],
 };
@@ -206,7 +206,7 @@ describe('AgentRuntimeService — awaiting_approval', () => {
     assert.equal(result.status, 'paused');
     assert.equal(result.paused_on?.action_id, 'act_pending');
     assert.equal(result.paused_on?.tool_use_id, 'tu_pause');
-    assert.equal(result.paused_on?.dejavas_tool, 'test.do_thing');
+    assert.equal(result.paused_on?.agentbase_tool, 'test.do_thing');
 
     // Critical: we should NOT have made a second LLM call. The run halts.
     assert.equal(llmClient.requests.length, 1);
@@ -249,7 +249,7 @@ describe('AgentRuntimeService — denied tool continues the loop', () => {
 });
 
 describe('AgentRuntimeService — unknown tool', () => {
-  it('feeds an error back to Claude rather than calling Dejavas', async () => {
+  it('feeds an error back to Claude rather than calling Agentbase', async () => {
     const { service, actionsCalls } = makeService(
       registryWith(tinyJob),
       [
@@ -274,7 +274,7 @@ describe('AgentRuntimeService — unknown tool', () => {
     });
 
     assert.equal(result.status, 'completed');
-    assert.equal(actionsCalls.length, 0, 'unknown tool should not hit Dejavas');
+    assert.equal(actionsCalls.length, 0, 'unknown tool should not hit Agentbase');
   });
 });
 
@@ -335,15 +335,15 @@ describe('AgentRuntimeService — unknown job', () => {
   });
 });
 
-describe('AI SDR job — config sanity', () => {
+describe('Revenue outbound job — config sanity', () => {
   it('registers without conflict', () => {
     const r = new JobRegistry();
     r.register(AI_SDR_OUTBOUND_JOB);
     assert.deepEqual(r.keys(), ['ai-sdr-outbound']);
   });
 
-  it('declares the expected Dejavas tool surface', () => {
-    const tools = AI_SDR_OUTBOUND_JOB.tools.map((t) => t.dejavasTool).sort();
+  it('declares the expected Agentbase tool surface', () => {
+    const tools = AI_SDR_OUTBOUND_JOB.tools.map((t) => t.agentbaseTool).sort();
     assert.deepEqual(tools, [
       'apollo.organizations.match',
       'apollo.people.match',
@@ -533,11 +533,11 @@ describe('AgentRuntimeService.resumeRun', () => {
 });
 
 describe('AI CRM hygiene job — config sanity', () => {
-  it('registers without conflict and declares the expected Dejavas tools', () => {
+  it('registers without conflict and declares the expected Agentbase tools', () => {
     const r = new JobRegistry();
     r.register(AI_CRM_HYGIENE_JOB);
     assert.deepEqual(r.keys(), ['ai-crm-hygiene']);
-    const tools = AI_CRM_HYGIENE_JOB.tools.map((t) => t.dejavasTool).sort();
+    const tools = AI_CRM_HYGIENE_JOB.tools.map((t) => t.agentbaseTool).sort();
     assert.deepEqual(tools, [
       'apollo.people.match',
       'hubspot.contacts.search',
@@ -595,7 +595,7 @@ describe('AI CRM hygiene job — config sanity', () => {
 });
 
 describe('Bundle expansion sanity — runtime hosts both jobs', () => {
-  it('JobRegistry holds AI SDR + AI CRM hygiene side-by-side', () => {
+  it('JobRegistry holds outbound + AI CRM hygiene side-by-side', () => {
     const r = new JobRegistry();
     r.register(AI_SDR_OUTBOUND_JOB);
     r.register(AI_CRM_HYGIENE_JOB);
@@ -700,11 +700,11 @@ describe('AgentRuntimeService — AI CRM hygiene end-to-end loop', () => {
 });
 
 describe('AI reply-handler job — config sanity', () => {
-  it('registers without conflict and declares the expected Dejavas tools', () => {
+  it('registers without conflict and declares the expected Agentbase tools', () => {
     const r = new JobRegistry();
     r.register(AI_REPLY_HANDLER_JOB);
     assert.deepEqual(r.keys(), ['ai-reply-handler']);
-    const tools = AI_REPLY_HANDLER_JOB.tools.map((t) => t.dejavasTool).sort();
+    const tools = AI_REPLY_HANDLER_JOB.tools.map((t) => t.agentbaseTool).sort();
     assert.deepEqual(tools, [
       'gmail.messages.get',
       'gmail.send',
@@ -717,13 +717,13 @@ describe('AI reply-handler job — config sanity', () => {
       thread_id: 'thr_abc123',
       reply_message_id: 'msg_def456',
       to_email: 'lead@acme.com',
-      subject: 'Re: AI SDR you can run in prod',
+      subject: 'Re: Revenue agent you can run in prod',
       source_run_id: '11111111-1111-1111-1111-111111111111',
     });
     assert.ok(msg.includes('thr_abc123'));
     assert.ok(msg.includes('msg_def456'));
     assert.ok(msg.includes('lead@acme.com'));
-    assert.ok(msg.includes('Re: AI SDR'));
+    assert.ok(msg.includes('Re: Revenue agent'));
     assert.ok(msg.includes('source_run_id'));
   });
 
@@ -748,7 +748,7 @@ describe('AI reply-handler job — config sanity', () => {
     assert.ok(tool?.paramMapper);
     const mapped = tool!.paramMapper!({
       to: 'lead@acme.com',
-      subject: 'Re: AI SDR',
+      subject: 'Re: Revenue agent',
       body: 'Happy to chat',
       thread_id: 'thr_abc',
     });
@@ -759,7 +759,7 @@ describe('AI reply-handler job — config sanity', () => {
 });
 
 describe('Bundle expansion sanity — runtime hosts all four jobs', () => {
-  it('JobRegistry holds SDR + hygiene + reply-handler + sdr-followup side-by-side', () => {
+  it('JobRegistry holds outbound + hygiene + reply-handler + follow-up side-by-side', () => {
     const r = new JobRegistry();
     r.register(AI_SDR_OUTBOUND_JOB);
     r.register(AI_CRM_HYGIENE_JOB);
@@ -774,12 +774,12 @@ describe('Bundle expansion sanity — runtime hosts all four jobs', () => {
   });
 });
 
-describe('AI SDR follow-up job — config sanity', () => {
-  it('registers without conflict and declares the expected Dejavas tools', () => {
+describe('Revenue follow-up job — config sanity', () => {
+  it('registers without conflict and declares the expected Agentbase tools', () => {
     const r = new JobRegistry();
     r.register(AI_SDR_FOLLOWUP_JOB);
     assert.deepEqual(r.keys(), ['ai-sdr-followup']);
-    const tools = AI_SDR_FOLLOWUP_JOB.tools.map((t) => t.dejavasTool).sort();
+    const tools = AI_SDR_FOLLOWUP_JOB.tools.map((t) => t.agentbaseTool).sort();
     assert.deepEqual(tools, [
       'gmail.messages.get',
       'gmail.send',
@@ -791,14 +791,14 @@ describe('AI SDR follow-up job — config sanity', () => {
     const msg = AI_SDR_FOLLOWUP_JOB.buildInitialMessage({
       thread_id: 'thr_seq_123',
       to_email: 'cto@globex.com',
-      subject: 'AI SDR you can run in prod',
+      subject: 'Revenue agent you can run in prod',
       touch_number: 2,
       original_run_id: '99999999-9999-9999-9999-999999999999',
     });
     assert.ok(msg.includes('touch 2'));
     assert.ok(msg.includes('thr_seq_123'));
     assert.ok(msg.includes('cto@globex.com'));
-    assert.ok(msg.includes('AI SDR you can run in prod'));
+    assert.ok(msg.includes('Revenue agent you can run in prod'));
     assert.ok(msg.includes('original_run_id'));
   });
 
@@ -824,12 +824,12 @@ describe('AI SDR follow-up job — config sanity', () => {
     assert.ok(tool?.paramMapper);
     const mapped = tool!.paramMapper!({
       to: 'cto@globex.com',
-      subject: 'AI SDR you can run in prod',
+      subject: 'Revenue agent you can run in prod',
       body: 'still relevant?',
       thread_id: 'thr_seq_123',
     });
     assert.equal(mapped.to, 'cto@globex.com');
-    assert.equal(mapped.subject, 'AI SDR you can run in prod');
+    assert.equal(mapped.subject, 'Revenue agent you can run in prod');
     assert.equal(mapped.body, 'still relevant?');
     assert.equal(mapped.threadId, 'thr_seq_123');
   });

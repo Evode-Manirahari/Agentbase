@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { authModeOrFatal } from './lib/auth-mode';
 
 // authModeOrFatal throws when NODE_ENV=production and Clerk env vars are
-// missing and DEJAVAS_ALLOW_UNAUTHENTICATED=1 isn't set. That intentionally
+// missing and AGENTBASE_ALLOW_UNAUTHENTICATED=1 isn't set. That intentionally
 // crashes the middleware at boot so the dashboard refuses to serve rather
 // than silently dev-passthrough in production.
 const mode = authModeOrFatal();

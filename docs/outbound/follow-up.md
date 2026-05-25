@@ -16,20 +16,21 @@ Stop. If they engage on touch 2 or 3, treat them as a fresh prospect and book a 
 
 Send 4 days after touch 1, only if no reply.
 
-**Subject (reply to the original thread):** `Re: An AI SDR your security team can actually approve`
+**Subject (reply to the original thread):** `Re: Letting sales agents touch CRM?`
 
 ```
 Following up on the earlier note.
 
 The sharpest fit I keep seeing is teams where one specific thing is true:
 
-  "We have an AI SDR or RevOps agent, but it cannot take production
-   actions because security/IT won't approve the write scopes."
+  "We have an AI sales agent or RevOps workflow, but it cannot take
+   production actions because security/IT won't approve the write scopes."
 
 If that's happening at {{company}}, I'd love 20 minutes. I've got a
 6-minute demo video that shows the loop end-to-end — agent enriches
-the lead, drafts the email, tries to send, pauses for human approval
-in Slack, executes after approval, audit log captures everything.
+the lead, proposes the CRM/email action, pauses for human approval in
+Slack when policy requires it, executes after approval, audit log
+captures everything.
 
 Want me to send it?
 
@@ -51,8 +52,8 @@ Send 11 days after touch 1, only if still no reply.
 ```
 {{first_name}} — closing the loop on this one. I'll stop following up.
 
-If you ever do end up with an AI sales agent stuck in draft-only mode
-and security won't budge on scopes, send me a one-line reply and I'll
+If you ever do end up with an AI sales agent blocked from production
+actions because security won't budge on scopes, send me a one-line reply and I'll
 come back to this thread.
 
 No worries either way — appreciate the time.
@@ -89,7 +90,7 @@ If they respond with the blocked action, you've earned the call. Book it. The di
 Two outcomes:
 
 1. **They explain why** ("we've solved this with native HubSpot controls" / "we don't run AI agents") → thank them, mark disqualified, move on. Don't argue.
-2. **They explain their adjacent pain** ("we don't have an AI SDR but we built an enrichment agent that's stuck") → that **is** the buyer; reply with the qualifying question for the adjacent workflow.
+2. **They explain their adjacent pain** ("we built an enrichment or CRM-update agent that's stuck") → that **is** the buyer; reply with the qualifying question for the adjacent workflow.
 
 ### "Send me more info / I need to think about it"
 
@@ -106,7 +107,7 @@ If they don't book in 5 days, that was a soft no.
 
 - Move them to a `nurture-2026-q3.csv`
 - Don't email them again unless one of three things happens:
-  1. They post publicly about an AI SDR pilot
+  1. They post publicly about an AI sales-agent pilot
   2. Their company hires for an "AI Operations" role
   3. You ship a major case study they would recognize as a peer
 - If none of those happen, they were never the buyer

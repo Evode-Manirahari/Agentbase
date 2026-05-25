@@ -17,17 +17,17 @@ import {
 import { and, eq, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@dejavas/db';
+import type { Database } from '@agentbase/db';
 import {
   connectorCredentials,
   oauthStates,
   type ConnectorCredential,
   type EncryptedConnectorConfig,
-} from '@dejavas/db';
+} from '@agentbase/db';
 import {
   ConnectorProvider,
   type ConnectorProvider as ConnectorProviderT,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 
 const PROVIDERS = ConnectorProvider.options;
 const OAUTH_PROVIDERS = ['hubspot', 'salesforce', 'gmail', 'outreach'] as const;
@@ -886,7 +886,7 @@ export class ConnectorCredentialsService {
           'CONNECTOR_CREDENTIALS_KEY must be set. Use `openssl rand -base64 32` and pass as `base64:...` (or `hex:...`).',
         );
       }
-      return createHash('sha256').update('dejavas-test-key').digest();
+      return createHash('sha256').update('agentbase-test-key').digest();
     }
 
     if (raw.startsWith('base64:')) {

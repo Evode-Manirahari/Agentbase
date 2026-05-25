@@ -1,15 +1,15 @@
-# Fly.io config for the Dejavas API.
+# Fly.io config for the Agentbase API.
 #
 # First-time setup (from the repo root):
 #
-#   fly apps create dejavas-api-CHANGEME --config infra/fly.api.toml
-#   fly postgres create --name dejavas-pg-CHANGEME --region iad
-#   fly postgres attach dejavas-pg-CHANGEME --app dejavas-api-CHANGEME  # sets DATABASE_URL
-#   fly redis create --name dejavas-redis-CHANGEME --region iad         # set REDIS_URL via fly secrets set
+#   fly apps create agentbase-api-CHANGEME --config infra/fly.api.toml
+#   fly postgres create --name agentbase-pg-CHANGEME --region iad
+#   fly postgres attach agentbase-pg-CHANGEME --app agentbase-api-CHANGEME  # sets DATABASE_URL
+#   fly redis create --name agentbase-redis-CHANGEME --region iad           # set REDIS_URL via fly secrets set
 #
 #   fly secrets set REDIS_URL=redis://... --config infra/fly.api.toml
 #   fly secrets set CONNECTOR_CREDENTIALS_KEY="base64:$(openssl rand -base64 32)" --config infra/fly.api.toml
-#   fly secrets set API_PUBLIC_URL=https://dejavas-api-CHANGEME.fly.dev DASHBOARD_URL=https://dejavas-web-CHANGEME.fly.dev \
+#   fly secrets set API_PUBLIC_URL=https://agentbase-api-CHANGEME.fly.dev DASHBOARD_URL=https://agentbase-web-CHANGEME.fly.dev \
 #     --config infra/fly.api.toml
 #   # Plus any of these you want wired:
 #   fly secrets set HUBSPOT_ACCESS_TOKEN=pat-... --config infra/fly.api.toml
@@ -28,7 +28,7 @@
 # The container image is rebuilt by Fly's remote builder from the repo's Dockerfile.
 # Optionally point at the prebuilt GHCR image instead — see [build] below.
 
-app = "dejavas-api-CHANGEME"
+app = "agentbase-api-CHANGEME"
 primary_region = "iad"
 
 [build]

@@ -2,12 +2,12 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { and, desc, eq, gte, isNull, lt, or } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@dejavas/db';
+import type { Database } from '@agentbase/db';
 import {
   actions,
   agentEmails,
   type AgentEmail,
-} from '@dejavas/db';
+} from '@agentbase/db';
 import {
   EMAIL_REPLY_POLL_JOB,
   QUEUE,

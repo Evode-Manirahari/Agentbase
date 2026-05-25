@@ -2,7 +2,7 @@ import {
   AGENT_PERMISSION_PROFILE_OPTIONS,
   AGENT_PERMISSION_PROFILES,
   type AgentPermissionProfile,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 import { api } from '../../lib/api';
 import {
   Card,
@@ -33,7 +33,10 @@ export default async function AgentsPage() {
   return (
     <div className="max-w-5xl">
       <H1>Agents</H1>
-      <Subtitle>Each agent has an identity and a scoped API key.</Subtitle>
+      <Subtitle>
+        Every revenue agent gets an identity, scoped API key, permission profile,
+        and revocation path before it can act on customer systems.
+      </Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}
 

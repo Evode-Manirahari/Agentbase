@@ -95,7 +95,7 @@ function StatusSummary({
           );
         })}
       </div>
-      <div className="grid grid-cols-4 gap-x-3 gap-y-1 mt-3 text-xs">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-1 mt-3 text-xs">
         {segments.map((s) => (
           <div key={s.label} className="flex items-center gap-2">
             <span className={`inline-block w-2 h-2 rounded-full ${s.color}`} />
@@ -130,7 +130,7 @@ function RunTable({ runs }: { runs: AgentRunResult[] }) {
             .find((t) => t.type === 'tool_call');
           const lastTool =
             lastToolCall?.type === 'tool_call'
-              ? lastToolCall.dejavas_tool
+              ? lastToolCall.agentbase_tool
               : '—';
           return (
             <tr

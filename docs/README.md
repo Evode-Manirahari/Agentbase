@@ -1,11 +1,12 @@
-# Dejavas operator docs
+# Agentbase operator docs
 
-Playbooks for actually selling and demoing the product, not for building it. The repo's [top-level README](../README.md) covers the engineering surface; this folder is for the GTM motion the strategy doc spec'd.
+Playbooks for selling and demoing the secure action layer for AI sales agents, not for building it. The repo's [top-level README](../README.md) covers the engineering surface; this folder is for the RevOps-led, security-signed-off GTM motion.
 
 ## What's here
 
 | File | When you use it |
 |---|---|
+| [`positioning.md`](./positioning.md) | Product direction source of truth: category, pitch, buyer, differentiation, and product thesis. |
 | [`outbound/first-touch.md`](./outbound/first-touch.md) | Day-one cold message. Includes the 30-day target list criteria + the qualifying question. |
 | [`outbound/follow-up.md`](./outbound/follow-up.md) | 3-touch follow-up cadence after the first send. Includes the break-up message. |
 | [`outbound/discovery-call-script.md`](./outbound/discovery-call-script.md) | 20-minute first-call script. Six forcing questions; goal is one of three clear bucket answers by minute 20. |
@@ -29,12 +30,12 @@ Day 60   → pilot ends → expand or kill
 - Not a marketing site. The hero copy on the live product page is in the [top-level README](../README.md) and [`apps/web/`](../apps/web/).
 - Not a sales CRM. Track outreach in Notion/Linear/a spreadsheet — these files are stable templates, not a moving target list.
 - Not a security packet. That's [`../SECURITY.md`](../SECURITY.md). Send it after the discovery call, when the prospect asks "what do I show my security team?"
-- Not a runbook for the agent itself. That's the engineering surface — see the campaigns dashboard at `/campaigns`.
+- Not a runbook for a single agent. That's the engineering surface — see governed runs at `/campaigns`.
 
 ## When to update
 
 - **first-touch.md, follow-up.md** — when the qualifying question stops working. Track which subject line and which body text led to replies; iterate after every 30 sends.
 - **discovery-call-script.md** — after the first 5 real calls. The six forcing questions will need tightening once you've heard real answers.
-- **demo-script-6min.md** — when a prospect's pushback during the demo reveals a missing scene, or when the product evolves (v1.1 CRM hygiene, v1.2 deal-update) and the demo needs a second flow.
+- **demo-script-6min.md** — when a prospect's pushback during the demo reveals a missing scene, or when the product evolves into a new governed revenue workflow and the demo needs a second flow.
 
 Don't optimize these before they're tested. The first 30 sends + 5 calls are the only feedback that matters.

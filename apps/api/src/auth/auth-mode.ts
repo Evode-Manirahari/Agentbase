@@ -7,7 +7,7 @@
 //                                     paid pilots).
 // - NODE_ENV !== 'production'       → 'dev_passthrough' (local dev).
 // - NODE_ENV === 'production' but
-//   DEJAVAS_ALLOW_UNAUTHENTICATED=1 → 'dev_passthrough' (explicit operator
+//   AGENTBASE_ALLOW_UNAUTHENTICATED=1 → 'dev_passthrough' (explicit operator
 //                                     opt-in, e.g. demo behind a VPN).
 // - NODE_ENV === 'production' and
 //   no secret and no escape hatch   → throws. The app refuses to boot —
@@ -19,15 +19,15 @@ export type AuthMode = 'enforced' | 'dev_passthrough';
 export interface AuthModeEnv {
   NODE_ENV?: string | undefined;
   CLERK_SECRET_KEY?: string | undefined;
-  DEJAVAS_ALLOW_UNAUTHENTICATED?: string | undefined;
+  AGENTBASE_ALLOW_UNAUTHENTICATED?: string | undefined;
 }
 
 export class UnauthenticatedProductionError extends Error {
   constructor() {
     super(
-      'Dejavas refuses to boot in production without authentication. ' +
+      'Agentbase refuses to boot in production without authentication. ' +
         'Set CLERK_SECRET_KEY to enforce Clerk session tokens on management ' +
-        'endpoints, or set DEJAVAS_ALLOW_UNAUTHENTICATED=1 to explicitly opt ' +
+        'endpoints, or set AGENTBASE_ALLOW_UNAUTHENTICATED=1 to explicitly opt ' +
         'in to an unauthenticated deployment (every /v1 endpoint will be open).',
     );
     this.name = 'UnauthenticatedProductionError';
@@ -43,7 +43,7 @@ export function resolveAuthMode(env: AuthModeEnv): AuthMode {
   if (secret.length > 0) return 'enforced';
 
   const isProd = (env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
-  const allowUnauth = (env.DEJAVAS_ALLOW_UNAUTHENTICATED ?? '').trim() === '1';
+  const allowUnauth = (env.AGENTBASE_ALLOW_UNAUTHENTICATED ?? '').trim() === '1';
 
   if (isProd && !allowUnauth) {
     throw new UnauthenticatedProductionError();

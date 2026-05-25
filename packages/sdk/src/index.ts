@@ -2,31 +2,31 @@ import {
   ExecuteActionRequest,
   ExecuteActionResponse,
   type ExecuteActionResponse as ExecuteActionResponseT,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 
-export interface DejavasClientOptions {
+export interface AgentbaseClientOptions {
   apiKey: string;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
 }
 
-export class DejavasError extends Error {
+export class AgentbaseError extends Error {
   constructor(
     message: string,
     readonly status: number,
     readonly body: unknown,
   ) {
     super(message);
-    this.name = 'DejavasError';
+    this.name = 'AgentbaseError';
   }
 }
 
-export class DejavasClient {
+export class AgentbaseClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
 
-  constructor(opts: DejavasClientOptions) {
+  constructor(opts: AgentbaseClientOptions) {
     this.apiKey = opts.apiKey;
     this.baseUrl = (opts.baseUrl ?? 'http://localhost:3002').replace(/\/$/, '');
     this.fetchImpl = opts.fetchImpl ?? fetch;
@@ -54,8 +54,8 @@ export class DejavasClient {
 
     const json = (await res.json().catch(() => ({}))) as unknown;
     if (!res.ok) {
-      throw new DejavasError(
-        `Dejavas action failed (${res.status})`,
+      throw new AgentbaseError(
+        `Agentbase action failed (${res.status})`,
         res.status,
         json,
       );

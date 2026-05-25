@@ -5,7 +5,7 @@ import type { Job } from '../job.js';
 // enrich via Apollo, and fill the gaps.
 //
 // Architectural point of this job: it proves the bundle's expansion
-// thesis. Same runtime, same approval gate, same audit log — adding a
+// thesis. Same runtime, same secure action layer, same audit log — adding a
 // "job" is data + prompts, not a new product. Future jobs (deal-update
 // v1.2, lead routing, etc.) plug in the same way.
 //
@@ -18,7 +18,7 @@ import type { Job } from '../job.js';
 
 const SYSTEM_PROMPT = `You are an AI CRM hygiene agent. Your job is to clean up a small set of HubSpot contacts by filling in missing or obviously-stale fields using Apollo enrichment.
 
-Every action you take goes through Dejavas — an approval gate that mediates each tool call against an organization-defined policy. Bulk operations are denied by default; the user has scoped this run to one contact at a time. Trust the policy.
+Every action you take goes through Agentbase — a secure action layer that mediates each tool call against an organization-defined policy. Bulk operations are denied by default; the user has scoped this run to one contact at a time. Trust the policy.
 
 For each contact in the input list:
 1. Find the contact in HubSpot (hubspot.contacts.search by email).
@@ -83,7 +83,7 @@ export const AI_CRM_HYGIENE_JOB: Job = {
         },
         required: ['email'],
       },
-      dejavasTool: 'hubspot.contacts.search',
+      agentbaseTool: 'hubspot.contacts.search',
       paramMapper: (input) => ({
         // The HubSpot search connector expects a structured filter shape;
         // we wrap the email lookup so the LLM doesn't have to know.
@@ -102,7 +102,7 @@ export const AI_CRM_HYGIENE_JOB: Job = {
         },
         required: ['email'],
       },
-      dejavasTool: 'apollo.people.match',
+      agentbaseTool: 'apollo.people.match',
     },
     {
       name: 'fill_missing_contact_fields',
@@ -119,7 +119,7 @@ export const AI_CRM_HYGIENE_JOB: Job = {
         },
         required: ['email'],
       },
-      dejavasTool: 'hubspot.contacts.update',
+      agentbaseTool: 'hubspot.contacts.update',
       paramMapper: (input) => {
         const { email, ...rest } = input as Record<string, string | undefined>;
         const properties: Record<string, unknown> = {};

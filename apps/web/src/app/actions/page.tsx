@@ -29,7 +29,10 @@ export default async function ActionsPage({
   return (
     <div className="max-w-6xl">
       <H1>Actions</H1>
-      <Subtitle>Every action attempted, with the policy decision and connector result.</Subtitle>
+      <Subtitle>
+        Every agent action attempted across CRM, email, enrichment, and sales
+        tools, with the policy decision and connector result.
+      </Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}
       {demoStatus ? (
@@ -47,7 +50,7 @@ export default async function ActionsPage({
       ) : null}
 
       <Card className="mb-6 p-4">
-        <div className="mb-3 text-sm font-medium">HubSpot lead workflow</div>
+        <div className="mb-3 text-sm font-medium">Governed HubSpot workflow</div>
         <form action={runHubspotLeadWorkflowAction} className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <Field label="Email" className="md:col-span-2">
             <input

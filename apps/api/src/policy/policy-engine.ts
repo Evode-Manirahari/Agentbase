@@ -5,7 +5,7 @@ import type {
   PolicyDocument,
   PolicyDecision,
   PolicyRule,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 
 export interface ActionContext {
   tool: string;

@@ -22,13 +22,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: dejavas
-          POSTGRES_PASSWORD: dejavas
-          POSTGRES_DB: dejavas
+          POSTGRES_USER: agentbase
+          POSTGRES_PASSWORD: agentbase
+          POSTGRES_DB: agentbase
         ports:
           - 5433:5432
         options: >-
-          --health-cmd "pg_isready -U dejavas -d dejavas"
+          --health-cmd "pg_isready -U agentbase -d agentbase"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
@@ -43,7 +43,7 @@ jobs:
           --health-retries 10
 
     env:
-      DATABASE_URL: postgresql://dejavas:dejavas@localhost:5433/dejavas
+      DATABASE_URL: postgresql://agentbase:agentbase@localhost:5433/agentbase
       REDIS_URL: redis://localhost:6380
       CONNECTOR_CREDENTIALS_KEY: hex:64656a617661732d63692d636f6e6e6563746f722d6b65792d33326279746521
       API_PUBLIC_URL: http://localhost:3002
@@ -76,7 +76,7 @@ jobs:
         run: pnpm build
 
       - name: Apply database schema
-        run: pnpm --filter '@dejavas/db' exec drizzle-kit push --force
+        run: pnpm --filter '@agentbase/db' exec drizzle-kit push --force
 
       - name: API tests
-        run: pnpm --filter '@dejavas/api' run test
+        run: pnpm --filter '@agentbase/api' run test

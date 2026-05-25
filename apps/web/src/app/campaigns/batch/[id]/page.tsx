@@ -20,7 +20,7 @@ export default async function CampaignBatchPage({
     if ((e as Error).message?.includes('404')) notFound();
     return (
       <div className="max-w-5xl">
-        <H1>Campaign batch</H1>
+        <H1>Governed batch</H1>
         <Subtitle>Batch {id}</Subtitle>
         <ErrorBox error={error} />
       </div>
@@ -30,7 +30,7 @@ export default async function CampaignBatchPage({
   const first = initial.runs[0];
   return (
     <div className="max-w-5xl">
-      <H1>Campaign batch</H1>
+      <H1>Governed batch</H1>
       <Subtitle>
         {initial.run_count} run{initial.run_count === 1 ? '' : 's'} · job{' '}
         <span className="mono">{first?.job_key ?? '—'}</span> · started{' '}

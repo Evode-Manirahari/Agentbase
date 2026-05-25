@@ -2,8 +2,8 @@
 // system prompt, the tools the agent is allowed to reach for, and the
 // initial user message template.
 //
-// "AI SDR outbound" is the first job. Adding a second job (CRM hygiene,
-// deal-update agent) means writing another Job constant — no runtime
+// "Revenue Agent — outbound" is the first bundled job. Adding CRM hygiene,
+// deal-update, or other revenue workflows means writing another Job constant — no runtime
 // changes. The runtime is generic; the agent's behavior lives in the job
 // definition.
 
@@ -16,20 +16,20 @@ export type AgentRuntimeModel =
   | 'claude-haiku-4-5-20251001';
 
 // One tool the agent can call. The job declares the user-facing name and
-// JSON schema (the LLM sees these), plus the Dejavas tool name and an
+// JSON schema (the LLM sees these), plus the Agentbase tool name and an
 // optional param mapper to translate LLM-supplied input into the shape
-// Dejavas expects.
+// Agentbase expects.
 export interface JobTool {
   name: string;
   description: string;
   // Plain JSON Schema, fed straight to the LLM. Keep this conservative —
   // flat objects of primitives map best onto LLM tool-use semantics.
   inputSchema: Record<string, unknown>;
-  // The Dejavas tool name to invoke (e.g. 'gmail.send', 'hubspot.deals.update').
+  // The Agentbase tool name to invoke (e.g. 'gmail.send', 'hubspot.deals.update').
   // The policy engine, approval routing, audit log, and connector dispatch
   // all key off this. Must match the tool names in the policy DSL.
-  dejavasTool: string;
-  // Optional translation from LLM-supplied input to Dejavas params. If
+  agentbaseTool: string;
+  // Optional translation from LLM-supplied input to Agentbase params. If
   // omitted the input is passed through verbatim.
   paramMapper?: (input: Record<string, unknown>) => Record<string, unknown>;
 }

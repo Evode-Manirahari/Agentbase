@@ -1,6 +1,6 @@
 # demo-agent
 
-Reference agent that exercises five connectors through `@dejavas/sdk` in the
+Reference agent that exercises five connectors through `@agentbase/sdk` in the
 typical inbound-lead flow:
 
 1. **Enrich the lead** via Apollo (`apollo.people.match`)
@@ -13,8 +13,8 @@ typical inbound-lead flow:
 7. **Enroll in an Outreach sequence** (`outreach.sequences.enroll`) — requires approval
 8. **Update a high-value deal** (`hubspot.deals.update` with `amount: 75000`) — requires approval
 
-Every step is mediated by Dejavas. The agent prints the policy decision + the
-connector outcome for each step so you can see exactly where the approval gate
+Every step is mediated by Agentbase. The agent prints the policy decision + the
+connector outcome for each step so you can see exactly where the secure action layer
 intervenes.
 
 ## Two modes
@@ -25,25 +25,25 @@ The order of operations is fixed. Best for a deterministic demo and works withou
 
 ```bash
 ./examples/demo-agent/setup.sh
-export DEJAVAS_API_KEY=dvk_...        # printed by setup.sh
-pnpm --filter '@dejavas/demo-agent' run start
+export AGENTBASE_API_KEY=agb_...        # printed by setup.sh
+pnpm --filter '@agentbase/demo-agent' run start
 
 # Or with a custom email:
-pnpm --filter '@dejavas/demo-agent' exec tsx src/index.ts cto@globex.com
+pnpm --filter '@agentbase/demo-agent' exec tsx src/index.ts cto@globex.com
 ```
 
 ### Claude-driven (`src/claude.ts`)
 
-Uses the Anthropic SDK with tool use — Claude decides what to call when. Each Anthropic tool wraps a Dejavas SDK call, so policy / approval / audit / connector mediation is identical to the hard-coded variant. Uses `claude-opus-4-7` with adaptive thinking + `effort: xhigh`.
+Uses the Anthropic SDK with tool use — Claude decides what to call when. Each Anthropic tool wraps an Agentbase SDK call, so policy / approval / audit / connector mediation is identical to the hard-coded variant. Uses `claude-opus-4-7` with adaptive thinking + `effort: xhigh`.
 
 ```bash
 ./examples/demo-agent/setup.sh
-export DEJAVAS_API_KEY=dvk_...
+export AGENTBASE_API_KEY=agb_...
 export ANTHROPIC_API_KEY=sk-ant-...
-pnpm --filter '@dejavas/demo-agent' run start:claude
+pnpm --filter '@agentbase/demo-agent' run start:claude
 
 # Or with a custom email:
-pnpm --filter '@dejavas/demo-agent' exec tsx src/claude.ts cto@globex.com
+pnpm --filter '@agentbase/demo-agent' exec tsx src/claude.ts cto@globex.com
 ```
 
 This run prints Claude's tool-use trace in real time — every tool call shows the same `✓ executed / ✗ failed / 🛂 awaiting_approval` icon as the hard-coded variant, plus the policy decision and reason. At the end Claude prints a brief summary of what happened. Token usage is reported for cost visibility.

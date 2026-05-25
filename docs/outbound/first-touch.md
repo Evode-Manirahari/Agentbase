@@ -1,6 +1,6 @@
 # First-touch outbound
 
-Cold message to send to a target on day one. Goal: one **yes/no** question that surfaces whether they have the blocked-pilot pain. If the answer is "no" or "we don't run an AI SDR," disqualify and move on — they're not the buyer for v1.
+Cold message to send to a target on day one. Goal: one **yes/no** question that surfaces whether they have the blocked-agent pain. If the answer is "no" or "we don't let agents act in revenue systems," disqualify and move on — they're not the buyer for v1.
 
 ## Who to send to
 
@@ -12,7 +12,7 @@ The strategy doc spec'd this; tightening here:
 | **Company size** | Series B–D B2B SaaS, 150–1,000 employees, 25–200 sellers |
 | **Stack signals** | Salesforce or HubSpot, Gmail or Outlook, Slack, Outreach or Salesloft, Apollo or ZoomInfo or Clay, Okta, Vanta |
 | **Trigger signal (priority)** | One of: their team posted about evaluating 11x / Artisan / Regie / Outreach AI / Salesforce Agentforce / HubSpot Breeze in the last 90 days; they hired an "AI Operations" or "AI Sales Engineer" role recently; they posted a job for "RevOps Manager" mentioning AI; their CRO mentioned AI productivity on an earnings call |
-| **De-prioritize** | Pre-seed/seed companies (no security function to satisfy); pure-PLG companies with no SDR motion; companies whose only AI usage is summarization/research; agencies and consultancies (they're channels, not buyers — see below) |
+| **De-prioritize** | Pre-seed/seed companies (no security function to satisfy); companies whose only AI usage is summarization/research; agencies and consultancies (they're channels, not buyers — see below) |
 
 ## The 30-day list
 
@@ -20,7 +20,7 @@ The strategy doc spec'd this; tightening here:
 
 - 60 RevOps / Revenue Systems leaders (direct buyers)
 - 20 RevOps consultancies (channel — they see broken workflows across multiple clients)
-- 20 AI SDR / agent vendors (channel — they lose enterprise deals on governance and may bundle Dejavas as the unlock)
+- 20 AI sales agent vendors (channel — they lose enterprise deals on governance and may bundle Agentbase as the unlock)
 - 20 Security/IT leaders, only at companies where step 1 already showed AI adoption signals
 
 Keep this list in a Notion table or a CSV in `docs/outbound/targets.csv`. Don't track 500 people you can't follow up with.
@@ -28,25 +28,25 @@ Keep this list in a Notion table or a CSV in `docs/outbound/targets.csv`. Don't 
 ## The message
 
 **Subject line A (default):**
-> An AI SDR your security team can actually approve
+> Letting sales agents touch CRM?
 
-**Subject line B (when the prospect's company has posted publicly about an AI SDR pilot):**
-> The AI SDR pilot {{company}} mentioned — is it past draft-only yet?
+**Subject line B (when the prospect's company has posted publicly about an AI sales-agent pilot):**
+> Is {{company}}'s sales agent still draft-only?
 
 **Body:**
 
 ```
 Hey {{first_name}} —
 
-I'm building Dejavas. It's an AI SDR that comes with the safety rails security needs to actually let it run in production.
+I'm building Agentbase, the secure action layer for AI sales agents.
 
-Pattern I keep seeing: RevOps buys an AI SDR (11x / Artisan / Regie / one of the natives), runs a pilot, then security pulls the OAuth scopes the moment it tries to write to Salesforce or send a real email. The agent gets stuck in draft-only mode and the pilot dies on the vine.
+Pattern I keep seeing: RevOps deploys an agent into Salesforce, Gmail, Slack, Outreach, or enrichment tools. It can research accounts, enrich leads, update CRM fields, draft email, create tasks, and summarize deal activity. Then security blocks it before it can touch production systems.
 
-Dejavas ships the agent with the approval gate baked in. Every risky write — gmail.send, deal updates over $10k, sequence enrollments — pauses for a human to approve in Slack before it touches a CRM record. Audit export and policy YAML for SOC 2.
+Agentbase gives the agent an identity, scoped permissions, approval rules, revocation, and audit trails across the revenue stack. Sensitive actions like gmail.send, deal updates over $10k, and sequence enrollments pause for human approval before execution.
 
-I'm looking for 5 design partners. 60-day paid pilot ($5–10k), one workflow, you keep your existing CRM and we sit in front of one risky action.
+I'm looking for 5 design partners. 60-day paid pilot ($5-10k), one workflow, you keep your existing CRM/agent stack and we sit in front of the risky actions.
 
-One question: do you currently have an AI sales agent or workflow that's stuck in draft-only because security won't approve the write scopes?
+One question: do you currently have an AI sales agent or workflow that security/IT will not allow to take production actions?
 
 — Evode
 ```
@@ -55,25 +55,25 @@ One question: do you currently have an AI sales agent or workflow that's stuck i
 
 ## Why this message
 
-- Names the **exact pain** in the subject ("security team can actually approve") instead of generic "AI agent governance"
+- Names the **exact pain** in the subject ("letting sales agents touch CRM") instead of generic "AI agent governance"
 - Names the **competitor cohort** by name (11x, Artisan, Regie) so the reader knows we understand the buying moment
-- The "draft-only mode" phrase is the **diagnostic** — if the reader nods, they're a fit; if they don't recognize it, they're not
+- The "production actions" phrase is the **diagnostic** — if the reader nods, they're a fit; if they don't recognize it, they're not
 - One **yes/no qualifying question** at the end. No CTA to "hop on a call" yet — that ask comes in the follow-up after they answer
 
 ## Variants by buyer
 
-### To an AI SDR vendor (channel)
+### To an AI sales agent vendor (channel)
 
 Subject: **Are governance objections killing your enterprise deals?**
 
 ```
 Hey {{first_name}} —
 
-I'm building Dejavas — an AI SDR governance layer that AI sales agent vendors can embed so enterprise security stops blocking pilots.
+I'm building Agentbase — cross-stack governance that AI sales agent vendors can embed so enterprise security stops blocking pilots.
 
 Pattern I see: your product works fine in mid-market, but Series C+ deals stall at security review because RevOps can't get OAuth scopes approved.
 
-I want to be the "yes, you can deploy this in prod" answer for {{company}}'s enterprise prospects. Embed Dejavas's approval gate + audit export, sell the bundle.
+I want to be the "yes, you can deploy this in prod" answer for {{company}}'s enterprise prospects. Embed Agentbase identity, approval routing, revocation, and audit export, then sell the bundle.
 
 Is governance/security an objection coming up in any deals you're working right now?
 
@@ -82,16 +82,16 @@ Is governance/security an objection coming up in any deals you're working right 
 
 ### To a RevOps consultancy (channel)
 
-Subject: **Are your clients' AI SDR pilots dying at security review?**
+Subject: **Are your clients' sales-agent pilots dying at security review?**
 
 ```
 Hey {{first_name}} —
 
-Solo founder building Dejavas — an AI SDR a RevOps team can actually run in production because every risky CRM/email write pauses for human approval in Slack.
+Solo founder building Agentbase — the secure action layer RevOps can put in front of AI sales agents so risky CRM/email/sales-tool actions pause for human approval before execution.
 
-Curious if you're seeing this pattern in client work: RevOps buys an AI SDR, security blocks the scopes, pilot dies. I'm looking for 5 design partners and would happily pay a referral or a fee for the intro to the right RevOps team.
+Curious if you're seeing this pattern in client work: RevOps deploys an AI sales agent, security blocks the scopes, pilot dies. I'm looking for 5 design partners and would happily pay a referral or a fee for the intro to the right RevOps team.
 
-Are you working with any clients whose AI sales pilot stalled on security?
+Are you working with any clients whose AI sales agent pilot stalled on security?
 
 — Evode
 ```

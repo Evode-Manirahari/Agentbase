@@ -1,19 +1,19 @@
-# Fly.io config for the Dejavas web dashboard.
+# Fly.io config for the Agentbase web dashboard.
 #
 # Deploys the Next.js dashboard as a separate Fly app pointing at the API
 # you already deployed via fly.api.toml.
 #
 # First-time setup (from the repo root, after the API is up):
 #
-#   fly apps create dejavas-web-CHANGEME --config infra/fly.web.toml
-#   fly secrets set API_URL=https://dejavas-api-CHANGEME.fly.dev \
+#   fly apps create agentbase-web-CHANGEME --config infra/fly.web.toml
+#   fly secrets set API_URL=https://agentbase-api-CHANGEME.fly.dev \
 #     --config infra/fly.web.toml
 #
 # Deploy:
 #
 #   fly deploy --config infra/fly.web.toml --remote-only
 
-app = "dejavas-web-CHANGEME"
+app = "agentbase-web-CHANGEME"
 primary_region = "iad"
 
 [build]

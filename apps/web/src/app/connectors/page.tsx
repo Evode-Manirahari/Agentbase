@@ -60,7 +60,8 @@ export default async function ConnectorsPage({
     <div className="max-w-6xl">
       <H1>Connectors</H1>
       <Subtitle>
-        Store org-scoped credentials for revenue tools. Org credentials override
+        Connect Salesforce, HubSpot, Gmail, Outreach, Apollo, and Slack-adjacent
+        workflows under one governed action surface. Org credentials override
         process env vars and are encrypted before they are written to Postgres.
       </Subtitle>
 

@@ -2,7 +2,7 @@
 
 import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { OutreachConnector } from '@dejavas/connector-outreach';
+import { OutreachConnector } from '@agentbase/connector-outreach';
 
 interface FetchCall {
   url: string;

@@ -6,7 +6,7 @@ import {
   GmailConnector,
   base64UrlEncode,
   gmailMessage,
-} from '@dejavas/connector-gmail';
+} from '@agentbase/connector-gmail';
 
 interface FetchCall {
   url: string;
@@ -190,7 +190,7 @@ describe('GmailConnector.invoke — HTTP behavior', () => {
       fetchImpl,
     });
     const r = await c.invoke('gmail.send', {
-      to: 'alice@dejavas.test',
+      to: 'alice@agentbase.test',
       subject: 'Quarterly review',
       body: 'Hi alice — see attached.',
     });
@@ -202,7 +202,7 @@ describe('GmailConnector.invoke — HTTP behavior', () => {
     );
     const body = JSON.parse(calls[0]!.init.body as string);
     assert.ok(typeof body.raw === 'string');
-    assert.match(decodeBase64Url(body.raw), /^To: alice@dejavas\.test\r\n/);
+    assert.match(decodeBase64Url(body.raw), /^To: alice@agentbase\.test\r\n/);
     const headers = calls[0]!.init.headers as Record<string, string>;
     assert.equal(headers.authorization, 'Bearer tok-test');
   });

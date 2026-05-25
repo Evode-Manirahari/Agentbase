@@ -70,7 +70,7 @@ export class CampaignsController {
           tools: job.tools.map((t) => ({
             name: t.name,
             description: t.description,
-            dejavas_tool: t.dejavasTool,
+            agentbase_tool: t.agentbaseTool,
           })),
         };
       }),
@@ -239,7 +239,7 @@ export interface RunResponse {
   paused_on: {
     action_id: string;
     tool_use_id: string;
-    dejavas_tool: string;
+    agentbase_tool: string;
   } | null;
   usage: RunRow['usage'];
   error: string | null;
@@ -261,11 +261,11 @@ function toResponse(row: RunRow): RunResponse {
     paused_on:
       row.paused_on_action_id &&
       row.paused_on_tool_use_id &&
-      row.paused_on_dejavas_tool
+      row.paused_on_agentbase_tool
         ? {
             action_id: row.paused_on_action_id,
             tool_use_id: row.paused_on_tool_use_id,
-            dejavas_tool: row.paused_on_dejavas_tool,
+            agentbase_tool: row.paused_on_agentbase_tool,
           }
         : null,
     usage: row.usage,

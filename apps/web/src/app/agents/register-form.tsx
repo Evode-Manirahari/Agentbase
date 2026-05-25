@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { AGENT_PERMISSION_PROFILE_OPTIONS } from '@dejavas/shared';
+import { AGENT_PERMISSION_PROFILE_OPTIONS } from '@agentbase/shared';
 import { registerAgentAction, type RegisterState } from './actions';
 
 const initialRegisterState: RegisterState = { status: 'idle' };

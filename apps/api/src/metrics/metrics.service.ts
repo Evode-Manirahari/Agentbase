@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gte, sql } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@dejavas/db';
-import { actions, agents } from '@dejavas/db';
-import type { ActionStatus } from '@dejavas/shared';
+import type { Database } from '@agentbase/db';
+import { actions, agents } from '@agentbase/db';
+import type { ActionStatus } from '@agentbase/shared';
 
 export interface MetricsOverview {
   window_hours: number;

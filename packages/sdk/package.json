@@ -1,5 +1,5 @@
 {
-  "name": "@dejavas/sdk",
+  "name": "@agentbase/sdk",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@dejavas/shared": "workspace:*"
+    "@agentbase/shared": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2"

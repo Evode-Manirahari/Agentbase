@@ -7,8 +7,8 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@dejavas/db';
-import { actions, agents, approvals, users } from '@dejavas/db';
+import type { Database } from '@agentbase/db';
+import { actions, agents, approvals, users } from '@agentbase/db';
 import { AuditService } from '../audit/audit.service.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
 import { SlackService } from '../slack/slack.service.js';
@@ -19,7 +19,7 @@ import type {
   ApprovalListResponse,
   ApprovalView,
   PolicyDecision,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 
 interface DecideInput {
   approvalId: string;
@@ -322,7 +322,7 @@ export class ApprovalsService {
   // sequentially through decide() so audit log + Slack card update +
   // agent-run resume all fire correctly per approval. One failure
   // doesn't block the rest — the caller gets a row-by-row picture.
-  // BulkDecideItem is locally typed; the wire shape lives in @dejavas/shared
+  // BulkDecideItem is locally typed; the wire shape lives in @agentbase/shared
   // (BulkApprovalDecisionItem) and the controller maps between them.
   //
   // Already-decided approvals are surfaced as a distinct outcome

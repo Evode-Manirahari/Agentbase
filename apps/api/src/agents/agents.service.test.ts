@@ -14,13 +14,13 @@ import { and, eq, isNull } from 'drizzle-orm';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { NotFoundException } from '@nestjs/common';
-import { schema, orgs, agents, agentApiKeys, auditLog } from '@dejavas/db';
+import { schema, orgs, agents, agentApiKeys, auditLog } from '@agentbase/db';
 import { AgentsService } from './agents.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { hashApiKey } from '../auth/api-key.js';
 
 const DB_URL =
-  process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
+  process.env.DATABASE_URL ?? 'postgresql://agentbase:agentbase@localhost:5433/agentbase';
 
 let client: ReturnType<typeof postgres>;
 let db: ReturnType<typeof drizzle<typeof schema>>;
@@ -53,13 +53,13 @@ describe('AgentsService.register', () => {
     if (orgId) await db.delete(orgs).where(eq(orgs.id, orgId));
   });
 
-  it('creates the agent + a single api key with dvk_ plaintext and matching prefix', async () => {
+  it('creates the agent + a single api key with agb_ plaintext and matching prefix', async () => {
     const out = await svc.register({
       orgId,
       name: 'researcher',
       description: 'looks things up',
     });
-    assert.match(out.api_key, /^dvk_/);
+    assert.match(out.api_key, /^agb_/);
     assert.equal(out.api_key_prefix, out.api_key.slice(0, 12));
     assert.match(out.agent_id, /^[0-9a-f-]{36}$/i);
 
@@ -168,7 +168,7 @@ describe('AgentsService.revoke', () => {
       orgId,
       agentId: reg.agent_id,
       reason: 'test',
-      revokedByEmail: 'alice@dejavas.test',
+      revokedByEmail: 'alice@agentbase.test',
     });
     assert.equal(result.status, 'revoked');
     assert.equal(result.keys_revoked, 1);
@@ -199,7 +199,7 @@ describe('AgentsService.revoke', () => {
       .where(eq(auditLog.orgId, orgId));
     const ev = events.find((e) => e.eventType === 'agent.revoked');
     assert.ok(ev);
-    assert.equal(ev!.actorId, 'alice@dejavas.test');
+    assert.equal(ev!.actorId, 'alice@agentbase.test');
     const payload = ev!.payload as { agentName: string; reason: string; keysRevoked: number };
     assert.equal(payload.agentName, 'to-revoke');
     assert.equal(payload.reason, 'test');

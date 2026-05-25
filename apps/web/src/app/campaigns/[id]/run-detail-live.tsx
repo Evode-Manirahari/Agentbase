@@ -64,7 +64,7 @@ export function RunDetailLive({
   }, [result.id, result.status]);
 
   // Only show the "check replies" button on runs that completed an
-  // outbound flow (the SDR job). For hygiene or reply-handler runs,
+  // outbound flow. For hygiene or reply-handler runs,
   // the button would be a no-op.
   const showCheckReplies = result.job_key === 'ai-sdr-outbound' && result.status === 'completed';
 

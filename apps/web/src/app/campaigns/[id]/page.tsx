@@ -20,7 +20,7 @@ export default async function CampaignRunPage({
     if ((e as Error).message?.includes('404')) notFound();
     return (
       <div className="max-w-5xl">
-        <H1>Campaign run</H1>
+        <H1>Agent run</H1>
         <Subtitle>Run {id}</Subtitle>
         <ErrorBox error={error} />
       </div>
@@ -29,7 +29,7 @@ export default async function CampaignRunPage({
 
   return (
     <div className="max-w-5xl">
-      <H1>Campaign run</H1>
+      <H1>Agent run</H1>
       <Subtitle>
         Job <span className="mono">{initial.job_key}</span> · started{' '}
         {new Date(initial.created_at).toLocaleString()}

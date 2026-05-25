@@ -55,7 +55,7 @@ function makeController(opts: {
     messages: [],
     paused_on_action_id: null,
     paused_on_tool_use_id: null,
-    paused_on_dejavas_tool: null,
+    paused_on_agentbase_tool: null,
     usage: null,
     error: null,
     batch_id: null,
@@ -116,7 +116,7 @@ describe('CampaignsController.jobs', () => {
     const out = controller.jobs();
     assert.equal(out.items.length, 1);
     assert.equal(out.items[0]?.key, 'ai-sdr-outbound');
-    assert.ok(out.items[0]?.tools.some((t) => t.dejavas_tool === 'gmail.send'));
+    assert.ok(out.items[0]?.tools.some((t) => t.agentbase_tool === 'gmail.send'));
   });
 });
 
@@ -165,7 +165,7 @@ describe('CampaignsController.getRun', () => {
         status: 'paused',
         paused_on_action_id: '33333333-3333-3333-3333-333333333333',
         paused_on_tool_use_id: 'tu_xyz',
-        paused_on_dejavas_tool: 'gmail.send',
+        paused_on_agentbase_tool: 'gmail.send',
       },
     });
     const out = await controller.getRun('44444444-4444-4444-4444-444444444444');
@@ -173,7 +173,7 @@ describe('CampaignsController.getRun', () => {
     assert.deepEqual(out.paused_on, {
       action_id: '33333333-3333-3333-3333-333333333333',
       tool_use_id: 'tu_xyz',
-      dejavas_tool: 'gmail.send',
+      agentbase_tool: 'gmail.send',
     });
   });
 });
@@ -228,7 +228,7 @@ describe('CampaignsController.getBatch', () => {
       messages: [],
       paused_on_action_id: null,
       paused_on_tool_use_id: null,
-      paused_on_dejavas_tool: null,
+      paused_on_agentbase_tool: null,
       usage: null,
       error: null,
       batch_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',

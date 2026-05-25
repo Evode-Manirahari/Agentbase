@@ -5,7 +5,7 @@ export default {
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas',
+    url: process.env.DATABASE_URL ?? 'postgresql://agentbase:agentbase@localhost:5433/agentbase',
   },
   strict: false,
   verbose: true,

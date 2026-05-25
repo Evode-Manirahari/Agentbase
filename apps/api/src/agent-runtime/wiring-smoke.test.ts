@@ -19,7 +19,7 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { Test } from '@nestjs/testing';
 import type { INestApplicationContext } from '@nestjs/common';
-import { schema, orgs, agents, agentRuns } from '@dejavas/db';
+import { schema, orgs, agents, agentRuns } from '@agentbase/db';
 import { AppModule } from '../app.module.js';
 import { AgentRunsService } from './agent-runs.service.js';
 import {
@@ -30,7 +30,7 @@ import {
 
 const DB_URL =
   process.env.DATABASE_URL ??
-  'postgresql://dejavas:dejavas@localhost:5433/dejavas';
+  'postgresql://agentbase:agentbase@localhost:5433/agentbase';
 
 // Returns a single text block + end_turn so the agent loop terminates
 // on iteration 1 with status 'completed'. No tool calls means no

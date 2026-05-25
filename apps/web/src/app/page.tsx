@@ -31,15 +31,18 @@ export default async function OverviewPage() {
     <div className="max-w-6xl">
       <H1>Overview</H1>
       <Subtitle>
-        Live state of the AI SDR and its approval gate.{' '}
+        Cross-stack governance for revenue agents before they touch CRM, email,
+        and sales tools.{' '}
         <a href="/campaigns" className="underline hover:text-[var(--color-accent)]">
-          Run a campaign →
+          Start a governed run →
         </a>
       </Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}
 
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <ControlPlaneBrief />
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <Stat label="Agents" value={agents} />
         <Stat
           label="Pending approvals"
@@ -98,10 +101,42 @@ export default async function OverviewPage() {
   );
 }
 
+function ControlPlaneBrief() {
+  return (
+    <Card className="mb-6 p-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+        <BriefItem
+          label="Identity"
+          value="Every sales agent gets a scoped identity and revocable API key."
+        />
+        <BriefItem
+          label="Governance"
+          value="Policies decide which Salesforce, Gmail, Slack, Outreach, and enrichment actions run, pause, or stop."
+        />
+        <BriefItem
+          label="Monitoring"
+          value="Approvals, connector outcomes, and audit exports give RevOps, security, and IT one evidence trail."
+        />
+      </div>
+    </Card>
+  );
+}
+
+function BriefItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs text-[var(--color-muted)] uppercase tracking-wider mb-1">
+        {label}
+      </div>
+      <div>{value}</div>
+    </div>
+  );
+}
+
 function MetricsBoard({ metrics }: { metrics: MetricsOverview }) {
   const s = metrics.by_status;
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       <Card className="p-4">
         <div className="text-xs text-[var(--color-muted)] uppercase tracking-wider mb-2">
           Last {metrics.window_hours}h breakdown

@@ -1,8 +1,8 @@
 {
-  "name": "dejavas",
+  "name": "agentbase",
   "private": true,
   "version": "0.0.0",
-  "description": "Dejavas — approval gate for AI sales agents (repo: Agentbase).",
+  "description": "Agentbase — secure action layer for AI sales agents across the revenue stack.",
   "license": "Apache-2.0",
   "packageManager": "pnpm@10.30.3",
   "engines": {

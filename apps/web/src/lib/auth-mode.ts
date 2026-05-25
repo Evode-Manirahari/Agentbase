@@ -1,15 +1,15 @@
 // Dashboard-side mirror of apps/api/src/auth/auth-mode.ts. The contract is
 // the same — in production, refuse to dev-passthrough unless the operator
-// has explicitly opted in via DEJAVAS_ALLOW_UNAUTHENTICATED=1.
+// has explicitly opted in via AGENTBASE_ALLOW_UNAUTHENTICATED=1.
 
 export type AuthMode = 'enforced' | 'dev_passthrough';
 
 export class UnauthenticatedProductionError extends Error {
   constructor() {
     super(
-      'Dejavas dashboard refuses to serve in production without authentication. ' +
+      'Agentbase dashboard refuses to serve in production without authentication. ' +
         'Set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (and CLERK_SECRET_KEY on the API) ' +
-        'to enforce Clerk session tokens, or set DEJAVAS_ALLOW_UNAUTHENTICATED=1 ' +
+        'to enforce Clerk session tokens, or set AGENTBASE_ALLOW_UNAUTHENTICATED=1 ' +
         'to explicitly opt in to an unauthenticated deployment.',
     );
     this.name = 'UnauthenticatedProductionError';
@@ -24,7 +24,7 @@ export function resolveAuthMode(): AuthMode {
   if (publishable.length > 0) return 'enforced';
 
   const isProd = (process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
-  const allowUnauth = (process.env.DEJAVAS_ALLOW_UNAUTHENTICATED ?? '').trim() === '1';
+  const allowUnauth = (process.env.AGENTBASE_ALLOW_UNAUTHENTICATED ?? '').trim() === '1';
   if (isProd && !allowUnauth) {
     throw new UnauthenticatedProductionError();
   }
@@ -39,7 +39,7 @@ export function authModeOrFatal(): AuthMode {
     return resolveAuthMode();
   } catch (err) {
     if (typeof console !== 'undefined') {
-      console.error('[dejavas-web]', (err as Error).message);
+      console.error('[agentbase-web]', (err as Error).message);
     }
     throw err;
   }

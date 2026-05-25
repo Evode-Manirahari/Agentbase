@@ -288,7 +288,7 @@ export const agentRuns = pgTable(
     messages: jsonb('messages').$type<unknown[]>().notNull().default([]),
     pausedOnActionId: uuid('paused_on_action_id'),
     pausedOnToolUseId: text('paused_on_tool_use_id'),
-    pausedOnDejavasTool: text('paused_on_dejavas_tool'),
+    pausedOnAgentbaseTool: text('paused_on_agentbase_tool'),
     usage: jsonb('usage').$type<Record<string, number>>(),
     error: text('error'),
     // When a single batch submission fans out into N runs (one per lead),

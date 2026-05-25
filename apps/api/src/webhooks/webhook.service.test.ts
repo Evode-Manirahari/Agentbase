@@ -14,12 +14,12 @@ import {
   schema,
   orgs,
   webhookSubscriptions,
-} from '@dejavas/db';
+} from '@agentbase/db';
 import { sign, WebhookService, WEBHOOK_DELIVER_JOB } from './webhook.service.js';
 import type { Queue } from 'bullmq';
 
 const DB_URL =
-  process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
+  process.env.DATABASE_URL ?? 'postgresql://agentbase:agentbase@localhost:5433/agentbase';
 
 class StubQueue {
   added: Array<{ name: string; data: unknown; opts: unknown }> = [];
@@ -242,14 +242,14 @@ describe('WebhookService', () => {
 
       const hit = recv.hits[0]!;
       // Required headers
-      assert.equal(hit.headers['x-dejavas-event-type'], 'action.failed');
-      assert.equal(hit.headers['x-dejavas-subscription-id'], sub.id);
-      assert.match(hit.headers['x-dejavas-timestamp']!, /^\d+$/);
-      assert.match(hit.headers['x-dejavas-signature']!, /^sha256=[a-f0-9]{64}$/);
+      assert.equal(hit.headers['x-agentbase-event-type'], 'action.failed');
+      assert.equal(hit.headers['x-agentbase-subscription-id'], sub.id);
+      assert.match(hit.headers['x-agentbase-timestamp']!, /^\d+$/);
+      assert.match(hit.headers['x-agentbase-signature']!, /^sha256=[a-f0-9]{64}$/);
       // HMAC verifies with the returned secret
-      const ts = hit.headers['x-dejavas-timestamp']!;
+      const ts = hit.headers['x-agentbase-timestamp']!;
       const expected = sign(sub.secret, ts, hit.body);
-      assert.equal(hit.headers['x-dejavas-signature'], `sha256=${expected}`);
+      assert.equal(hit.headers['x-agentbase-signature'], `sha256=${expected}`);
 
       // Persisted state
       const [row] = await db

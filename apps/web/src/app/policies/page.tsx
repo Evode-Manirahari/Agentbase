@@ -51,7 +51,10 @@ export default async function PoliciesPage() {
   return (
     <div className="max-w-5xl">
       <H1>Policies</H1>
-      <Subtitle>YAML rules that decide allow / require_approval / deny per action.</Subtitle>
+      <Subtitle>
+        Cross-stack rules that decide allow / require_approval / deny for each
+        CRM, email, enrichment, and sales-engagement action.
+      </Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}
 

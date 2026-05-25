@@ -1,8 +1,8 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { and, eq, inArray, lt } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@dejavas/db';
-import { actions, approvals } from '@dejavas/db';
+import type { Database } from '@agentbase/db';
+import { actions, approvals } from '@agentbase/db';
 import { AuditService } from '../audit/audit.service.js';
 import { AgentRunsService } from '../agent-runtime/agent-runs.service.js';
 

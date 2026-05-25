@@ -17,7 +17,7 @@ import {
   RegisterAgentRequest,
   type RegisterAgentRequest as RegisterAgentRequestT,
   type RegisterAgentResponse,
-} from '@dejavas/shared';
+} from '@agentbase/shared';
 import type { FastifyRequest } from 'fastify';
 import { AgentsService } from './agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';

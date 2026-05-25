@@ -6,7 +6,7 @@ import {
   getByPath,
   FALLBACK_POLICY,
 } from './policy-engine.js';
-import type { PolicyDocument, PolicyRule } from '@dejavas/shared';
+import type { PolicyDocument, PolicyRule } from '@agentbase/shared';
 
 const emptyDeny: PolicyDocument = { version: 1, default: 'deny', rules: [] };
 

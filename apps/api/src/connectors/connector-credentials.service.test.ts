@@ -16,12 +16,12 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import type { ConfigService } from '@nestjs/config';
 import { BadRequestException } from '@nestjs/common';
-import { schema, orgs, connectorCredentials } from '@dejavas/db';
+import { schema, orgs, connectorCredentials } from '@agentbase/db';
 import { ConnectorRegistry } from './connector-registry.js';
 import { ConnectorCredentialsService } from './connector-credentials.service.js';
 
 const DB_URL =
-  process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
+  process.env.DATABASE_URL ?? 'postgresql://agentbase:agentbase@localhost:5433/agentbase';
 
 class FakeConfig {
   constructor(private readonly env: Record<string, string | undefined> = {}) {}
@@ -188,7 +188,7 @@ describe('ConnectorCredentialsService', () => {
       config({
         HUBSPOT_CLIENT_ID: 'hub-client-id',
         HUBSPOT_CLIENT_SECRET: 'hub-client-secret',
-        API_PUBLIC_URL: 'https://api.dejavas.test',
+        API_PUBLIC_URL: 'https://api.agentbase.test',
         HUBSPOT_SCOPES: 'crm.objects.contacts.read crm.objects.contacts.write',
       }),
     );
@@ -201,7 +201,7 @@ describe('ConnectorCredentialsService', () => {
     assert.equal(url.searchParams.get('response_type'), 'code');
     assert.equal(
       url.searchParams.get('redirect_uri'),
-      'https://api.dejavas.test/v1/connectors/hubspot/oauth/callback',
+      'https://api.agentbase.test/v1/connectors/hubspot/oauth/callback',
     );
     assert.equal(
       url.searchParams.get('scope'),
@@ -214,7 +214,7 @@ describe('ConnectorCredentialsService', () => {
     const svc = new ConnectorCredentialsService(
       db,
       config({
-        API_PUBLIC_URL: 'https://api.dejavas.test',
+        API_PUBLIC_URL: 'https://api.agentbase.test',
         SALESFORCE_CLIENT_ID: 'sf-client-id',
         SALESFORCE_CLIENT_SECRET: 'sf-client-secret',
         SALESFORCE_LOGIN_URL: 'https://test.salesforce.com',
@@ -242,7 +242,7 @@ describe('ConnectorCredentialsService', () => {
     assert.equal(salesforce.searchParams.get('client_id'), 'sf-client-id');
     assert.equal(
       salesforce.searchParams.get('redirect_uri'),
-      'https://api.dejavas.test/v1/connectors/salesforce/oauth/callback',
+      'https://api.agentbase.test/v1/connectors/salesforce/oauth/callback',
     );
     assert.equal(salesforce.searchParams.get('scope'), 'api refresh_token');
 
@@ -263,7 +263,7 @@ describe('ConnectorCredentialsService', () => {
     assert.equal(gmail.searchParams.get('prompt'), 'consent');
     assert.equal(
       gmail.searchParams.get('redirect_uri'),
-      'https://api.dejavas.test/v1/connectors/gmail/oauth/callback',
+      'https://api.agentbase.test/v1/connectors/gmail/oauth/callback',
     );
 
     const outreach = new URL(
@@ -281,7 +281,7 @@ describe('ConnectorCredentialsService', () => {
     assert.equal(outreach.searchParams.get('scope'), 'prospects.all tasks.all');
     assert.equal(
       outreach.searchParams.get('redirect_uri'),
-      'https://api.dejavas.test/v1/connectors/outreach/oauth/callback',
+      'https://api.agentbase.test/v1/connectors/outreach/oauth/callback',
     );
   });
 
@@ -291,7 +291,7 @@ describe('ConnectorCredentialsService', () => {
       config({
         HUBSPOT_CLIENT_ID: 'hub-client-id',
         HUBSPOT_CLIENT_SECRET: 'hub-client-secret',
-        API_PUBLIC_URL: 'https://api.dejavas.test',
+        API_PUBLIC_URL: 'https://api.agentbase.test',
       }),
     );
     const state = new URL(
@@ -361,7 +361,7 @@ describe('ConnectorCredentialsService', () => {
       config({
         HUBSPOT_CLIENT_ID: 'hub-client-id',
         HUBSPOT_CLIENT_SECRET: 'hub-client-secret',
-        API_PUBLIC_URL: 'https://api.dejavas.test',
+        API_PUBLIC_URL: 'https://api.agentbase.test',
       }),
     );
     const state = new URL(
@@ -419,7 +419,7 @@ describe('ConnectorCredentialsService', () => {
       config({
         SALESFORCE_CLIENT_ID: 'sf-client-id',
         SALESFORCE_CLIENT_SECRET: 'sf-client-secret',
-        API_PUBLIC_URL: 'https://api.dejavas.test',
+        API_PUBLIC_URL: 'https://api.agentbase.test',
       }),
     );
     const state = new URL(
@@ -438,7 +438,7 @@ describe('ConnectorCredentialsService', () => {
           assert.equal(body.get('code'), 'sf-code');
           assert.equal(
             body.get('redirect_uri'),
-            'https://api.dejavas.test/v1/connectors/salesforce/oauth/callback',
+            'https://api.agentbase.test/v1/connectors/salesforce/oauth/callback',
           );
         },
         body: {
@@ -477,7 +477,7 @@ describe('ConnectorCredentialsService', () => {
       config({
         GMAIL_CLIENT_ID: 'gmail-client-id',
         GMAIL_CLIENT_SECRET: 'gmail-client-secret',
-        API_PUBLIC_URL: 'https://api.dejavas.test',
+        API_PUBLIC_URL: 'https://api.agentbase.test',
       }),
     );
     const state = new URL(
@@ -530,7 +530,7 @@ describe('ConnectorCredentialsService', () => {
       config({
         OUTREACH_CLIENT_ID: 'outreach-client-id',
         OUTREACH_CLIENT_SECRET: 'outreach-client-secret',
-        API_PUBLIC_URL: 'https://api.dejavas.test',
+        API_PUBLIC_URL: 'https://api.agentbase.test',
       }),
     );
     const state = new URL(

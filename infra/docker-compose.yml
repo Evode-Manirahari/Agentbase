@@ -1,24 +1,24 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: dejavas-postgres
+    container_name: agentbase-postgres
     environment:
-      POSTGRES_USER: dejavas
-      POSTGRES_PASSWORD: dejavas
-      POSTGRES_DB: dejavas
+      POSTGRES_USER: agentbase
+      POSTGRES_PASSWORD: agentbase
+      POSTGRES_DB: agentbase
     ports:
       - "5433:5432"
     volumes:
-      - dejavas-pg:/var/lib/postgresql/data
+      - agentbase-pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dejavas -d dejavas"]
+      test: ["CMD-SHELL", "pg_isready -U agentbase -d agentbase"]
       interval: 5s
       timeout: 3s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: dejavas-redis
+    container_name: agentbase-redis
     ports:
       - "6380:6379"
     healthcheck:
@@ -28,4 +28,4 @@ services:
       retries: 10
 
 volumes:
-  dejavas-pg:
+  agentbase-pg:

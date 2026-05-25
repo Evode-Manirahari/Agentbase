@@ -1,6 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createDb, type Database } from '@dejavas/db';
+import { createDb, type Database } from '@agentbase/db';
 
 export const DB = Symbol('DB');
 

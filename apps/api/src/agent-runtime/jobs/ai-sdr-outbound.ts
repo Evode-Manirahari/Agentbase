@@ -1,6 +1,6 @@
 import type { Job } from '../job.js';
 
-// The first job. An AI SDR processing a single inbound lead.
+// A governed revenue-agent job processing a single inbound lead.
 //
 // The agent has access to:
 //   - Apollo enrichment (allow under most policies — read-only)
@@ -13,9 +13,9 @@ import type { Job } from '../job.js';
 // What it does NOT have: any tool that updates revenue records, enrolls
 // in sequences, or alters deal data. Those are expansion-job concerns.
 
-const SYSTEM_PROMPT = `You are an AI SDR processing a single inbound lead at a B2B SaaS company.
+const SYSTEM_PROMPT = `You are an AI sales agent processing a single inbound lead at a B2B SaaS company.
 
-Every action you take goes through Dejavas — an approval gate that mediates each tool call against an organization-defined policy. Some actions auto-execute, some pause for human approval in Slack, some are denied. Trust the policy: it exists to keep the agent safe to run in production.
+Every action you take goes through Agentbase — a secure action layer that mediates each tool call against an organization-defined policy. Some actions auto-execute, some pause for human approval in Slack, some are denied. Trust the policy: it exists to keep the agent safe to run in production.
 
 For each lead, work through this playbook:
 1. Enrich the lead (apollo.people.match) and their company (apollo.organizations.match).
@@ -33,9 +33,9 @@ Be concise in your reasoning. The user is watching a live trace; long monologues
 
 export const AI_SDR_OUTBOUND_JOB: Job = {
   key: 'ai-sdr-outbound',
-  label: 'AI SDR — outbound',
+  label: 'Revenue Agent — outbound',
   description:
-    'Enrich one inbound lead, upsert in CRM, draft and send a personalized outreach email through the approval gate.',
+    'Enrich one inbound lead, upsert in CRM, draft and send personalized outreach through Agentbase approval rules.',
   model: 'claude-opus-4-7',
   maxIterations: 16,
   systemPrompt: SYSTEM_PROMPT,
@@ -65,7 +65,7 @@ export const AI_SDR_OUTBOUND_JOB: Job = {
         },
         required: ['email'],
       },
-      dejavasTool: 'apollo.people.match',
+      agentbaseTool: 'apollo.people.match',
     },
     {
       name: 'enrich_company',
@@ -81,7 +81,7 @@ export const AI_SDR_OUTBOUND_JOB: Job = {
         },
         required: ['domain'],
       },
-      dejavasTool: 'apollo.organizations.match',
+      agentbaseTool: 'apollo.organizations.match',
     },
     {
       name: 'upsert_hubspot_contact',
@@ -98,7 +98,7 @@ export const AI_SDR_OUTBOUND_JOB: Job = {
         },
         required: ['email'],
       },
-      dejavasTool: 'hubspot.contacts.upsert',
+      agentbaseTool: 'hubspot.contacts.upsert',
       paramMapper: (input) => {
         const { email, ...rest } = input as Record<string, string | undefined>;
         const properties: Record<string, unknown> = {
@@ -127,7 +127,7 @@ export const AI_SDR_OUTBOUND_JOB: Job = {
         },
         required: ['to', 'subject', 'body'],
       },
-      dejavasTool: 'gmail.draft.create',
+      agentbaseTool: 'gmail.draft.create',
     },
     {
       name: 'send_outreach_email',
@@ -142,7 +142,7 @@ export const AI_SDR_OUTBOUND_JOB: Job = {
         },
         required: ['to', 'subject', 'body'],
       },
-      dejavasTool: 'gmail.send',
+      agentbaseTool: 'gmail.send',
     },
   ],
 };

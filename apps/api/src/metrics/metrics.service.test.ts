@@ -7,11 +7,11 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { schema, orgs, agents, actions } from '@dejavas/db';
+import { schema, orgs, agents, actions } from '@agentbase/db';
 import { MetricsService } from './metrics.service.js';
 
 const DB_URL =
-  process.env.DATABASE_URL ?? 'postgresql://dejavas:dejavas@localhost:5433/dejavas';
+  process.env.DATABASE_URL ?? 'postgresql://agentbase:agentbase@localhost:5433/agentbase';
 
 let client: ReturnType<typeof postgres>;
 let db: ReturnType<typeof drizzle<typeof schema>>;

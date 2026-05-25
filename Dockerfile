@@ -24,7 +24,7 @@ EXPOSE 3002
 # (which export ./src/index.ts directly) resolve without a separate build
 # step. Trade-off: slightly slower cold start in exchange for not having
 # to maintain a parallel dist/ for every package.
-CMD ["pnpm", "--filter", "@dejavas/api", "exec", \
+CMD ["pnpm", "--filter", "@agentbase/api", "exec", \
      "node", "--import", "@swc-node/register/esm-register", "src/main.ts"]
 
 # Container-level health probe: hit the API's /health which already verifies

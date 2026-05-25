@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import type { AgentPermissionProfile } from '@dejavas/shared';
+import type { AgentPermissionProfile } from '@agentbase/shared';
 
 const BASE_URL = process.env.API_URL ?? 'http://localhost:3002';
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -177,7 +177,7 @@ export type TranscriptEntry =
       type: 'tool_call';
       tool_use_id: string;
       job_tool_name: string;
-      dejavas_tool: string;
+      agentbase_tool: string;
       params: Record<string, unknown>;
     }
   | {
@@ -204,7 +204,7 @@ export interface AgentRunResult {
   paused_on: {
     action_id: string;
     tool_use_id: string;
-    dejavas_tool: string;
+    agentbase_tool: string;
   } | null;
   usage: {
     input_tokens: number;
@@ -253,7 +253,7 @@ export interface CampaignJobSummary {
   label: string;
   description: string;
   model: string;
-  tools: { name: string; description: string; dejavas_tool: string }[];
+  tools: { name: string; description: string; agentbase_tool: string }[];
 }
 
 export const api = {
