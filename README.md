@@ -28,6 +28,31 @@ Buyer is RevOps / Revenue Systems teams deploying agents. Security and IT are th
 
 The bundled outbound, follow-up, reply-handler, CRM hygiene, and lead-list flows are proof points for the platform. The product is not "an AI SDR." The product is the cross-stack action layer that lets any revenue agent act safely.
 
+## Bring your own agent
+
+Agentbase governs *your* agent, not just ours. The bundled Revenue Agent jobs are reference implementations — proof the gate works on a real agent — but any TypeScript-side LLM tool-use loop can plug in with one import:
+
+```ts
+import { AgentbaseClient } from '@agentbase/sdk';
+
+const agentbase = new AgentbaseClient({ apiKey: process.env.AGENTBASE_API_KEY! });
+
+const res = await agentbase.executeAndWait({
+  tool: 'gmail.send',
+  params: { to: 'cto@globex.com', subject: '…', body: '…' },
+});
+// res.status === 'executed'  ← human approved in Slack
+// res.status === 'denied'    ← policy refused
+```
+
+The same gate runs whether the call comes from `apps/api/src/agent-runtime/` (our agent) or from your own Vercel AI SDK / Mastra / LangChain agent calling `@agentbase/sdk`. Same scoped identity, same policy, same Slack approval card, same audit row in `/audit`.
+
+See:
+
+- [`packages/sdk/README.md`](./packages/sdk/README.md) — install, API reference, awaiting-approval pattern, error handling
+- [`examples/byoa-vercel-ai/`](./examples/byoa-vercel-ai) — a real ~120-line example: Vercel AI SDK agent with five tools, each going through the gate. End-to-end lead-processing flow with one auto-executed step, one Slack-approval step, and a denial path
+- [`examples/demo-agent/`](./examples/demo-agent) — minimal hardcoded and raw-Anthropic variants if you don't want a framework
+
 ## How the demo works
 
 End-to-end in <2 minutes once the API is up:
@@ -74,7 +99,7 @@ The plumbing both sides share:
 - **Policy DSL** — YAML + Zod, rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, agent id/name/profile matching, dotted-path conditions with `eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`; the templates compile to this, and security can read it
 - **Revenue-stack connectors** — Salesforce, HubSpot, Gmail, Outreach, and Apollo, all behind the same secure action layer, with Zod-validated params and structured connector errors. Pilots ship on Salesforce + Gmail + Slack or HubSpot + Gmail + Slack; the rest are available if a customer asks.
 - **Org-scoped connector credentials** — HubSpot, Salesforce, Gmail, and Outreach OAuth install/reconnect plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, refresh access tokens before connector dispatch, show account/expiry metadata, can be tested from the dashboard, and can be disabled to block inherited env fallback
-- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Runs, Lead lists, Agents, Policies (templates + YAML editor), Approvals (web inbox alongside Slack), Actions, Connectors, Webhooks, Audit
+- **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Runs, Agents, Policies (templates + YAML editor), Approvals (web inbox alongside Slack), Actions, Connectors, Webhooks, Audit
 - **CI + tests** — GitHub Actions gates lint, typecheck, production build, the API test suite, and Playwright dashboard E2E including connector credential/OAuth-state and permission-profile coverage
 
 ## Quick start

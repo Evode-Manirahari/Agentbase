@@ -390,6 +390,29 @@ export class ActionsService {
       : registry.resolve(tool);
   }
 
+  // External-agent polling: a third-party agent that got `awaiting_approval`
+  // on /v1/actions/execute calls this to learn when the human decided. Scoped
+  // to the agent's org so one tenant cannot read another's action state.
+  async getForOrg(orgId: string, actionId: string): Promise<ExecuteOutput | null> {
+    const [row] = await this.db
+      .select({
+        id: actions.id,
+        status: actions.status,
+        result: actions.result,
+        policyDecision: actions.policyDecision,
+      })
+      .from(actions)
+      .where(and(eq(actions.orgId, orgId), eq(actions.id, actionId)))
+      .limit(1);
+    if (!row) return null;
+    return {
+      action_id: row.id,
+      status: row.status,
+      result: (row.result ?? undefined) as Record<string, unknown> | undefined,
+      policy_decision: row.policyDecision as unknown as PolicyDecision,
+    };
+  }
+
   async listForOrg(orgId: string, limit = 100) {
     const rows = await this.db
       .select({
