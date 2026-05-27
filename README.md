@@ -47,11 +47,13 @@ const res = await agentbase.executeAndWait({
 
 The same gate runs whether the call comes from `apps/api/src/agent-runtime/` (our agent) or from your own Vercel AI SDK / Mastra / LangChain agent calling `@agentbase/sdk`. Same scoped identity, same policy, same Slack approval card, same audit row in `/audit`.
 
-See:
+Two integration surfaces — code-level (SDK) and protocol-level (MCP):
 
-- [`packages/sdk/README.md`](./packages/sdk/README.md) — install, API reference, awaiting-approval pattern, error handling
-- [`examples/byoa-vercel-ai/`](./examples/byoa-vercel-ai) — a real ~120-line example: Vercel AI SDK agent with five tools, each going through the gate. End-to-end lead-processing flow with one auto-executed step, one Slack-approval step, and a denial path
-- [`examples/demo-agent/`](./examples/demo-agent) — minimal hardcoded and raw-Anthropic variants if you don't want a framework
+- [`packages/sdk/README.md`](./packages/sdk/README.md) — code-level integration. Import `@agentbase/sdk` in your agent loop (LangChain / Vercel AI / Mastra / raw Anthropic) and call the gate over HTTP.
+- [`packages/mcp-server/README.md`](./packages/mcp-server/README.md) — protocol-level integration. Run `agentbase-mcp` over stdio and any MCP-aware client (Claude Desktop, Cursor, Codex) gets every tool call routed through the gate. No agent code changes.
+- [`examples/byoa-vercel-ai/`](./examples/byoa-vercel-ai) — real ~120-line example: Vercel AI SDK agent with five tools, each going through the gate via the SDK. End-to-end lead-processing flow with one auto-executed step, one Slack-approval step, and a denial path.
+- [`examples/byoa-mcp/`](./examples/byoa-mcp) — smoke test for the MCP path plus a paste-and-edit Claude Desktop config.
+- [`examples/demo-agent/`](./examples/demo-agent) — minimal hardcoded and raw-Anthropic variants if you don't want a framework.
 
 ## How the demo works
 
@@ -246,7 +248,8 @@ apps/
 packages/
 ├── db/                  Drizzle schema + client (orgs/users/agents/keys/policies/actions/approvals/connectors/audit_log)
 ├── shared/              Zod schemas + types (used by API, SDK, web)
-└── sdk/                 @agentbase/sdk client (what agents import)
+├── sdk/                 @agentbase/sdk client — code-level integration for your agent
+└── mcp-server/          @agentbase/mcp-server — protocol-level integration (stdio MCP server)
 
 connectors/
 ├── hubspot/             HubspotConnector (CRM v3)
@@ -256,7 +259,10 @@ connectors/
 └── apollo/              ApolloConnector (v1; X-Api-Key auth)
 
 examples/
-└── demo-agent/          Reference agent that uses @agentbase/sdk
+├── demo-agent/          Reference agent that uses @agentbase/sdk
+├── byoa-vercel-ai/      Bring-your-own-agent example wired via the SDK
+├── byoa-mcp/            Bring-your-own-agent example wired via MCP (Claude Desktop, Cursor, etc.)
+└── cross-stack-demo/    One agent + one policy file governed across HubSpot + Salesforce + Gmail + Slack
 
 infra/
 └── docker-compose.yml   Postgres + Redis for local dev

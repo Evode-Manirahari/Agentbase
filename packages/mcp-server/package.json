@@ -1,0 +1,39 @@
+{
+  "name": "@agentbase/mcp-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "bin": {
+    "agentbase-mcp": "./src/index.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./catalog": "./src/catalog.ts"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import @swc-node/register/esm-register --test --test-force-exit 'src/**/*.test.ts'",
+    "lint": "eslint src --max-warnings=0"
+  },
+  "dependencies": {
+    "@agentbase/sdk": "workspace:*",
+    "@agentbase/shared": "workspace:*",
+    "@agentbase/connector-hubspot": "workspace:*",
+    "@agentbase/connector-salesforce": "workspace:*",
+    "@agentbase/connector-gmail": "workspace:*",
+    "@agentbase/connector-apollo": "workspace:*",
+    "@agentbase/connector-outreach": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@swc-node/register": "^1.10.9",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
