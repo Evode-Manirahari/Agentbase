@@ -1,4 +1,5 @@
-import { api, type MetricsOverview } from '../lib/api';
+import type React from 'react';
+import { api, type MetricsOverview, type MetricsTimeseries } from '../lib/api';
 import { Card, ErrorBox, H1, StatusPill, Subtitle } from '../components/nav';
 
 export const dynamic = 'force-dynamic';
@@ -9,20 +10,23 @@ export default async function OverviewPage() {
   let recentActions: Awaited<ReturnType<typeof api.actions.list>>['items'] = [];
   let policy: Awaited<ReturnType<typeof api.policies.active>> | null = null;
   let metrics: MetricsOverview | null = null;
+  let timeseries: MetricsTimeseries | null = null;
   let error: unknown = null;
   try {
-    const [a, ap, ac, p, m] = await Promise.all([
+    const [a, ap, ac, p, m, t] = await Promise.all([
       api.agents.list(),
       api.approvals.list(),
       api.actions.list(8),
       api.policies.active(),
       api.metrics.overview(24),
+      api.metrics.timeseries(168),
     ]);
     agents = a.items.length;
     pendingApprovals = ap.items.length;
     recentActions = ac.items;
     policy = p;
     metrics = m;
+    timeseries = t;
   } catch (e) {
     error = e;
   }
@@ -61,6 +65,10 @@ export default async function OverviewPage() {
       </div>
 
       {metrics ? <MetricsBoard metrics={metrics} /> : null}
+
+      {metrics ? <PolicyAndApprovalRow metrics={metrics} /> : null}
+
+      {timeseries ? <TimeseriesBoard ts={timeseries} /> : null}
 
       <Card className="mt-8">
         <div className="px-4 py-3 border-b border-[var(--color-border)] text-sm font-medium">
@@ -273,4 +281,174 @@ function Stat({
       ) : null}
     </Card>
   );
+}
+
+function PolicyAndApprovalRow({ metrics }: { metrics: MetricsOverview }) {
+  const a = metrics.approval_stats;
+  const hasApprovalData = a.require_approval_total > 0;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+      <Card className="p-4">
+        <div className="text-xs text-[var(--color-muted)] uppercase tracking-wider mb-2">
+          Approval throughput (last {metrics.window_hours}h)
+        </div>
+        {hasApprovalData ? (
+          <>
+            <div className="flex items-baseline gap-2">
+              <div className="text-2xl font-semibold">
+                {metrics.approval_rate === null
+                  ? '—'
+                  : `${(metrics.approval_rate * 100).toFixed(0)}%`}
+              </div>
+              <div className="text-xs text-[var(--color-muted)]">approved</div>
+            </div>
+            <div className="text-xs text-[var(--color-muted)] mt-2 space-y-0.5">
+              <div className="flex justify-between">
+                <span>approved by human</span>
+                <span className="mono">{a.approved}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>denied by human</span>
+                <span className="mono">{a.denied}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>still awaiting</span>
+                <span className="mono">{a.pending}</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="text-xs text-[var(--color-muted)]">
+            No approval-required actions in this window.
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <div className="text-xs text-[var(--color-muted)] uppercase tracking-wider mb-2">
+          Top policy hits
+        </div>
+        {metrics.top_policy_rules.length === 0 ? (
+          <div className="text-xs text-[var(--color-muted)]">
+            No policy decisions recorded.
+          </div>
+        ) : (
+          <ul className="text-sm space-y-1">
+            {metrics.top_policy_rules.map((r) => (
+              <li
+                key={`${r.reason}::${r.effect}`}
+                className="flex items-center justify-between gap-2"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <EffectDot effect={r.effect} />
+                  <span className="truncate" title={r.reason}>
+                    {r.reason}
+                  </span>
+                </div>
+                <span className="mono text-xs text-[var(--color-muted)]">
+                  {r.count}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function EffectDot({ effect }: { effect: 'allow' | 'require_approval' | 'deny' }) {
+  const color =
+    effect === 'allow'
+      ? 'bg-emerald-500'
+      : effect === 'require_approval'
+        ? 'bg-amber-500'
+        : 'bg-rose-500';
+  const label =
+    effect === 'allow' ? 'allow' : effect === 'require_approval' ? 'gate' : 'deny';
+  return (
+    <span
+      className={`inline-block w-2 h-2 rounded-full shrink-0 ${color}`}
+      title={label}
+    />
+  );
+}
+
+function TimeseriesBoard({ ts }: { ts: MetricsTimeseries }) {
+  const days = ts.buckets.length;
+  const max = Math.max(
+    1,
+    ...ts.series.flatMap((s) => s.counts),
+  );
+  const hasAny = ts.series.some((s) => s.counts.some((n) => n > 0));
+
+  return (
+    <Card className="mt-4 p-4">
+      <div className="flex items-baseline justify-between mb-3">
+        <div className="text-xs text-[var(--color-muted)] uppercase tracking-wider">
+          Actions per day, per agent
+        </div>
+        <div className="text-xs text-[var(--color-muted)]">last {days}d</div>
+      </div>
+      {!hasAny ? (
+        <div className="text-xs text-[var(--color-muted)]">
+          No activity in this window.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {ts.series.map((s, idx) => (
+            <div key={s.agent_id} className="flex items-center gap-3">
+              <div
+                className="text-xs truncate w-32 shrink-0"
+                title={s.agent_name}
+              >
+                {s.agent_name}
+              </div>
+              <div className="flex-1 grid gap-0.5" style={gridStyle(days)}>
+                {s.counts.map((n, i) => (
+                  <div
+                    key={i}
+                    className="h-6 rounded-sm relative"
+                    style={{
+                      backgroundColor: agentColor(idx, n === 0 ? 0 : n / max),
+                    }}
+                    title={`${ts.buckets[i]}: ${n}`}
+                  >
+                    {n > 0 ? (
+                      <span className="absolute inset-0 flex items-center justify-center text-[10px] mono text-zinc-900">
+                        {n}
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="grid gap-0.5 mt-1 pl-[8.75rem]" style={gridStyle(days)}>
+            {ts.buckets.map((b) => (
+              <div
+                key={b}
+                className="text-[10px] text-[var(--color-muted)] text-center mono"
+              >
+                {b.slice(5)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function gridStyle(cols: number): React.CSSProperties {
+  return { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` };
+}
+
+// Stable per-agent hue so the same agent gets the same colour across reloads.
+// Opacity encodes intensity so the eye can scan for hotspots.
+function agentColor(seriesIdx: number, intensity: number): string {
+  const hues = [200, 280, 30, 140, 0, 60, 320, 180];
+  const hue = hues[seriesIdx % hues.length];
+  const alpha = intensity === 0 ? 0.08 : 0.3 + intensity * 0.7;
+  return `hsl(${hue} 80% 60% / ${alpha})`;
 }
