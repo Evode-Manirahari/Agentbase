@@ -116,9 +116,33 @@ export interface MetricsOverview {
   >;
   deny_rate: number;
   failure_rate: number;
+  approval_rate: number | null;
+  approval_stats: {
+    require_approval_total: number;
+    approved: number;
+    denied: number;
+    pending: number;
+  };
   rate_limited_count: number;
   top_tools: { tool: string; count: number }[];
   top_agents: { agent_id: string; agent_name: string; count: number }[];
+  top_policy_rules: {
+    reason: string;
+    effect: 'allow' | 'require_approval' | 'deny';
+    count: number;
+  }[];
+  generated_at: string;
+}
+
+export interface MetricsTimeseries {
+  window_hours: number;
+  bucket: 'day';
+  buckets: string[];
+  series: {
+    agent_id: string;
+    agent_name: string;
+    counts: number[];
+  }[];
   generated_at: string;
 }
 
@@ -386,6 +410,8 @@ export const api = {
   metrics: {
     overview: (windowHours = 24) =>
       req<MetricsOverview>(`/v1/metrics/overview?window_hours=${windowHours}`),
+    timeseries: (windowHours = 168) =>
+      req<MetricsTimeseries>(`/v1/metrics/timeseries?window_hours=${windowHours}`),
   },
   webhooks: {
     list: () => req<{ items: WebhookSubscriptionRow[] }>(`/v1/webhooks`),
