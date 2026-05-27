@@ -245,6 +245,28 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  examples/cross-stack-demo:
+    dependencies:
+      '@agentbase/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@anthropic-ai/sdk':
+        specifier: ^0.92.0
+        version: 0.92.0(zod@3.25.76)
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.19.17
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   examples/demo-agent:
     dependencies:
       '@agentbase/sdk':
