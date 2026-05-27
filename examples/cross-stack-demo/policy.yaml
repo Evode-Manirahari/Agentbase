@@ -1,0 +1,112 @@
+version: 1
+default: deny
+
+# Cross-stack policy: ONE policy file governs ONE agent across HubSpot AND
+# Salesforce AND Gmail. Both CRMs share the same approval gate at $25k and
+# every approval routes to the same Slack channel — proving that Agentbase is
+# the control plane, not just a single-vendor governance plugin.
+#
+# Effects:
+#   allow            — auto-execute
+#   require_approval — pause for human sign-off (routed to slack_channel)
+#   deny             — block outright
+rules:
+  # ── Apollo enrichment (read-only, always allow) ───────────────────────────
+  - match: { tool: 'apollo.*' }
+    effect: allow
+    reason: 'enrichment is read-only'
+
+  # ── HubSpot writes (low-stakes auto-allow) ────────────────────────────────
+  - match: { tool: 'hubspot.connection.test' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.search' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.upsert' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.create' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.update' }
+    effect: allow
+  - match: { tool: 'hubspot.notes.create' }
+    effect: allow
+  - match: { tool: 'hubspot.tasks.create' }
+    effect: allow
+  - match: { tool: 'hubspot.deals.create' }
+    effect: allow
+  - match: { tool: 'hubspot.deals.associate' }
+    effect: allow
+  - match: { tool: 'hubspot.leads.create_deal' }
+    effect: allow
+
+  # ── Salesforce writes (low-stakes auto-allow) ─────────────────────────────
+  - match: { tool: 'salesforce.account.create' }
+    effect: allow
+  - match: { tool: 'salesforce.account.update' }
+    effect: allow
+  - match: { tool: 'salesforce.contact.create' }
+    effect: allow
+  - match: { tool: 'salesforce.contact.update' }
+    effect: allow
+
+  # ── Cross-stack high-value gate ($25k+) ───────────────────────────────────
+  # Same approval rule fires whether the high-value write hits HubSpot or
+  # Salesforce — RevOps reviews both from one queue.
+
+  - match:
+      tool: 'salesforce.opportunity.create'
+      when:
+        fields.Amount: { gte: 25000 }
+    effect: require_approval
+    approver_role: approver
+    reason: 'high-value Salesforce opportunity'
+    slack_channel: '#critical-approvals'
+
+  - match:
+      tool: 'salesforce.opportunity.update'
+      when:
+        fields.Amount: { gte: 25000 }
+    effect: require_approval
+    approver_role: approver
+    reason: 'high-value Salesforce opportunity change'
+    slack_channel: '#critical-approvals'
+
+  - match:
+      tool: 'hubspot.deals.update'
+      when:
+        properties.amount: { gte: 25000 }
+    effect: require_approval
+    approver_role: approver
+    reason: 'high-value HubSpot deal change'
+    slack_channel: '#critical-approvals'
+
+  - match:
+      tool: 'hubspot.leads.create_deal'
+      when:
+        deal.amount: { gte: 25000 }
+    effect: require_approval
+    approver_role: approver
+    reason: 'high-value HubSpot lead deal creation'
+    slack_channel: '#critical-approvals'
+
+  # Lower-value opportunities and deal updates auto-allow
+  - match: { tool: 'salesforce.opportunity.create' }
+    effect: allow
+  - match: { tool: 'salesforce.opportunity.update' }
+    effect: allow
+  - match: { tool: 'hubspot.deals.update' }
+    effect: allow
+
+  # ── Gmail (drafts always allow, sends require approval) ───────────────────
+  - match: { tool: 'gmail.draft.create' }
+    effect: allow
+    reason: 'drafts never leave the outbox without a human'
+  - match: { tool: 'gmail.send' }
+    effect: require_approval
+    approver_role: approver
+    reason: 'outbound send to a real prospect'
+    slack_channel: '#critical-approvals'
+
+  # ── Cross-stack delete protection ─────────────────────────────────────────
+  - match: { tool: '*.delete' }
+    effect: deny
+    reason: 'deletes are blocked across the entire stack'
