@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agentbase": {
+      "command": "pnpm",
+      "args": ["--filter", "@agentbase/mcp-server", "--silent", "run", "start"],
+      "cwd": "/absolute/path/to/Agentbase",
+      "env": {
+        "AGENTBASE_API_KEY": "agb_REPLACE_WITH_YOUR_AGENT_KEY",
+        "AGENTBASE_BASE_URL": "http://localhost:3002"
+      }
+    }
+  }
+}
