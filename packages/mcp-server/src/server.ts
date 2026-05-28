@@ -4,11 +4,23 @@ import {
   ListToolsRequestSchema,
   type CallToolResult,
 } from '@modelcontextprotocol/sdk/types.js';
-import { buildCatalog, isCatalogTool, type ToolCatalogEntry } from './catalog.js';
+import { buildCatalog, type ToolCatalogEntry } from './catalog.js';
 import type { GateClient } from './gate-client.js';
 import { AgentbaseError } from './gate-client.js';
 
-export const STATUS_TOOL = 'agentbase.get_action_status';
+// MCP requires tool names match ^[a-zA-Z0-9_-]{1,64}$ — dots are illegal.
+// Agentbase tool names are dot-separated (`hubspot.contacts.upsert`), so we
+// expose underscore-encoded names to MCP clients and translate back to the
+// dotted gate name before calling the gate.
+export function toMcpToolName(gateName: string): string {
+  return gateName.replace(/\./g, '_');
+}
+
+const STATUS_TOOL_GATE = 'agentbase.get_action_status';
+export const STATUS_TOOL = toMcpToolName(STATUS_TOOL_GATE);
+
+// Pattern Claude Desktop / MCP spec validate tool names against.
+export const MCP_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 
 interface ServerOptions {
   gate: GateClient;
@@ -32,10 +44,6 @@ interface CallToolInput {
   arguments?: Record<string, unknown> | undefined;
 }
 
-// Shapes the gate response into a single JSON payload the MCP client (and
-// the model behind it) can read. Always returns the action_id so the agent
-// can poll via `agentbase.get_action_status` if it wants the eventual
-// outcome of an awaiting_approval call.
 function shapeToolResult(response: {
   action_id: string;
   status: string;
@@ -79,8 +87,14 @@ function formatError(err: unknown): string {
   return String(err);
 }
 
+function buildMcpToGateMap(catalog: ToolCatalogEntry[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const t of catalog) map.set(toMcpToolName(t.name), t.name);
+  return map;
+}
+
 export function buildListToolsResponse(catalog: ToolCatalogEntry[]): {
-  tools: Array<ToolCatalogEntry | {
+  tools: Array<{
     name: string;
     description: string;
     inputSchema: object;
@@ -88,7 +102,11 @@ export function buildListToolsResponse(catalog: ToolCatalogEntry[]): {
 } {
   return {
     tools: [
-      ...catalog,
+      ...catalog.map((t) => ({
+        name: toMcpToolName(t.name),
+        description: t.description,
+        inputSchema: t.inputSchema,
+      })),
       {
         name: STATUS_TOOL,
         description:
@@ -131,7 +149,9 @@ export async function handleCallTool(
     }
   }
 
-  if (!isCatalogTool(name, ctx.catalog)) {
+  const mcpToGate = buildMcpToGateMap(ctx.catalog);
+  const gateTool = mcpToGate.get(name);
+  if (gateTool === undefined) {
     return errorResult(
       `Unknown tool "${name}". Call list_tools to see available tools.`,
     );
@@ -144,7 +164,7 @@ export async function handleCallTool(
 
   try {
     const response = await ctx.gate.execute({
-      tool: name,
+      tool: gateTool,
       params: callParams,
       ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
     });

@@ -6,7 +6,9 @@ import { AgentbaseError, type GateClient } from './gate-client.js';
 import {
   buildListToolsResponse,
   handleCallTool,
+  MCP_TOOL_NAME_PATTERN,
   STATUS_TOOL,
+  toMcpToolName,
   type McpToolResult,
 } from './server.js';
 
@@ -74,12 +76,12 @@ describe('buildCatalog', () => {
 });
 
 describe('buildListToolsResponse', () => {
-  it('advertises the connector catalog plus the status tool', () => {
+  it('advertises the connector catalog plus the status tool with MCP-encoded names', () => {
     const response = buildListToolsResponse(SAMPLE_CATALOG);
     const names = response.tools.map((t) => t.name);
     assert.deepEqual(names, [
-      'hubspot.contacts.upsert',
-      'salesforce.opportunity.create',
+      'hubspot_contacts_upsert',
+      'salesforce_opportunity_create',
       STATUS_TOOL,
     ]);
   });
@@ -94,6 +96,39 @@ describe('buildListToolsResponse', () => {
     };
     assert.deepEqual(schema.required, ['action_id']);
     assert.equal(schema.properties['action_id']?.type, 'string');
+  });
+
+  it('emits tool names that match the MCP-required regex pattern', () => {
+    // Regression: dots are illegal in MCP tool names and Claude Desktop
+    // rejects the entire tool list (and the surrounding conversation) when
+    // any name fails this pattern. Test against the full real catalog so a
+    // future connector that introduces an illegal character fails here.
+    const response = buildListToolsResponse(buildCatalog());
+    for (const tool of response.tools) {
+      assert.ok(
+        MCP_TOOL_NAME_PATTERN.test(tool.name),
+        `tool name "${tool.name}" must match ${MCP_TOOL_NAME_PATTERN}`,
+      );
+    }
+  });
+
+  it('encodes the status tool with no dots', () => {
+    assert.equal(STATUS_TOOL, 'agentbase_get_action_status');
+    assert.ok(MCP_TOOL_NAME_PATTERN.test(STATUS_TOOL));
+  });
+});
+
+describe('toMcpToolName', () => {
+  it('replaces every dot with an underscore', () => {
+    assert.equal(toMcpToolName('hubspot.contacts.upsert'), 'hubspot_contacts_upsert');
+    assert.equal(
+      toMcpToolName('agentbase.get_action_status'),
+      'agentbase_get_action_status',
+    );
+  });
+
+  it('is a no-op for already-safe names', () => {
+    assert.equal(toMcpToolName('no_dots_here'), 'no_dots_here');
   });
 });
 
@@ -112,7 +147,7 @@ describe('handleCallTool — connector tools', () => {
     });
     const result = await handleCallTool(
       {
-        name: 'hubspot.contacts.upsert',
+        name: 'hubspot_contacts_upsert',
         arguments: { email: 'cto@globex.com' },
       },
       { gate, catalog: SAMPLE_CATALOG },
@@ -134,7 +169,7 @@ describe('handleCallTool — connector tools', () => {
       },
     });
     const result = await handleCallTool(
-      { name: 'salesforce.opportunity.create', arguments: { Amount: 50000 } },
+      { name: 'salesforce_opportunity_create', arguments: { Amount: 50000 } },
       { gate, catalog: SAMPLE_CATALOG },
     );
     assert.equal(result.isError, true);
@@ -162,7 +197,7 @@ describe('handleCallTool — connector tools', () => {
       },
     });
     const result = await handleCallTool(
-      { name: 'salesforce.opportunity.create', arguments: { Amount: 80000 } },
+      { name: 'salesforce_opportunity_create', arguments: { Amount: 80000 } },
       { gate, catalog: SAMPLE_CATALOG },
     );
     assert.equal(called, 1, 'execute should be called exactly once');
@@ -183,7 +218,7 @@ describe('handleCallTool — connector tools', () => {
       },
     });
     const result = await handleCallTool(
-      { name: 'hubspot.contacts.upsert', arguments: { email: 'a@b.com' } },
+      { name: 'hubspot_contacts_upsert', arguments: { email: 'a@b.com' } },
       { gate, catalog: SAMPLE_CATALOG },
     );
     assert.equal(result.isError, true);
@@ -202,7 +237,7 @@ describe('handleCallTool — connector tools', () => {
     });
     await handleCallTool(
       {
-        name: 'hubspot.contacts.upsert',
+        name: 'hubspot_contacts_upsert',
         arguments: { email: 'a@b.com', idempotency_key: 'abc-123' },
       },
       { gate, catalog: SAMPLE_CATALOG },
@@ -219,7 +254,21 @@ describe('handleCallTool — connector tools', () => {
   it('returns an error result for an unknown tool name', async () => {
     const gate = fakeGate();
     const result = await handleCallTool(
-      { name: 'totally.fake.tool', arguments: {} },
+      { name: 'totally_fake_tool', arguments: {} },
+      { gate, catalog: SAMPLE_CATALOG },
+    );
+    assert.equal(result.isError, true);
+    const payload = parseSinglePayload(result);
+    assert.match(String(payload['error']), /Unknown tool/);
+  });
+
+  it('rejects calls that use the dotted gate name instead of the MCP name', async () => {
+    // Belt-and-suspenders: an MCP client that somehow sent a dotted name
+    // (older config, misconfigured router) must get a clean error rather
+    // than silently bypassing the encoding contract.
+    const gate = fakeGate();
+    const result = await handleCallTool(
+      { name: 'hubspot.contacts.upsert', arguments: {} },
       { gate, catalog: SAMPLE_CATALOG },
     );
     assert.equal(result.isError, true);
@@ -234,7 +283,7 @@ describe('handleCallTool — connector tools', () => {
       },
     });
     const result = await handleCallTool(
-      { name: 'hubspot.contacts.upsert', arguments: {} },
+      { name: 'hubspot_contacts_upsert', arguments: {} },
       { gate, catalog: SAMPLE_CATALOG },
     );
     assert.equal(result.isError, true);

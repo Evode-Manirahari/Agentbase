@@ -41,7 +41,10 @@ console.log(`\ntools advertised: ${tools.tools.length}`);
 const sample = tools.tools.slice(0, 5).map((t) => t.name);
 console.log(`first 5: ${sample.join(', ')}`);
 
-const targetTool = 'hubspot.contacts.upsert';
+// MCP tool names use underscores (the dot-separated gate name
+// `hubspot.contacts.upsert` is encoded by the MCP server before being
+// advertised — see packages/mcp-server/src/server.ts).
+const targetTool = 'hubspot_contacts_upsert';
 const hasTool = tools.tools.some((t) => t.name === targetTool);
 if (!hasTool) {
   console.error(`expected ${targetTool} in tool list — connector imports broken?`);

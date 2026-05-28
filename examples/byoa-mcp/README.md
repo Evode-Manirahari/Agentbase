@@ -11,7 +11,7 @@ For the SDK-based equivalent (LangChain / Vercel AI / Mastra / raw Anthropic), s
 1. Spawns [`@agentbase/mcp-server`](../../packages/mcp-server) as a child process over stdio.
 2. Connects an MCP client to it.
 3. Lists the tools the server advertises (HubSpot + Salesforce + Gmail + Outreach + Apollo, ~60 tools).
-4. Calls `hubspot.contacts.upsert` through the gate.
+4. Calls `hubspot_contacts_upsert` through the gate (MCP-encoded form of the gate-side `hubspot.contacts.upsert`).
 5. Prints the result the agent would see — including the `awaiting_approval` shape if your policy gates the call.
 
 It exists so you can verify the full MCP path works before wiring it into a real client.
@@ -30,9 +30,9 @@ Expected output:
 connected (baseUrl=http://localhost:3002)
 
 tools advertised: 60
-first 5: apollo.people.search, apollo.people.enrich, gmail.send, gmail.threads.get, hubspot.contacts.create
+first 5: apollo_people_search, apollo_people_enrich, gmail_send, gmail_threads_get, hubspot_contacts_create
 
-calling hubspot.contacts.upsert through the gate…
+calling hubspot_contacts_upsert through the gate…
 
 --- result ---
 {
@@ -46,7 +46,7 @@ calling hubspot.contacts.upsert through the gate…
 }
 ```
 
-If your policy requires approval for `hubspot.contacts.upsert`, you'll see `"status": "awaiting_approval"` along with `"poll_tool": "agentbase.get_action_status"` — the agent should remember the `action_id` and either move on or poll.
+If your policy requires approval for `hubspot.contacts.upsert` (note: policy files still use the dotted gate-side names), you'll see `"status": "awaiting_approval"` along with `"poll_tool": "agentbase_get_action_status"` — the agent should remember the `action_id` and either move on or poll.
 
 ## Wire it into Claude Desktop
 
@@ -70,7 +70,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 A copy lives in [`claude-desktop-config.json`](./claude-desktop-config.json) for paste-and-edit convenience.
 
-Restart Claude Desktop. The Agentbase tools will appear under the `agentbase` server. Ask Claude something like *"Add Lina Cho (cto@globex.com) to HubSpot."* Claude calls `hubspot.contacts.upsert` via MCP, the server routes it through the Agentbase gate, the gate applies your policy, and the action lands in the audit log (and the approval queue if your policy gates it).
+Restart Claude Desktop. The Agentbase tools will appear under the `agentbase` server with underscore-encoded names (`hubspot_contacts_upsert`, `salesforce_opportunity_create`, …). Ask Claude something like *"Add Lina Cho (cto@globex.com) to HubSpot."* Claude calls `hubspot_contacts_upsert` via MCP, the server translates it to `hubspot.contacts.upsert` and routes it through the Agentbase gate, the gate applies your policy, and the action lands in the audit log (and the approval queue if your policy gates it).
 
 Swap the `AGENTBASE_API_KEY` to a different `agb_…` token to change which agent identity Claude Desktop acts as. One server instance = one identity.
 
