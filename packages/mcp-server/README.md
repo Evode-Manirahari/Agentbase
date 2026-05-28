@@ -47,16 +47,30 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
-Restart Claude Desktop. The Agentbase tools (`hubspot.contacts.upsert`, `salesforce.opportunity.create`, etc.) will appear under the agentbase server. Every call routes through your local Agentbase gate.
+Restart Claude Desktop. The Agentbase tools (`hubspot_contacts_upsert`, `salesforce_opportunity_create`, etc.) will appear under the agentbase server. Every call routes through your local Agentbase gate.
+
+> **Tool name encoding.** MCP requires tool names match `^[a-zA-Z0-9_-]{1,64}$`. Agentbase gate-side tool names are dot-separated (`hubspot.contacts.upsert`) — the MCP server exposes them with `.` replaced by `_` (`hubspot_contacts_upsert`) and translates back internally. You always use the underscore form from Claude Desktop / Cursor / etc.; the gate, policy file, audit log, and `@agentbase/sdk` keep using the dotted form.
 
 For the full worked example with a cross-stack policy, see [`examples/byoa-mcp`](../../examples/byoa-mcp).
+
+## Demo from Claude Desktop (60-second tour)
+
+After the server is wired in:
+
+1. **Start the gate locally.** `pnpm --filter @agentbase/api dev` (port 3002). Make sure the DB is up: `infra/docker-compose.yml up -d` + `pnpm --filter @agentbase/db db:push`.
+2. **Mint an agent identity.** Open the Agentbase web UI's `/agents` page, create one, copy the `agb_…` key into the `AGENTBASE_API_KEY` slot of the Desktop config above.
+3. **Restart Claude Desktop.** Open a new chat. You should see "agentbase" listed under the tools menu with ~60 entries — all underscore-encoded.
+4. **Trigger a gated call.** Ask Desktop: _"Create a Salesforce opportunity worth $80,000 for ACME Corp using `salesforce_opportunity_create`."_ The gate's policy fires `require_approval`, the MCP tool returns `status: "awaiting_approval"` with an `action_id`, and the call queues in the Agentbase web UI's `/approvals` page.
+5. **Approve in the web UI**, then ask Desktop to call `agentbase_get_action_status` with the `action_id`. Watch it transition to `executed`.
+
+That's the full loop: agent → gate → policy → human → audit, with Claude Desktop as the agent. Every call shows up in `/audit` with the agent identity, policy decision, and final result.
 
 ## What the server exposes
 
 Two kinds of MCP tools:
 
-1. **Connector tools** (~60 total across HubSpot, Salesforce, Gmail, Outreach, Apollo). Each connector tool maps 1:1 to an Agentbase tool name — calling `hubspot.contacts.upsert` from the MCP client triggers `POST /v1/actions/execute` on the gate with that tool name.
-2. **`agentbase.get_action_status`** — look up the current state of an action by `action_id`. Use this after a connector call returns `status: "awaiting_approval"` to check whether the human approver has decided.
+1. **Connector tools** (~60 total across HubSpot, Salesforce, Gmail, Outreach, Apollo). Each connector tool maps 1:1 to an Agentbase tool name — calling `hubspot_contacts_upsert` from the MCP client triggers `POST /v1/actions/execute` on the gate with the dotted form `hubspot.contacts.upsert`.
+2. **`agentbase_get_action_status`** — look up the current state of an action by `action_id`. Use this after a connector call returns `status: "awaiting_approval"` to check whether the human approver has decided.
 
 ### Result shape
 
@@ -68,12 +82,12 @@ Every connector tool call returns a JSON-stringified payload in the standard MCP
   "status": "executed" | "awaiting_approval" | "denied" | "failed",
   "result": { ... },              // when status=executed
   "policy_decision": { ... },     // when policy was non-allow
-  "poll_tool": "agentbase.get_action_status",   // only when awaiting_approval
+  "poll_tool": "agentbase_get_action_status",   // only when awaiting_approval
   "note": "Human approval required..."           // only when awaiting_approval
 }
 ```
 
-`isError: true` is set for `denied` and `failed` so the MCP client treats them as tool errors. `awaiting_approval` is **not** an error — it's a pending state. The server returns immediately rather than blocking the MCP request while a human decides in Slack. The agent should remember the `action_id` and either move on or poll `agentbase.get_action_status`.
+`isError: true` is set for `denied` and `failed` so the MCP client treats them as tool errors. `awaiting_approval` is **not** an error — it's a pending state. The server returns immediately rather than blocking the MCP request while a human decides in Slack. The agent should remember the `action_id` and either move on or poll `agentbase_get_action_status`.
 
 This is a deliberate UX choice. A long-blocking MCP call (Claude Desktop spinning for 4 minutes) is much worse than `"I queued a $50k deal for approval, here's the action_id."`
 
