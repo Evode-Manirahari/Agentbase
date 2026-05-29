@@ -17,7 +17,13 @@ import type { AgentRuntimeModel } from './job.js';
 
 export type LlmContentBlock =
   | { type: 'text'; text: string }
-  | { type: 'thinking'; thinking: string }
+  // `signature` is required by the API when a thinking block is replayed in
+  // a later turn (the tool-use loop does exactly this). Dropping it triggers
+  // `messages.N.content.0.thinking.signature: Field required`.
+  | { type: 'thinking'; thinking: string; signature: string }
+  // Encrypted thinking the model may return; must be passed back verbatim
+  // (its `data`) rather than rendered as text, or replay breaks.
+  | { type: 'redacted_thinking'; data: string }
   | {
       type: 'tool_use';
       id: string;
@@ -148,7 +154,15 @@ function toLocalBlock(block: Anthropic.Messages.ContentBlock): LlmContentBlock {
     case 'text':
       return { type: 'text', text: block.text };
     case 'thinking':
-      return { type: 'thinking', thinking: block.thinking };
+      // Preserve the signature — it's required when this block is sent back
+      // to the API on the next loop iteration.
+      return {
+        type: 'thinking',
+        thinking: block.thinking,
+        signature: block.signature,
+      };
+    case 'redacted_thinking':
+      return { type: 'redacted_thinking', data: block.data };
     case 'tool_use':
       return {
         type: 'tool_use',
@@ -157,9 +171,8 @@ function toLocalBlock(block: Anthropic.Messages.ContentBlock): LlmContentBlock {
         input: (block.input ?? {}) as Record<string, unknown>,
       };
     default:
-      // Server-side tool results, redacted_thinking, etc. — render as text
-      // so the transcript stays readable without us tracking every block
-      // type Anthropic adds.
+      // Any other server-side block type Anthropic adds — render as text so
+      // the transcript stays readable without us tracking every block type.
       return { type: 'text', text: `[unhandled block: ${block.type}]` };
   }
 }
