@@ -2,33 +2,33 @@
 
 ## Category
 
-Agentbase is the secure action layer for AI sales agents.
+Agentbase is the safe-action layer for internal AI agents.
 
 The agent-first internet needs two layers:
 
 - Tools agents can use.
 - Control planes companies can trust.
 
-Agentbase is the control plane for AI sales agents operating across the revenue stack.
+Agentbase is the control plane for internal AI agents acting across your APIs, CRM, email, and internal tools.
 
 ## One-line pitch
 
-Cross-stack governance for revenue agents before they touch CRM, email, and sales tools.
+Scoped identity, approval, and audit for AI agents before they touch your APIs, CRM, email, and internal tools.
 
 ## What we enable
 
-AI sales agents can research accounts, enrich leads, update CRM fields, draft emails, create tasks, and summarize deal activity. Enterprises will not let those agents act until they have scoped permissions, approval rules, revocation, and audit trails.
+AI agents can research, enrich records, update systems of record, draft and send messages, hit internal and third-party APIs, and run multi-step workflows. Teams will not let those agents act until they have scoped permissions, approval rules, revocation, and audit trails.
 
-Agentbase gives AI sales agents safe, auditable permission to act across the revenue stack.
+Agentbase gives any internal AI agent safe, auditable permission to act.
 
 ## Buyer
 
-Sell first to RevOps teams deploying agents. Security and IT are required sign-off.
+Sell first into the revenue/CRM beachhead — RevOps teams deploying an agent against Salesforce/HubSpot — then expand to any team running internal agents (ops, support, internal tooling). Security and IT are required sign-off.
 
-RevOps owns the workflow pain:
+The deploying team owns the workflow pain:
 
-- Agents stuck in draft-only mode.
-- Manual copy/paste between enrichment, CRM, email, and sales-engagement tools.
+- Agents stuck in draft-only mode because nobody trusts them to write.
+- Manual copy/paste between the tools and APIs the agent should touch.
 - Pilots blocked because write scopes are too broad.
 
 Security and IT own the trust requirements:
@@ -41,15 +41,15 @@ Security and IT own the trust requirements:
 
 ## Differentiation
 
-Salesforce, HubSpot, Outreach, Gmail, and enrichment vendors can govern agents inside their own products. Agentbase governs agents across the full revenue workflow.
+Salesforce, HubSpot, Outreach, Gmail, and other vendors can govern agents inside their own products. Agentbase governs agents across the full workflow — every tool and API the agent touches, under one policy, one identity, one audit trail.
 
-Short form: Okta + Zapier + Datadog for AI sales agents.
+Short form: Okta + Zapier + Datadog for AI agents.
 
 ## Product thesis
 
-Agentbase is not a single AI SDR. The bundled outbound, follow-up, reply-handler, CRM hygiene, and lead-list flows are proof points for a broader control plane.
+Agentbase is not a single AI SDR. The bundled outbound, follow-up, reply-handler, CRM hygiene, and lead-list flows are a frozen reference implementation — proof the gate works on a real agent, not the product.
 
-Every revenue-agent workflow should pass through the same primitives:
+Every internal-agent workflow should pass through the same primitives:
 
 - Agent identity.
 - Policy decision.

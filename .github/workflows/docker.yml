@@ -38,7 +38,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
           labels: |
             org.opencontainers.image.title=Agentbase API
-            org.opencontainers.image.description=Secure action layer for AI sales agents
+            org.opencontainers.image.description=Safe-action layer for internal AI agents
             org.opencontainers.image.source=https://github.com/Evode-Manirahari/Agentbase
 
       - name: Build and push

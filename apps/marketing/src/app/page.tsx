@@ -261,17 +261,17 @@ function Hero() {
   return (
     <section className="mt-20 sm:mt-28">
       <p className="text-sm uppercase tracking-[0.18em] text-[color:var(--color-accent)]">
-        The control plane for AI sales agents
+        The control plane for internal AI agents
       </p>
       <h1 className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
-        The secure action layer
+        The safe-action layer
         <br />
-        for AI sales agents.
+        for internal AI agents.
       </h1>
       <p className="mt-6 max-w-2xl text-lg leading-7 text-[color:var(--color-muted)] sm:text-xl">
-        Cross-stack governance for revenue agents before they touch CRM,
-        email, and sales tools. One policy, every connector — across
-        HubSpot, Salesforce, Gmail, Outreach, and Apollo.
+        Scoped identity, approval, and audit for AI agents before they
+        touch your APIs, CRM, email, and internal tools. One policy, every
+        connector — across HubSpot, Salesforce, Gmail, Outreach, and Apollo.
       </p>
       <div className="mt-8 flex flex-wrap gap-3 text-sm">
         <a
@@ -288,7 +288,7 @@ function Hero() {
         </a>
       </div>
       <p className="mt-8 text-sm italic text-[color:var(--color-muted)]">
-        Okta + Zapier + Datadog for AI sales agents.
+        Okta + Zapier + Datadog for AI agents.
       </p>
     </section>
   );
@@ -326,7 +326,7 @@ function Pillars() {
   return (
     <section id="how" className="mt-24 sm:mt-32">
       <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-        The three things every revenue agent needs before it touches
+        The three things every internal agent needs before it touches
         production systems.
       </h2>
       <div className="mt-10 grid gap-6 sm:grid-cols-3">
@@ -451,7 +451,7 @@ function Footer() {
   return (
     <footer className="mt-32 border-t border-[color:var(--color-edge)] pt-8 text-sm text-[color:var(--color-muted)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span>© Agentbase. Early — no customers yet.</span>
+        <span>© Agentbase. Early-stage.</span>
         <a href={GITHUB_URL} className="hover:text-[color:var(--color-ink)]">
           Evode-Manirahari/Agentbase
         </a>
