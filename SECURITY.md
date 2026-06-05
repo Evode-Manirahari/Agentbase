@@ -4,7 +4,7 @@ One-pager for security and IT reviewing an Agentbase pilot. Honest about what's 
 
 ## Threat model
 
-The pilot question is: *can we let AI sales agents act across CRM, email, sales-engagement, and enrichment tools without giving them unsupervised write access?* Agentbase exists to make that question answerable as "yes, under these constraints."
+The pilot question is: *can we let internal AI agents act across CRM, email, internal APIs, and third-party tools without giving them unsupervised write access?* Agentbase exists to make that question answerable as "yes, under these constraints."
 
 The constraints we enforce:
 

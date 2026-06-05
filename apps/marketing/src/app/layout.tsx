@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Agentbase — the secure action layer for AI sales agents',
+  title: 'Agentbase — the safe-action layer for internal AI agents',
   description:
-    'Cross-stack governance for revenue agents before they touch CRM, email, and sales tools. Okta + Zapier + Datadog for AI sales agents.',
+    'Scoped identity, approval, and audit for AI agents before they touch your APIs, CRM, email, and internal tools. Okta + Zapier + Datadog for AI agents.',
   openGraph: {
-    title: 'Agentbase — the secure action layer for AI sales agents',
+    title: 'Agentbase — the safe-action layer for internal AI agents',
     description:
-      'Cross-stack governance for revenue agents before they touch CRM, email, and sales tools.',
+      'Scoped identity, approval, and audit for AI agents before they touch your APIs, CRM, email, and internal tools.',
     type: 'website',
   },
 };

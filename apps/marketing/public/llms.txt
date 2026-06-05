@@ -1,0 +1,46 @@
+# Agentbase
+
+> The safe-action layer for internal AI agents. Scoped identity, approval, and audit
+> for AI agents before they touch your APIs, CRM, email, and internal tools.
+
+Agentbase is the control plane an AI agent acts through. Every tool call the agent
+makes runs through one identity, one policy (allow / require_approval / deny), one
+human-approval queue, and one immutable audit trail — across HubSpot, Salesforce,
+Gmail, Outreach, Apollo, and internal APIs.
+
+Short form: Okta + Zapier + Datadog for AI agents.
+
+## Who this is for
+
+- Agents (and the developers deploying them) that need to act on real systems safely.
+- The revenue/CRM beachhead first (an agent writing to Salesforce/HubSpot), then any
+  internal agent (ops, support, internal tooling).
+
+## How an agent starts using Agentbase (today)
+
+A human provisions the agent's access; the agent then acts autonomously through the gate.
+
+1. A human signs in to the Agentbase dashboard and registers the agent, choosing a
+   permission profile (which tools/scopes it may use).
+2. Agentbase issues a scoped API key (prefix `agb_`). The human hands this key to the agent.
+3. The agent makes governed calls with that key — either via the SDK (`@agentbase/sdk`,
+   code-level) or via the MCP server (`@agentbase/mcp-server`, protocol-level, for any
+   MCP-aware client like Claude Desktop, Cursor, Codex).
+4. Each call is checked against policy: allowed calls execute, sensitive ones pause for
+   human approval, everything is audited. A compromised agent can be revoked in one click.
+
+Note: agent self-registration with no human in the loop is on the roadmap, not available
+yet. Today a human provisions the scoped key first; the agent operates autonomously after that.
+
+## Integration surfaces
+
+- Code-level: `@agentbase/sdk` — import the client, call `executeAndWait({ tool, params })`.
+- Protocol-level: `@agentbase/mcp-server` — point any MCP client at it; tool calls route
+  through the gate with no agent code changes.
+
+## Links
+
+- Source: https://github.com/Evode-Manirahari/Agentbase
+- SDK: https://github.com/Evode-Manirahari/Agentbase/tree/main/packages/sdk
+- MCP server: https://github.com/Evode-Manirahari/Agentbase/tree/main/packages/mcp-server
+- Positioning: https://github.com/Evode-Manirahari/Agentbase/blob/main/docs/positioning.md

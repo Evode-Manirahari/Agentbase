@@ -1,6 +1,6 @@
 # Agentbase operator docs
 
-Playbooks for selling and demoing the secure action layer for AI sales agents, not for building it. The repo's [top-level README](../README.md) covers the engineering surface; this folder is for the RevOps-led, security-signed-off GTM motion.
+Playbooks for selling and demoing the safe-action layer for internal AI agents, not for building it. The repo's [top-level README](../README.md) covers the engineering surface; this folder is for the RevOps-led, security-signed-off GTM motion (the revenue/CRM beachhead).
 
 ## What's here
 

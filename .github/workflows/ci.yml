@@ -54,6 +54,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Positioning guard
+        run: bash scripts/check-positioning.sh
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 

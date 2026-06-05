@@ -7,7 +7,7 @@ import { Shell } from '../components/nav';
 export const metadata: Metadata = {
   title: 'Agentbase',
   description:
-    'Secure action layer for AI sales agents across CRM, email, and sales tools.',
+    'Safe-action layer for internal AI agents across your APIs, CRM, email, and internal tools.',
 };
 
 export const viewport: Viewport = {

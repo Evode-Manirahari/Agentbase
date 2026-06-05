@@ -1,32 +1,32 @@
 # Agentbase
 
-> Cross-stack governance for revenue agents before they touch CRM, email, and sales tools.
+> Scoped identity, approval, and audit for AI agents before they touch your APIs, CRM, email, and internal tools.
 
 [![CI](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml/badge.svg)](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml)
 
-Agentbase is the secure action layer for AI sales agents.
+Agentbase is the safe-action layer for internal AI agents.
 
 The product direction source of truth lives in [docs/positioning.md](./docs/positioning.md).
 
 ## What this is
 
-Sales teams are deploying AI agents into Salesforce, Gmail, Slack, Outreach, Apollo, and enrichment tools. The agents can research accounts, enrich leads, update CRM fields, draft emails, create tasks, summarize deal activity, and keep follow-up moving. Security and IT block them before they can touch revenue systems because the agents lack scoped identity, approval rules, revocation, and audit trails.
+Teams are deploying AI agents against Salesforce, Gmail, Slack, Outreach, Apollo, internal APIs, and enrichment tools. The agents can research, enrich records, update systems of record, draft and send messages, create tasks, summarize activity, and run multi-step workflows. Security and IT block them before they can touch production systems because the agents lack scoped identity, approval rules, revocation, and audit trails.
 
 Agentbase is the control plane those teams can trust:
 
-- Give every sales agent an identity and scoped API key.
-- Govern what it can do across CRM, email, Slack-adjacent approvals, sequencing, and enrichment tools.
+- Give every agent an identity and scoped API key.
+- Govern what it can do across CRM, email, internal APIs, Slack-adjacent approvals, and third-party tools.
 - Route sensitive actions to humans before execution.
 - Revoke compromised or over-scoped agents quickly.
 - Monitor every attempted action with policy decisions, connector outcomes, and exportable audit trails.
 
 The pitch:
 
-> **Agentbase is Okta + Zapier + Datadog for AI sales agents: identity, governed execution, and observability across the revenue stack.**
+> **Agentbase is Okta + Zapier + Datadog for AI agents: identity, governed execution, and observability across everything the agent touches.**
 
-Buyer is RevOps / Revenue Systems teams deploying agents. Security and IT are the required sign-off. Salesforce, HubSpot, Outreach, and Gmail can govern agents inside their own products; Agentbase governs agents across the full revenue workflow.
+We sell first into the revenue/CRM beachhead — RevOps teams deploying an agent against Salesforce/HubSpot — then expand to any team running internal agents (ops, support, internal tooling). Security and IT are the required sign-off. Salesforce, HubSpot, Outreach, and Gmail can govern agents inside their own products; Agentbase governs agents across the full workflow.
 
-The bundled outbound, follow-up, reply-handler, CRM hygiene, and lead-list flows are proof points for the platform. The product is not "an AI SDR." The product is the cross-stack action layer that lets any revenue agent act safely.
+The bundled outbound, follow-up, reply-handler, CRM hygiene, and lead-list flows are a frozen reference implementation — proof the gate works on a real agent. The product is not "an AI SDR." The product is the cross-stack action layer that lets any internal agent act safely.
 
 ## Bring your own agent
 
@@ -86,7 +86,7 @@ The governed runtime:
 - **Async runs + resume** — `agent_runs` table persists conversation state. `POST /v1/campaigns/runs` enqueues a BullMQ job, returns the run id immediately. `GET /v1/campaigns/runs/:id` is polled by the dashboard. When a Slack approval (or the expiry sweeper) transitions the action out of `awaiting_approval`, `ApprovalsService` notifies `AgentRunsService` and a resume job continues the loop with the resolved tool_result.
 - **Runs dashboard** — `/campaigns` launches governed runs, including batches from lead lists. Recent runs table on the index page. Transcript view tones agent_thinking / agent_message / tool_call / tool_result blocks by status (allow=green, require_approval=amber, deny/failed=rose).
 
-The secure action layer:
+The safe-action layer:
 
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
 - **Slack approval cards** — interactive Approve / Deny buttons with the full action payload, signed webhook (HMAC + 5-min replay window), per-rule channel routing, two-way consistency (web decisions update the Slack card via `chat.update`)
@@ -99,7 +99,7 @@ The plumbing both sides share:
 - **Identity & API keys** — register agents, assign permission profiles, issue scoped `agb_…` tokens (sha256-hashed at rest), and revoke agents idempotently
 - **Permission profiles** — Sales Agent, RevOps Admin, Support Agent, Read-only Analyst, and Custom — used to seed policy templates per agent role
 - **Policy DSL** — YAML + Zod, rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, agent id/name/profile matching, dotted-path conditions with `eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`; the templates compile to this, and security can read it
-- **Revenue-stack connectors** — Salesforce, HubSpot, Gmail, Outreach, and Apollo, all behind the same secure action layer, with Zod-validated params and structured connector errors. Pilots ship on Salesforce + Gmail + Slack or HubSpot + Gmail + Slack; the rest are available if a customer asks.
+- **Connectors** — Salesforce, HubSpot, Gmail, Outreach, and Apollo, all behind the same safe-action layer, with Zod-validated params and structured connector errors. Pilots ship on Salesforce + Gmail + Slack or HubSpot + Gmail + Slack; the rest are available if a customer asks.
 - **Org-scoped connector credentials** — HubSpot, Salesforce, Gmail, and Outreach OAuth install/reconnect plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, refresh access tokens before connector dispatch, show account/expiry metadata, can be tested from the dashboard, and can be disabled to block inherited env fallback
 - **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Runs, Agents, Policies (templates + YAML editor), Approvals (web inbox alongside Slack), Actions, Connectors, Webhooks, Audit
 - **CI + tests** — GitHub Actions gates lint, typecheck, production build, the API test suite, and Playwright dashboard E2E including connector credential/OAuth-state and permission-profile coverage
