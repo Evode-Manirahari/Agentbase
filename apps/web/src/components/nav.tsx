@@ -11,6 +11,7 @@ const items = [
   { href: '/actions', label: 'Actions' },
   { href: '/connectors', label: 'Connectors' },
   { href: '/webhooks', label: 'Webhooks' },
+  { href: '/trust', label: 'Trust' },
   { href: '/audit', label: 'Audit' },
 ] as const;
 

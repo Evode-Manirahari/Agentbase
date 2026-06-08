@@ -14,6 +14,7 @@ test.describe('dashboard renders every route', () => {
       'Actions',
       'Connectors',
       'Webhooks',
+      'Trust',
       'Audit',
     ]) {
       await expect(page.getByRole('link', { name: label })).toBeVisible();
@@ -45,6 +46,13 @@ test.describe('dashboard renders every route', () => {
     await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Download CSV' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Download JSON' })).toBeVisible();
+  });
+
+  test('trust page renders security evidence room', async ({ page }) => {
+    await page.goto('/trust');
+    await expect(page.getByRole('heading', { name: 'Security Evidence Room' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Export security packet' })).toBeVisible();
+    await expect(page.getByText('Action evidence timeline')).toBeVisible();
   });
 
   test('audit page ignores malformed date query params', async ({ page }) => {
