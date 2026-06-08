@@ -28,6 +28,16 @@ We sell first into the revenue/CRM beachhead — RevOps teams deploying an agent
 
 The bundled outbound, follow-up, reply-handler, CRM hygiene, and lead-list flows are a frozen reference implementation — proof the gate works on a real agent. The product is not "an AI SDR." The product is the cross-stack action layer that lets any internal agent act safely.
 
+## Why this becomes defensible
+
+Agentbase's moat is becoming the trusted control plane for agent actions across the revenue stack:
+
+- **Trust + compliance position** — RevOps and security teams need proof before letting agents touch CRM, email, and sales tools. Agentbase should become the approval and audit source of truth: every agent identity, permission, policy decision, approval, denial, connector result, revocation, and exportable audit event in one system security can inspect.
+- **Cross-stack integration depth** — Salesforce, HubSpot, Gmail, Outreach, Slack, Apollo, and enrichment vendors each have their own permissions and logs. Agentbase governs the whole workflow across those tools instead of governing one app at a time.
+- **Embedded switching cost** — once agent identities, scoped API keys, policies, approvals, logs, connector credentials, and audit exports live in Agentbase, replacing it means rebuilding the trust layer around every production agent workflow.
+- **Agent-native interface** — the buyer is human, but the daily user is the agent. SDK and MCP access let agents call Agentbase directly while humans keep control over identity, policy, approvals, and audit.
+- **Action history data** — as customers use Agentbase, action history becomes a compounding asset: which tools are risky, which policies work, which approvals are common, which agents need tighter scopes, and which guardrails security accepts.
+
 ## Bring your own agent
 
 Agentbase governs *your* agent, not just ours. The bundled Revenue Agent jobs are reference implementations — proof the gate works on a real agent — but any TypeScript-side LLM tool-use loop can plug in with one import:
