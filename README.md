@@ -63,6 +63,7 @@ Two integration surfaces — code-level (SDK) and protocol-level (MCP):
 - [`packages/mcp-server/README.md`](./packages/mcp-server/README.md) — protocol-level integration. Run `agentbase-mcp` over stdio and any MCP-aware client (Claude Desktop, Cursor, Codex) gets every tool call routed through the gate. No agent code changes.
 - [`examples/byoa-vercel-ai/`](./examples/byoa-vercel-ai) — real ~120-line example: Vercel AI SDK agent with five tools, each going through the gate via the SDK. End-to-end lead-processing flow with one auto-executed step, one Slack-approval step, and a denial path.
 - [`examples/byoa-mcp/`](./examples/byoa-mcp) — smoke test for the MCP path plus a paste-and-edit Claude Desktop config.
+- [`examples/byoa-hermes/`](./examples/byoa-hermes) — govern a [Hermes Agent](https://hermes-agent.nousresearch.com) (Nous Research's self-improving CLI agent) via MCP: a `setup.sh` that mints the scoped key + `hermes mcp add` command, a policy tuned for an autonomous agent, and a verify smoke test.
 - [`examples/demo-agent/`](./examples/demo-agent) — minimal hardcoded and raw-Anthropic variants if you don't want a framework.
 
 ## How the demo works
@@ -272,6 +273,7 @@ examples/
 ├── demo-agent/          Reference agent that uses @agentbase/sdk
 ├── byoa-vercel-ai/      Bring-your-own-agent example wired via the SDK
 ├── byoa-mcp/            Bring-your-own-agent example wired via MCP (Claude Desktop, Cursor, etc.)
+├── byoa-hermes/         Govern a Hermes Agent (Nous Research) via MCP — scoped key, policy, verify
 └── cross-stack-demo/    One agent + one policy file governed across HubSpot + Salesforce + Gmail + Slack
 
 infra/
