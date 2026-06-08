@@ -1,0 +1,37 @@
+# Annotated Hermes Agent MCP-server block for Agentbase.
+#
+# Two ways to apply it:
+#   1. Run the `hermes mcp add …` command that setup.sh prints (recommended), or
+#   2. Paste the `agentbase:` entry below under `mcp_servers:` in your Hermes
+#      config, replace the key, then run `/reload-mcp` in a Hermes session.
+#
+# `pnpm exec agentbase-mcp` resolves the server bin from this monorepo, so run
+# Hermes with the Agentbase repo as its working directory — or replace `command`
+# with an absolute path to the agentbase-mcp executable.
+
+mcp_servers:
+  agentbase:
+    command: pnpm
+    args: ['exec', 'agentbase-mcp']
+    env:
+      # The scoped agent identity Hermes acts as. Minted by setup.sh.
+      # Revoking this key cuts Hermes off from every connector instantly.
+      AGENTBASE_API_KEY: 'agb_REPLACE_WITH_YOUR_AGENT_KEY'
+      # Where the Agentbase gate is listening. Defaults to localhost:3002.
+      AGENTBASE_BASE_URL: 'http://localhost:3002'
+
+    # OPTIONAL client-side tool filtering. This only tidies the tool list Hermes
+    # sees — it is NOT the security boundary. The real allow/deny/approval
+    # decisions live in policy.yaml, server-side, where Hermes cannot reach them.
+    # Express anything load-bearing as a policy rule, not here.
+    #
+    # tools:
+    #   include:
+    #     - hubspot_contacts_upsert
+    #     - gmail_draft_create
+    #     - gmail_send
+    #   exclude:
+    #     - '*_delete'
+    #   resources: false
+    #   prompts: false
+    #   enabled: true
