@@ -23,12 +23,21 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { verifyToken } from '@clerk/backend';
+import type { FastifyRequest } from 'fastify';
 import { resolveAuthMode, type AuthMode } from './auth-mode.js';
 
 export interface ClerkAuthedUser {
   userId: string;
   sessionId: string | null;
 }
+
+const REGISTER_AGENT_DOCS_URL =
+  'https://github.com/Evode-Manirahari/Agentbase#smoke-test-the-loop';
+
+type ClerkGuardRequest = FastifyRequest & {
+  routerPath?: string;
+  routeOptions?: { url?: string };
+};
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -71,12 +80,22 @@ export class ClerkAuthGuard implements CanActivate {
       throw new UnauthorizedException('missing Clerk secret key');
     }
 
-    const req = ctx.switchToHttp().getRequest();
+    const req = ctx.switchToHttp().getRequest<ClerkGuardRequest>();
     const header = (req.headers['authorization'] ?? '') as string;
     const token = header.startsWith('Bearer ')
       ? header.slice('Bearer '.length)
       : '';
     if (!token) {
+      if (isAgentRegistrationRequest(req)) {
+        throw new UnauthorizedException({
+          error: 'agent_registration_requires_human_provisioning',
+          message:
+            'Agents cannot self-register without a Clerk session. A human operator must register the agent and provision a scoped agb_ key first.',
+          recovery:
+            'Have a human operator sign in to Agentbase, register the agent, and pass the scoped agb_ key to the agent.',
+          docs_url: REGISTER_AGENT_DOCS_URL,
+        });
+      }
       throw new UnauthorizedException('missing Clerk session token');
     }
 
@@ -100,4 +119,16 @@ export class ClerkAuthGuard implements CanActivate {
     };
     return true;
   }
+}
+
+function isAgentRegistrationRequest(req: ClerkGuardRequest): boolean {
+  if (req.method?.toUpperCase() !== 'POST') return false;
+  return [req.routeOptions?.url, req.routerPath, req.url].some((path) =>
+    pathMatchesAgentRegistration(path),
+  );
+}
+
+function pathMatchesAgentRegistration(path: string | undefined): boolean {
+  const cleanPath = path?.split('?')[0]?.replace(/\/+$/, '') || '/';
+  return cleanPath === '/v1/agents';
 }

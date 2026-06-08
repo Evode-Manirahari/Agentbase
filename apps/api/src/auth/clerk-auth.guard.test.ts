@@ -21,8 +21,16 @@ class FakeConfig {
   }
 }
 
-function makeContext(headers: Record<string, string>): ExecutionContext {
-  const req = { headers };
+function makeContext(
+  headers: Record<string, string>,
+  request: {
+    method?: string;
+    url?: string;
+    routerPath?: string;
+    routeOptions?: { url?: string };
+  } = {},
+): ExecutionContext {
+  const req = { headers, ...request };
   return {
     switchToHttp: () => ({ getRequest: () => req }),
   } as unknown as ExecutionContext;
@@ -78,6 +86,50 @@ describe('ClerkAuthGuard — enforced mode (CLERK_SECRET_KEY set)', () => {
       () => guard.canActivate(makeContext({})),
       UnauthorizedException,
     );
+  });
+
+  it('returns machine-readable recovery guidance when an agent tries to self-register', async () => {
+    const guard = enforcedGuard();
+    let error: unknown;
+
+    try {
+      await guard.canActivate(
+        makeContext({}, { method: 'POST', url: '/v1/agents' }),
+      );
+    } catch (err) {
+      error = err;
+    }
+
+    assert.ok(error instanceof UnauthorizedException);
+    assert.deepEqual(error.getResponse(), {
+      error: 'agent_registration_requires_human_provisioning',
+      message:
+        'Agents cannot self-register without a Clerk session. A human operator must register the agent and provision a scoped agb_ key first.',
+      recovery:
+        'Have a human operator sign in to Agentbase, register the agent, and pass the scoped agb_ key to the agent.',
+      docs_url:
+        'https://github.com/Evode-Manirahari/Agentbase#smoke-test-the-loop',
+    });
+  });
+
+  it('does not show agent-registration recovery guidance for other management routes', async () => {
+    const guard = enforcedGuard();
+    let error: unknown;
+
+    try {
+      await guard.canActivate(
+        makeContext({}, { method: 'GET', url: '/v1/agents' }),
+      );
+    } catch (err) {
+      error = err;
+    }
+
+    assert.ok(error instanceof UnauthorizedException);
+    assert.deepEqual(error.getResponse(), {
+      message: 'missing Clerk session token',
+      error: 'Unauthorized',
+      statusCode: 401,
+    });
   });
 
   it('trims CLERK_SECRET_KEY before storing it', () => {
