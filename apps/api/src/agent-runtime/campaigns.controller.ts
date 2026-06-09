@@ -22,6 +22,7 @@ import { EmailsService } from './emails.service.js';
 import { JobRegistry } from './job.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
+import { clampQueryInt } from '../common/query-int.js';
 
 const RunCampaignRequest = z.object({
   job_key: z.string().min(1),
@@ -102,7 +103,7 @@ export class CampaignsController {
   @Get('runs')
   async listRuns(@Query('limit') limit?: string): Promise<{ items: RunResponse[] }> {
     const orgId = await this.agents.ensureDefaultOrg();
-    const n = Math.min(Math.max(Number(limit ?? 50), 1), 200);
+    const n = clampQueryInt(limit, { fallback: 50, min: 1, max: 200 });
     const rows = await this.runs.listForOrg(orgId, n);
     return { items: rows.map(toResponse) };
   }

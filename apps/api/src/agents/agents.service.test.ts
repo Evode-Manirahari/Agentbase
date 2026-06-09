@@ -349,6 +349,43 @@ describe('AgentsService.ensureDefaultOrg', () => {
   });
 });
 
+describe('AgentsService.getById', () => {
+  let orgId: string;
+  let svc: AgentsService;
+
+  beforeEach(async () => {
+    const [org] = await db
+      .insert(orgs)
+      .values({ name: 'Test', slug: `ag-${randomUUID().slice(0, 8)}` })
+      .returning();
+    orgId = org!.id;
+    svc = new AgentsService(db, audit);
+  });
+
+  afterEach(async () => {
+    if (orgId) await db.delete(orgs).where(eq(orgs.id, orgId));
+  });
+
+  it('returns the agent row by id', async () => {
+    const reg = await svc.register({ orgId, name: 'lookup-me' });
+    const row = await svc.getById(reg.agent_id);
+    assert.equal(row.id, reg.agent_id);
+    assert.equal(row.name, 'lookup-me');
+    assert.equal(row.status, 'active');
+  });
+
+  it('throws NotFoundException for an unknown id', async () => {
+    await assert.rejects(() => svc.getById(randomUUID()), NotFoundException);
+  });
+
+  it('still returns revoked agents (getById is not status-filtered)', async () => {
+    const reg = await svc.register({ orgId, name: 'revoked-lookup' });
+    await svc.revoke({ orgId, agentId: reg.agent_id });
+    const row = await svc.getById(reg.agent_id);
+    assert.equal(row.status, 'revoked');
+  });
+});
+
 describe('AgentsService.ensureInternalAgent', () => {
   let orgId: string;
   let svc: AgentsService;
@@ -391,5 +428,72 @@ describe('AgentsService.ensureInternalAgent', () => {
         ),
       );
     assert.equal(rows.length, 1);
+  });
+
+  it('does not reuse a revoked agent — creates a fresh active one', async () => {
+    const first = await svc.ensureInternalAgent({
+      orgId,
+      name: 'internal-rotator',
+    });
+    await svc.revoke({ orgId, agentId: first.id });
+
+    const second = await svc.ensureInternalAgent({
+      orgId,
+      name: 'internal-rotator',
+    });
+
+    assert.notEqual(second.id, first.id);
+    assert.equal(second.status, 'active');
+
+    const [old] = await db.select().from(agents).where(eq(agents.id, first.id));
+    assert.equal(old!.status, 'revoked');
+  });
+
+  it('scopes reuse to the org — same name in another org gets its own agent', async () => {
+    const mine = await svc.ensureInternalAgent({ orgId, name: 'shared-name' });
+
+    const [otherOrg] = await db
+      .insert(orgs)
+      .values({ name: 'Other', slug: `ag-${randomUUID().slice(0, 8)}` })
+      .returning();
+    try {
+      const theirs = await svc.ensureInternalAgent({
+        orgId: otherOrg!.id,
+        name: 'shared-name',
+      });
+      assert.notEqual(theirs.id, mine.id);
+      assert.equal(theirs.orgId, otherOrg!.id);
+    } finally {
+      await db.delete(orgs).where(eq(orgs.id, otherOrg!.id));
+    }
+  });
+});
+
+describe('AgentsService.listForOrg — revoked agents', () => {
+  let orgId: string;
+  let svc: AgentsService;
+
+  beforeEach(async () => {
+    const [org] = await db
+      .insert(orgs)
+      .values({ name: 'Test', slug: `ag-${randomUUID().slice(0, 8)}` })
+      .returning();
+    orgId = org!.id;
+    svc = new AgentsService(db, audit);
+  });
+
+  afterEach(async () => {
+    if (orgId) await db.delete(orgs).where(eq(orgs.id, orgId));
+  });
+
+  it('includes revoked agents with their revokedAt and key prefix (audit trail stays visible)', async () => {
+    const reg = await svc.register({ orgId, name: 'gone' });
+    await svc.revoke({ orgId, agentId: reg.agent_id });
+
+    const rows = await svc.listForOrg(orgId);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.status, 'revoked');
+    assert.ok(rows[0]!.revokedAt);
+    assert.equal(rows[0]!.keyPrefix, reg.api_key_prefix);
   });
 });

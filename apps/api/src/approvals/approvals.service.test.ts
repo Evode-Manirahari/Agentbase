@@ -27,6 +27,7 @@ import {
   actions,
   approvals,
   auditLog,
+  users,
 } from '@agentbase/db';
 import type { Connector, ConnectorResult } from '@agentbase/connector-hubspot';
 import { ApprovalsService } from './approvals.service.js';
@@ -272,6 +273,138 @@ describe('ApprovalsService.decide', () => {
     assert.equal(ac!.status, 'denied');
 
     assert.equal(registry.invocations.length, 0);
+  });
+
+  it('expired-at-decide-time: records an approval.expired audit event with system actor', async () => {
+    const { approvalId } = await seedAction({ expiresInMs: -3_600_000 });
+
+    await assert.rejects(
+      () => svc.decide({ approvalId, orgId, decision: 'approve' }),
+      GoneException,
+    );
+
+    const events = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.orgId, orgId));
+    const ev = events.find((e) => e.eventType === 'approval.expired');
+    assert.ok(ev, 'expected an approval.expired audit event');
+    assert.equal(ev!.actorType, 'system');
+    assert.equal(ev!.actorId, 'decide_expiry_check');
+    const payload = ev!.payload as { approvalId: string; tool: string };
+    assert.equal(payload.approvalId, approvalId);
+    assert.equal(payload.tool, 'test.tool');
+  });
+
+  it('approve with no resolving connector: action ends failed with no_connector', async () => {
+    const { actionId, approvalId } = await seedAction();
+    const emptyRegistry = { resolve: () => null };
+    const svcNoConnector = new ApprovalsService(
+      db,
+      audit,
+      emptyRegistry as unknown as ConnectorRegistry,
+      new StubSlack() as unknown as SlackService,
+      noopAgentRuns,
+    );
+
+    const result = await svcNoConnector.decide({
+      approvalId,
+      orgId,
+      decision: 'approve',
+      decidedByEmail: 'alice@agentbase.test',
+    });
+
+    // The human approval is still recorded — only the dispatch failed.
+    assert.equal(result.decision, 'approved');
+    assert.equal(result.action_status, 'failed');
+
+    const [ac] = await db.select().from(actions).where(eq(actions.id, actionId));
+    assert.equal(ac!.status, 'failed');
+    const stored = ac!.result as { ok: boolean; error: { code: string } };
+    assert.equal(stored.ok, false);
+    assert.equal(stored.error.code, 'no_connector');
+
+    const events = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.orgId, orgId));
+    const failed = events.find((e) => e.eventType === 'action.failed');
+    assert.ok(failed);
+    assert.equal((failed!.payload as { connector: string | null }).connector, null);
+  });
+
+  it('decider upsert: the same email across two decisions maps to one users row', async () => {
+    const first = await seedAction();
+    const second = await seedAction();
+    registry.result = { ok: true, data: {} };
+
+    await svc.decide({
+      approvalId: first.approvalId,
+      orgId,
+      decision: 'approve',
+      decidedByEmail: 'repeat@agentbase.test',
+    });
+    await svc.decide({
+      approvalId: second.approvalId,
+      orgId,
+      decision: 'deny',
+      decidedByEmail: 'repeat@agentbase.test',
+    });
+
+    const rows = await db
+      .select()
+      .from(users)
+      .where(eq(users.orgId, orgId));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.email, 'repeat@agentbase.test');
+    assert.equal(rows[0]!.role, 'approver');
+
+    const [a1] = await db
+      .select()
+      .from(approvals)
+      .where(eq(approvals.id, first.approvalId));
+    const [a2] = await db
+      .select()
+      .from(approvals)
+      .where(eq(approvals.id, second.approvalId));
+    assert.equal(a1!.decidedByUserId, rows[0]!.id);
+    assert.equal(a2!.decidedByUserId, rows[0]!.id);
+  });
+
+  it('decide without an email leaves decidedByUserId null and audits actor as unknown', async () => {
+    const { approvalId } = await seedAction();
+
+    await svc.decide({ approvalId, orgId, decision: 'deny' });
+
+    const [a] = await db.select().from(approvals).where(eq(approvals.id, approvalId));
+    assert.equal(a!.decidedByUserId, null);
+
+    const events = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.orgId, orgId));
+    const ev = events.find((e) => e.eventType === 'approval.denied');
+    assert.equal(ev!.actorId, 'unknown');
+  });
+
+  it('bulkDecide surfaces an expired approval as a failed item with code expired', async () => {
+    const live = await seedAction();
+    const expired = await seedAction({ expiresInMs: -3_600_000 });
+    registry.result = { ok: true, data: {} };
+
+    const out = await svc.bulkDecide({
+      orgId,
+      approvalIds: [live.approvalId, expired.approvalId],
+      decision: 'approve',
+      decidedByEmail: 'rev@agentbase.test',
+    });
+
+    assert.equal(out.summary.decided, 1);
+    assert.equal(out.summary.failed, 1);
+    const failed = out.items.find((it) => it.outcome === 'failed');
+    if (!failed || failed.outcome !== 'failed') throw new Error('expected failed item');
+    assert.equal(failed.approval_id, expired.approvalId);
+    assert.equal(failed.error.code, 'expired');
   });
 
   it('not-found: decide on unknown approval throws NotFoundException', async () => {
@@ -538,5 +671,65 @@ describe('ApprovalsService.list / getOne', () => {
       () => svc.getOne(orgId, randomUUID()),
       NotFoundException,
     );
+  });
+
+  it('list: respects the limit parameter', async () => {
+    for (let i = 0; i < 3; i++) {
+      const [a] = await db
+        .insert(actions)
+        .values({
+          orgId,
+          agentId,
+          tool: `test.limit.${i}`,
+          params: {},
+          status: 'awaiting_approval',
+        })
+        .returning();
+      await db.insert(approvals).values({
+        actionId: a!.id,
+        requiredRole: 'approver',
+        decision: 'pending',
+      });
+    }
+
+    const limited = await svc.list(orgId, 2);
+    assert.equal(limited.items.length, 2);
+    const all = await svc.list(orgId);
+    assert.equal(all.items.length, 3);
+  });
+
+  it('getOne: exposes decided_by_email after a decision', async () => {
+    const [a] = await db
+      .insert(actions)
+      .values({
+        orgId,
+        agentId,
+        tool: 'test.decided',
+        params: {},
+        status: 'awaiting_approval',
+        policyDecision: { effect: 'require_approval' } as Record<string, unknown>,
+      })
+      .returning();
+    const [approval] = await db
+      .insert(approvals)
+      .values({
+        actionId: a!.id,
+        requiredRole: 'approver',
+        decision: 'pending',
+        expiresAt: new Date(Date.now() + 3_600_000),
+      })
+      .returning();
+
+    await svc.decide({
+      approvalId: approval!.id,
+      orgId,
+      decision: 'deny',
+      decidedByEmail: 'who@agentbase.test',
+    });
+
+    const view = await svc.getOne(orgId, approval!.id);
+    assert.equal(view.decision, 'denied');
+    assert.equal(view.decided_by_email, 'who@agentbase.test');
+    assert.ok(view.decided_at);
   });
 });

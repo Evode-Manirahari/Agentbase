@@ -13,6 +13,7 @@ import {
 import { ApprovalsService } from './approvals.service.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
+import { clampQueryInt } from '../common/query-int.js';
 
 @Controller('v1/approvals')
 @UseGuards(ClerkAuthGuard)
@@ -25,7 +26,7 @@ export class ApprovalsController {
   @Get()
   async list(@Query('limit') limit?: string): Promise<ApprovalListResponse> {
     const orgId = await this.agents.ensureDefaultOrg();
-    const n = Math.min(Math.max(Number(limit ?? 100), 1), 500);
+    const n = clampQueryInt(limit, { fallback: 100, min: 1, max: 500 });
     return this.approvals.list(orgId, n);
   }
 

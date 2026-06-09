@@ -21,6 +21,7 @@ import {
 import type { FastifyRequest } from 'fastify';
 import { AgentsService } from './agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
+import { clampQueryInt } from '../common/query-int.js';
 
 const RevokeAgentRequest = z.object({
   reason: z.string().max(1000).optional(),
@@ -41,7 +42,7 @@ export class AgentsController {
   @Get()
   async list(@Query('limit') limit?: string) {
     const orgId = await this.agents.ensureDefaultOrg();
-    const n = Math.min(Math.max(Number(limit ?? 100), 1), 500);
+    const n = clampQueryInt(limit, { fallback: 100, min: 1, max: 500 });
     const rows = await this.agents.listForOrg(orgId, n);
     return {
       items: rows.map((r) => ({
