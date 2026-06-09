@@ -38,32 +38,6 @@ Deferred work captured during reviews. Each item has enough context to pick up c
   positioning headline — trust stays the headline.
 - **Depends on / blocked by:** Best sequenced with Approach B.
 
-## P3 — Machine-readable 401 on POST /v1/agents
-
-- **What:** When `POST /v1/agents` is hit without a Clerk session, return a clear,
-  machine-readable error body pointing the caller to "a human must provision a scoped key first"
-  (with a docs link), instead of a bare 401.
-- **Why:** In Approach A the onboarding docs describe the human-provisions-key flow, but an agent
-  may still try to self-register and hit 401. A machine reader can't infer the recovery step from
-  a bare status code.
-- **Context:** Surfaced in eng-review Architecture finding 1.
-- **Depends on / blocked by:** None; small, can land anytime.
-
-## P1 — Raise test coverage on trust primitives (agents + approvals) BEFORE Approach B
-
-- **What:** Bring `apps/api/src/agents/` and `apps/api/src/approvals/` to connector-level test
-  coverage. Today each has ~3 source files and only 1 test file; `connectors/` has 7 test files
-  for comparison.
-- **Why:** The whole pivot sells "trust." Identity (`agents`) and human-in-the-loop approval
-  (`approvals`) are the load-bearing trust primitives — and they're the thinnest-tested core
-  modules. Approach B adds self-registration to `agents` (the most security-sensitive path in the
-  system), so coverage must come up FIRST or B is built on a thin base.
-- **Pros:** De-risks B; protects the exact behavior customers pay for; cheap with AI assist.
-- **Cons:** None material; pure risk reduction.
-- **Context:** Surfaced in repo analysis 2026-06-05 (test coverage finding 1). Use
-  `connectors/*.test.ts` as the quality bar (behavior + edge + error paths).
-- **Depends on / blocked by:** Should land before the Approach B self-registration work.
-
 ## P3 — Mark agent-runtime/ as a frozen reference
 
 - **What:** Add a one-line marker at the top of `apps/api/src/agent-runtime/` (module README or

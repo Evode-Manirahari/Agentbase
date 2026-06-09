@@ -21,6 +21,7 @@ import { ApiKeyGuard } from '../auth/api-key.guard.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { ActionsService } from './actions.service.js';
 import { AgentsService } from '../agents/agents.service.js';
+import { clampQueryInt } from '../common/query-int.js';
 
 const HubspotLeadWorkflowRequest = z.object({
   email: z.string().email(),
@@ -48,7 +49,7 @@ export class ActionsController {
   @UseGuards(ClerkAuthGuard)
   async list(@Query('limit') limit?: string) {
     const orgId = await this.agents.ensureDefaultOrg();
-    const n = Math.min(Math.max(Number(limit ?? 100), 1), 500);
+    const n = clampQueryInt(limit, { fallback: 100, min: 1, max: 500 });
     return this.actions.listForOrg(orgId, n);
   }
 

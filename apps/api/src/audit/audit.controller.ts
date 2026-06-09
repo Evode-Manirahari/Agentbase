@@ -19,6 +19,7 @@ import {
 } from './audit-export.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
+import { clampQueryInt } from '../common/query-int.js';
 
 @Controller('v1/audit')
 @UseGuards(ClerkAuthGuard)
@@ -38,7 +39,7 @@ export class AuditController {
     @Query('until') until?: string,
   ) {
     const orgId = await this.agents.ensureDefaultOrg();
-    const n = Math.min(Math.max(Number(limit ?? 100), 1), 500);
+    const n = clampQueryInt(limit, { fallback: 100, min: 1, max: 500 });
     const filter: AuditFilter = {
       ...(actorType ? { actorType } : {}),
       ...(eventType ? { eventType } : {}),

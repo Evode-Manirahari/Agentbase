@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { MetricsService } from './metrics.service.js';
 import { AgentsService } from '../agents/agents.service.js';
+import { clampQueryInt } from '../common/query-int.js';
 
 @Controller('v1/metrics')
 @UseGuards(ClerkAuthGuard)
@@ -14,7 +15,7 @@ export class MetricsController {
   @Get('overview')
   async overview(@Query('window_hours') windowHours?: string) {
     const orgId = await this.agents.ensureDefaultOrg();
-    const n = Math.min(Math.max(Number(windowHours ?? 24), 1), 168);
+    const n = clampQueryInt(windowHours, { fallback: 24, min: 1, max: 168 });
     return this.metrics.overview(orgId, n);
   }
 
@@ -22,7 +23,7 @@ export class MetricsController {
   async timeseries(@Query('window_hours') windowHours?: string) {
     const orgId = await this.agents.ensureDefaultOrg();
     // Trailing N days, inclusive of today. 7d default; 30d cap.
-    const n = Math.min(Math.max(Number(windowHours ?? 168), 24), 24 * 30);
+    const n = clampQueryInt(windowHours, { fallback: 168, min: 24, max: 24 * 30 });
     return this.metrics.timeseries(orgId, n);
   }
 }
