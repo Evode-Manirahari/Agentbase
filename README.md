@@ -6,7 +6,7 @@
 
 Agentbase is the safe-action layer for internal AI agents.
 
-> "Every SaaS company will become an agentic-as-a-service company, and every engineer will carry an annual token budget alongside their salary."
+> "Every SaaS company will become a GaaS [agentic-as-a-service] company, and every engineer will carry an annual token budget alongside their salary."
 > — Jensen Huang, NVIDIA GTC Taipei 2026
 
 When every company runs agents on a token budget, every one of those agents needs an identity, a permission boundary, and an audit trail. That layer is Agentbase.
