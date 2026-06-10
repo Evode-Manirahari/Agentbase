@@ -165,6 +165,23 @@ pnpm --filter '@agentbase/api' dev
 pnpm --filter '@agentbase/web' dev
 ```
 
+### Use Supabase as the database (optional)
+
+Supabase works as a drop-in replacement for self-hosted Postgres — point `DATABASE_URL` at it and everything else is unchanged:
+
+- **Schema push / migrations:** use the **direct connection** string (port `5432`, `db.<ref>.supabase.co`).
+- **API at runtime:** use the **transaction pooler** string (port `6543`, `*.pooler.supabase.com`). `createDb` auto-detects the pooler and disables postgres-js prepared statements (Supavisor doesn't support them); direct connections keep them.
+- Supabase replaces **Postgres only** — Redis (BullMQ queues) and the API itself still need hosting (Fly below). Free-tier projects pause after ~1 week idle; restore before demos or upgrade once a pilot starts.
+
+```bash
+# one-time schema push (direct connection)
+DATABASE_URL='postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres' \
+  pnpm --filter '@agentbase/db' exec drizzle-kit push --force
+
+# API runtime (transaction pooler)
+fly secrets set DATABASE_URL='postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:6543/postgres' --config infra/fly.api.toml
+```
+
 ### Deploy to Fly.io
 
 Two Fly apps (api + web) wired by setting `API_URL` on the web app to point at the api app's `.fly.dev` URL. Configs are in `infra/fly.api.toml` and `infra/fly.web.toml` — edit the `app =` placeholders, then:
