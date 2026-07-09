@@ -1,0 +1,104 @@
+version: 1
+default: deny
+
+# Policy for governing an agent (OpenClaw, Hermes, or a LangChain Deep Agent)
+# running inside NVIDIA NemoClaw's sandbox.
+#
+# NemoClaw's OpenShell runtime already locks down the *machine* perimeter for
+# whatever agent it's running: which hosts the sandbox can reach, what the
+# filesystem looks like, which model serves inference. That answers "can this
+# process talk to hubspot.com at all" — it has no concept of "should this
+# specific call update deal #4471 to $210k." That's a business-semantics
+# question, and it's exactly what this policy answers instead. A network
+# policy tier that correctly allows egress to the CRM says nothing about
+# whether the call the agent is about to make is one a human would sign off
+# on. Agentbase is the layer that still has an opinion after NemoClaw's sandbox
+# has already said yes.
+#
+# So the two layers stack, not compete:
+#   NemoClaw OpenShell  — network / filesystem / inference perimeter around the process
+#   Agentbase           — identity / policy / approval / audit around the business action
+#
+# A deployed NemoClaw sandbox is more deliberately provisioned than a bare,
+# always-on chat agent (someone chose the policy tier and stood it up), but
+# it still runs fully autonomously once live — so the deal-value bar here
+# sits between byoa-hermes's supervised-CLI $50k and byoa-openclaw's
+# chat-triggered $10k.
+#
+#   allow            — safe reads and reversible writes (enrichment, drafts, CRM upserts)
+#   require_approval — anything that leaves the building or moves real money
+#   deny              — destructive actions, regardless of what the sandboxed agent decided
+#
+# Rules are evaluated top-to-bottom; the first match wins. Condition paths
+# under `when:` are resolved against the tool's params.
+rules:
+  # --- Enrichment: read-only, always allow -------------------------------
+  - match: { tool: 'apollo.*' }
+    effect: allow
+    reason: 'enrichment is read-only'
+
+  # --- CRM reads + reversible writes: allow ------------------------------
+  - match: { tool: 'hubspot.contacts.search' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.create' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.update' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.upsert' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.associate' }
+    effect: allow
+  - match: { tool: 'hubspot.notes.create' }
+    effect: allow
+  - match: { tool: 'hubspot.connection.test' }
+    effect: allow
+
+  # --- Drafting is safe; sending is not ----------------------------------
+  - match: { tool: 'gmail.draft.create' }
+    effect: allow
+    reason: 'drafts never leave the outbox without a human'
+
+  # NemoClaw's network policy tier decides whether the sandbox can reach
+  # Gmail at all. It does not decide whether this particular send should
+  # happen — that pauses for a human here, regardless.
+  - match: { tool: 'gmail.send' }
+    effect: require_approval
+    approver_role: approver
+    reason: 'external send — human checks recipient + body before it leaves the sandbox'
+    slack_channel: '#critical-approvals'
+
+  # --- Money + pipeline state --------------------------------------------
+  - match:
+      tool: 'hubspot.deals.update'
+      when:
+        properties.amount: { gte: 25000 }
+    effect: require_approval
+    approver_role: approver
+    reason: 'deal change over $25k — the sandbox let the call through, a human still signs off'
+    slack_channel: '#critical-approvals'
+
+  - match: { tool: 'hubspot.deals.update' }
+    effect: allow
+
+  - match: { tool: 'hubspot.deals.create' }
+    effect: allow
+
+  - match: { tool: 'hubspot.deals.associate' }
+    effect: allow
+
+  # A new opportunity hitting the pipeline gets a human ✓
+  - match: { tool: 'salesforce.opportunity.create' }
+    effect: require_approval
+    approver_role: approver
+    reason: 'new opportunity — confirm before it hits the pipeline'
+
+  # Enrolling a real person in an outbound sequence is an external action
+  - match: { tool: 'outreach.sequences.enroll' }
+    effect: require_approval
+    approver_role: approver
+    reason: 'enrolls a real contact in outbound — human confirms'
+
+  # --- Destructive actions: never -----------------------------------------
+  - match: { tool: '*.delete' }
+    effect: deny
+    reason: 'no autonomous deletes, no matter what network tier allowed the call through'

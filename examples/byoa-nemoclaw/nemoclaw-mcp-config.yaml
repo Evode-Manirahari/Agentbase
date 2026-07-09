@@ -1,0 +1,42 @@
+# Annotated NemoClaw MCP-server block for Agentbase.
+#
+# NemoClaw runs the underlying agent (OpenClaw, Hermes, or a LangChain Deep
+# Agent) inside its OpenShell sandbox and manages MCP servers as part of that
+# sandbox's config. Two things need to be true before the gate fires:
+#
+#   1. The sandbox's network policy tier must allow egress to wherever
+#      Agentbase is listening (localhost:3002 in dev — often already covered
+#      by the baseline policy; confirm with `nemoclaw doctor` if calls hang).
+#   2. The `agentbase` MCP server below must be registered in the sandbox's
+#      blueprint config, or via `nemoclaw mcp add …` (see setup.sh).
+#
+# This does not replace NemoClaw's own network policy tier — it stacks under
+# it. NemoClaw decides whether the sandboxed process can reach the gate at
+# all; Agentbase decides whether the specific call it's making is one a human
+# has already signed off on.
+
+mcp_servers:
+  agentbase:
+    command: pnpm
+    args: ['exec', 'agentbase-mcp']
+    env:
+      # The scoped agent identity the sandboxed agent acts as. Minted by
+      # setup.sh. Revoking this key cuts the sandbox off from every connector
+      # instantly — no need to tear down or reprovision the sandbox itself.
+      AGENTBASE_API_KEY: 'agb_REPLACE_WITH_YOUR_AGENT_KEY'
+      # Where the Agentbase gate is listening. Defaults to localhost:3002.
+      AGENTBASE_BASE_URL: 'http://localhost:3002'
+
+    # OPTIONAL client-side tool filtering. This only tidies the tool list the
+    # sandboxed agent sees — it is NOT the security boundary, and it is a
+    # different mechanism from NemoClaw's own network policy tier. The real
+    # allow/deny/approval decisions live in policy.yaml, server-side, where the
+    # sandboxed agent cannot reach them.
+    #
+    # tools:
+    #   include:
+    #     - hubspot_contacts_upsert
+    #     - gmail_draft_create
+    #     - gmail_send
+    #   exclude:
+    #     - '*_delete'

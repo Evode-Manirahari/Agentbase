@@ -21,6 +21,8 @@ export const AgentPermissionProfile = z.enum([
   'revops_admin',
   'support_agent',
   'read_only_analyst',
+  'openclaw_agent',
+  'nemoclaw_sandboxed_agent',
   'custom',
 ]);
 export type AgentPermissionProfile = z.infer<typeof AgentPermissionProfile>;
@@ -30,6 +32,8 @@ export interface AgentPermissionRuleTemplate {
   effect: 'allow' | 'require_approval' | 'deny';
   reason: string;
   approver_role?: 'admin' | 'approver' | 'viewer';
+  when?: Record<string, Condition>;
+  slack_channel?: string;
 }
 
 export interface AgentPermissionProfileDefinition {
@@ -215,6 +219,106 @@ export const AGENT_PERMISSION_PROFILES: Record<
       allow('gmail.messages.get', 'Analyst can inspect messages'),
     ],
   },
+  openclaw_agent: {
+    key: 'openclaw_agent',
+    label: 'OpenClaw Agent',
+    description:
+      'Chat-triggered autonomous agent governed through MCP with stricter deal and outbound controls.',
+    summary: 'Chat-triggered MCP agent, $10k+ deal approval, outbound approval',
+    rules: [
+      allow('apollo.*', 'OpenClaw can use read-only Apollo enrichment'),
+      allow('hubspot.connection.test', 'OpenClaw can validate HubSpot connectivity'),
+      allow('hubspot.contacts.search', 'OpenClaw can search contacts'),
+      allow('hubspot.contacts.get', 'OpenClaw can inspect contacts'),
+      allow('hubspot.contacts.create', 'OpenClaw can create contacts'),
+      allow('hubspot.contacts.update', 'OpenClaw can update contact fields'),
+      allow('hubspot.contacts.upsert', 'OpenClaw can upsert contacts'),
+      allow('hubspot.contacts.associate', 'OpenClaw can associate contacts'),
+      allow('hubspot.notes.create', 'OpenClaw can create notes'),
+      allow('gmail.draft.create', 'OpenClaw can draft email'),
+      requireApproval(
+        'gmail.send',
+        'OpenClaw external sends need human review',
+        { slack_channel: '#critical-approvals' },
+      ),
+      requireApproval(
+        'gmail.draft.send',
+        'OpenClaw draft sends need human review',
+        { slack_channel: '#critical-approvals' },
+      ),
+      requireApproval(
+        'hubspot.deals.update',
+        'OpenClaw deal changes over $10k need review',
+        {
+          when: { 'properties.amount': { gte: 10000 } },
+          slack_channel: '#critical-approvals',
+        },
+      ),
+      allow('hubspot.deals.update', 'OpenClaw can make lower-value deal updates'),
+      allow('hubspot.deals.create', 'OpenClaw can create lower-risk deals'),
+      allow('hubspot.deals.associate', 'OpenClaw can associate deals'),
+      requireApproval(
+        'salesforce.opportunity.create',
+        'OpenClaw opportunity creation needs review',
+      ),
+      requireApproval(
+        'outreach.sequences.enroll',
+        'OpenClaw sequence enrollment needs review',
+        { slack_channel: '#critical-approvals' },
+      ),
+      deny('*.delete', 'OpenClaw cannot autonomously delete records'),
+    ],
+  },
+  nemoclaw_sandboxed_agent: {
+    key: 'nemoclaw_sandboxed_agent',
+    label: 'NemoClaw Sandboxed Agent',
+    description:
+      'Agent running inside NVIDIA NemoClaw/OpenShell, with Agentbase governing business actions beneath the sandbox.',
+    summary: 'Sandboxed MCP agent, $25k+ deal approval, outbound approval',
+    rules: [
+      allow('apollo.*', 'Sandboxed agent can use read-only Apollo enrichment'),
+      allow('hubspot.connection.test', 'Sandboxed agent can validate HubSpot connectivity'),
+      allow('hubspot.contacts.search', 'Sandboxed agent can search contacts'),
+      allow('hubspot.contacts.get', 'Sandboxed agent can inspect contacts'),
+      allow('hubspot.contacts.create', 'Sandboxed agent can create contacts'),
+      allow('hubspot.contacts.update', 'Sandboxed agent can update contact fields'),
+      allow('hubspot.contacts.upsert', 'Sandboxed agent can upsert contacts'),
+      allow('hubspot.contacts.associate', 'Sandboxed agent can associate contacts'),
+      allow('hubspot.notes.create', 'Sandboxed agent can create notes'),
+      allow('gmail.draft.create', 'Sandboxed agent can draft email'),
+      requireApproval(
+        'gmail.send',
+        'Sandboxed agent external sends need human review',
+        { slack_channel: '#critical-approvals' },
+      ),
+      requireApproval(
+        'gmail.draft.send',
+        'Sandboxed agent draft sends need human review',
+        { slack_channel: '#critical-approvals' },
+      ),
+      requireApproval(
+        'hubspot.deals.update',
+        'Sandboxed agent deal changes over $25k need review',
+        {
+          when: { 'properties.amount': { gte: 25000 } },
+          slack_channel: '#critical-approvals',
+        },
+      ),
+      allow('hubspot.deals.update', 'Sandboxed agent can make lower-value deal updates'),
+      allow('hubspot.deals.create', 'Sandboxed agent can create lower-risk deals'),
+      allow('hubspot.deals.associate', 'Sandboxed agent can associate deals'),
+      requireApproval(
+        'salesforce.opportunity.create',
+        'Sandboxed agent opportunity creation needs review',
+      ),
+      requireApproval(
+        'outreach.sequences.enroll',
+        'Sandboxed agent sequence enrollment needs review',
+        { slack_channel: '#critical-approvals' },
+      ),
+      deny('*.delete', 'Sandboxed agent cannot autonomously delete records'),
+    ],
+  },
   custom: {
     key: 'custom',
     label: 'Custom',
@@ -276,13 +380,30 @@ export function buildAgentPermissionProfilePolicyYaml(): string {
   for (const profile of AGENT_PERMISSION_PROFILE_OPTIONS) {
     if (profile.key === 'custom') continue;
     for (const rule of profile.rules) {
+      if (rule.when) {
+        lines.push(
+          '  - match:',
+          `      tool: ${quoteYaml(rule.tool)}`,
+          `      agent_profile: ${profile.key}`,
+          '      when:',
+        );
+        for (const [path, cond] of Object.entries(rule.when)) {
+          lines.push(`        ${path}: ${formatConditionYaml(cond)}`);
+        }
+      } else {
+        lines.push(
+          `  - match: { tool: ${quoteYaml(rule.tool)}, agent_profile: ${profile.key} }`,
+        );
+      }
       lines.push(
-        `  - match: { tool: ${quoteYaml(rule.tool)}, agent_profile: ${profile.key} }`,
         `    effect: ${rule.effect}`,
         `    reason: ${quoteYaml(`${profile.label}: ${rule.reason}`)}`,
       );
       if (rule.approver_role) {
         lines.push(`    approver_role: ${rule.approver_role}`);
+      }
+      if (rule.slack_channel) {
+        lines.push(`    slack_channel: ${quoteYaml(rule.slack_channel)}`);
       }
     }
   }
@@ -620,8 +741,22 @@ function allow(tool: string, reason: string): AgentPermissionRuleTemplate {
 function requireApproval(
   tool: string,
   reason: string,
+  opts: {
+    when?: Record<string, Condition>;
+    slack_channel?: string;
+  } = {},
 ): AgentPermissionRuleTemplate {
-  return { tool, effect: 'require_approval', reason, approver_role: 'approver' };
+  return {
+    tool,
+    effect: 'require_approval',
+    reason,
+    approver_role: 'approver',
+    ...opts,
+  };
+}
+
+function deny(tool: string, reason: string): AgentPermissionRuleTemplate {
+  return { tool, effect: 'deny', reason };
 }
 
 function quoteYaml(value: string): string {

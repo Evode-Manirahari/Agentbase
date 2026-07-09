@@ -1,0 +1,14 @@
+{
+  "mcp": {
+    "servers": {
+      "agentbase": {
+        "command": "pnpm",
+        "args": ["exec", "agentbase-mcp"],
+        "env": {
+          "AGENTBASE_API_KEY": "agb_REPLACE_WITH_YOUR_AGENT_KEY",
+          "AGENTBASE_BASE_URL": "http://localhost:3002"
+        }
+      }
+    }
+  }
+}

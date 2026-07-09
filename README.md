@@ -69,6 +69,8 @@ Two integration surfaces — code-level (SDK) and protocol-level (MCP):
 - [`examples/byoa-vercel-ai/`](./examples/byoa-vercel-ai) — real ~120-line example: Vercel AI SDK agent with five tools, each going through the gate via the SDK. End-to-end lead-processing flow with one auto-executed step, one Slack-approval step, and a denial path.
 - [`examples/byoa-mcp/`](./examples/byoa-mcp) — smoke test for the MCP path plus a paste-and-edit Claude Desktop config.
 - [`examples/byoa-hermes/`](./examples/byoa-hermes) — govern a [Hermes Agent](https://hermes-agent.nousresearch.com) (Nous Research's self-improving CLI agent) via MCP: a `setup.sh` that mints the scoped key + `hermes mcp add` command, a policy tuned for an autonomous agent, and a verify smoke test.
+- [`examples/byoa-openclaw/`](./examples/byoa-openclaw) — govern [OpenClaw](https://docs.openclaw.ai) (the open-source, chat-triggered autonomous agent) via MCP: tighter deal-value thresholds than byoa-hermes, tuned for an agent with no human watching the session.
+- [`examples/byoa-nemoclaw/`](./examples/byoa-nemoclaw) — govern an agent running inside [NVIDIA NemoClaw](https://www.nvidia.com/en-us/ai/nemoclaw/)'s sandbox via MCP: shows Agentbase's business-action policy stacking under NemoClaw's own network/filesystem sandbox, not replacing it.
 - [`examples/demo-agent/`](./examples/demo-agent) — minimal hardcoded and raw-Anthropic variants if you don't want a framework.
 
 ## How the demo works
@@ -296,6 +298,8 @@ examples/
 ├── byoa-vercel-ai/      Bring-your-own-agent example wired via the SDK
 ├── byoa-mcp/            Bring-your-own-agent example wired via MCP (Claude Desktop, Cursor, etc.)
 ├── byoa-hermes/         Govern a Hermes Agent (Nous Research) via MCP — scoped key, policy, verify
+├── byoa-openclaw/       Govern OpenClaw (chat-triggered autonomous agent) via MCP — tighter thresholds, same catalog
+├── byoa-nemoclaw/       Govern an agent inside NVIDIA NemoClaw's sandbox — business-action policy stacked under the network sandbox
 └── cross-stack-demo/    One agent + one policy file governed across HubSpot + Salesforce + Gmail + Slack
 
 infra/
