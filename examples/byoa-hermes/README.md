@@ -4,7 +4,7 @@
 
 Hermes is MCP-aware, so there is no SDK code to write. You register [`@agentbase/mcp-server`](../../packages/mcp-server) as an MCP server in Hermes, hand it one scoped `agb_…` key, and every connector call the agent makes is now gated.
 
-> For the SDK-based path (LangChain / Vercel AI / Mastra / raw Anthropic) see [`../byoa-vercel-ai`](../byoa-vercel-ai). For the generic MCP-client path (Claude Desktop, Cursor) see [`../byoa-mcp`](../byoa-mcp). This example is the same MCP front door, wired specifically for Hermes.
+> For the SDK-based path (LangChain / Vercel AI / Mastra / raw Anthropic) see [`../byoa-vercel-ai`](../byoa-vercel-ai). For the generic MCP-client path (Claude Desktop, Cursor) see [`../byoa-mcp`](../byoa-mcp). This example is the same MCP front door, wired specifically for Hermes. For a chat-triggered agent see [`../byoa-openclaw`](../byoa-openclaw); for either one running inside NVIDIA's sandbox see [`../byoa-nemoclaw`](../byoa-nemoclaw).
 
 ## Why govern a self-improving agent in particular
 
@@ -16,6 +16,19 @@ Hermes *creates and rewrites its own skills during use* and carries memory acros
 - **Audit** — every decision and connector outcome lands in the immutable audit log, attributed to the Hermes identity.
 
 > ⚠️ **Where the security boundary is.** Hermes's own MCP config supports client-side tool filtering (`tools.include` / `tools.exclude`). That is a *convenience* — it tidies the agent's tool list. **It is not the gate.** The security boundary is Agentbase's server-side policy. Never rely on the Hermes-side filter to keep a self-improving agent away from a dangerous action; express that as a `deny` / `require_approval` rule in `policy.yaml` instead.
+
+## The delusional-agent demo
+
+This is the scenario the bundled policy is actually tuned against. Ask Hermes to run an inbound lead with a loose enough brief — "clear out the stale pipeline and re-engage anyone who's gone quiet, use your judgement on messaging" — and a self-improving agent with cross-session memory will eventually talk itself into more than you meant: a stale $82k deal gets marked `closedwon` to "tidy up" before the outreach, a discount nobody approved shows up in the re-engagement draft, and "anyone who's gone quiet" quietly becomes the whole pipeline. None of that requires a bug in Hermes — it's a confident agent doing exactly what an unbounded agent with a rewritable skill set will eventually do with a vague brief and a memory that outlives the session.
+
+Under `policy.yaml`, none of it executes unreviewed:
+
+- `hubspot.deals.update` with `amount >= 50000` → **`require_approval`** — the pipeline-cleanup deal change pauses for a human, no matter how Hermes justified the number to itself.
+- `gmail.send` → **`require_approval`** — the draft is fine, nothing sends without a human reading it.
+- `outreach.sequences.enroll` → **`require_approval`** — "use your judgement" doesn't enroll real contacts in outbound on its own.
+- `*.delete` → **`deny`**, unconditionally, if Hermes decides the quiet contacts should be archived instead.
+
+The gate never evaluates whether Hermes's reasoning was sound — only the tool and params on the call in front of it. A confident, wrong Hermes and a correct one hit the exact same policy. See [`../byoa-openclaw`](../byoa-openclaw) for the same demo run against a chat-triggered agent instead of a supervised CLI session.
 
 ## Prerequisites
 

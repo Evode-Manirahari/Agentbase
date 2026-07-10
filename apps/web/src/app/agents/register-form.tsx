@@ -1,7 +1,10 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { AGENT_PERMISSION_PROFILE_OPTIONS } from '@agentbase/shared';
+import {
+  AGENT_PERMISSION_PROFILE_OPTIONS,
+  type AgentPermissionProfile,
+} from '@agentbase/shared';
 import { registerAgentAction, type RegisterState } from './actions';
 
 const initialRegisterState: RegisterState = { status: 'idle' };
@@ -53,6 +56,12 @@ export function RegisterForm() {
               <div className="text-xs text-[var(--color-muted)] mt-3 mono">
                 agent_id: {state.agent_id}
               </div>
+              <McpSetup
+                apiKey={state.api_key}
+                permissionProfile={state.permission_profile}
+                onCopy={copy}
+                copied={copied}
+              />
             </div>
             <button
               type="button"
@@ -112,6 +121,78 @@ export function RegisterForm() {
       </form>
     </div>
   );
+}
+
+function McpSetup({
+  apiKey,
+  permissionProfile,
+  onCopy,
+  copied,
+}: {
+  apiKey: string;
+  permissionProfile: AgentPermissionProfile;
+  onCopy: (text: string) => Promise<void>;
+  copied: boolean;
+}) {
+  const setup = mcpSetupForProfile(permissionProfile, apiKey);
+  if (!setup) return null;
+
+  return (
+    <div className="mt-4 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div>
+          <div className="text-xs font-medium text-[var(--color-text)]">
+            {setup.title}
+          </div>
+          <div className="text-[11px] text-[var(--color-muted)]">
+            Install the profile policy, then run this from the Agentbase repo.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onCopy(setup.command)}
+          className="px-2 py-1 rounded border border-[var(--color-border)] text-[11px] hover:border-emerald-500/50 hover:text-emerald-200"
+        >
+          {copied ? 'Copied ✓' : 'Copy command'}
+        </button>
+      </div>
+      <pre className="overflow-x-auto whitespace-pre-wrap rounded border border-[var(--color-border)] bg-black/20 p-2 text-[11px] leading-5 mono text-[var(--color-text)]">
+        {setup.command}
+      </pre>
+    </div>
+  );
+}
+
+function mcpSetupForProfile(
+  profile: AgentPermissionProfile,
+  apiKey: string,
+): { title: string; command: string } | null {
+  const baseUrl = 'http://localhost:3002';
+  if (profile === 'openclaw_agent') {
+    return {
+      title: 'OpenClaw MCP setup',
+      command: [
+        'openclaw mcp add agentbase \\',
+        '  --command pnpm \\',
+        '  --args exec agentbase-mcp \\',
+        `  --env AGENTBASE_API_KEY=${apiKey} \\`,
+        `  --env AGENTBASE_BASE_URL=${baseUrl}`,
+      ].join('\n'),
+    };
+  }
+  if (profile === 'nemoclaw_sandboxed_agent') {
+    return {
+      title: 'NemoClaw MCP setup',
+      command: [
+        'nemoclaw mcp add agentbase \\',
+        '  --command pnpm \\',
+        '  --args exec agentbase-mcp \\',
+        `  --env AGENTBASE_API_KEY=${apiKey} \\`,
+        `  --env AGENTBASE_BASE_URL=${baseUrl}`,
+      ].join('\n'),
+    };
+  }
+  return null;
 }
 
 function Field({

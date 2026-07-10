@@ -289,6 +289,44 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  examples/byoa-nemoclaw:
+    dependencies:
+      '@agentbase/mcp-server':
+        specifier: workspace:*
+        version: link:../../packages/mcp-server
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.0.4
+        version: 1.29.0(zod@3.25.76)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.19.17
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  examples/byoa-openclaw:
+    dependencies:
+      '@agentbase/mcp-server':
+        specifier: workspace:*
+        version: link:../../packages/mcp-server
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.0.4
+        version: 1.29.0(zod@3.25.76)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.19.17
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   examples/byoa-vercel-ai:
     dependencies:
       '@agentbase/sdk':

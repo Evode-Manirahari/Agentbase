@@ -6,7 +6,12 @@ import {
   getByPath,
   FALLBACK_POLICY,
 } from './policy-engine.js';
-import type { PolicyDocument, PolicyRule } from '@agentbase/shared';
+import {
+  buildAgentPermissionProfilePolicyYaml,
+  PolicyDocument,
+  type PolicyRule,
+} from '@agentbase/shared';
+import { parse as parseYaml } from 'yaml';
 
 const emptyDeny: PolicyDocument = { version: 1, default: 'deny', rules: [] };
 
@@ -170,6 +175,61 @@ describe('evaluatePolicy — agent profile matching', () => {
     });
     assert.equal(d.effect, 'deny');
     assert.equal(d.rule_index, null);
+  });
+
+  it('enforces first-class OpenClaw and NemoClaw profile thresholds', () => {
+    const parsed = PolicyDocument.parse(
+      parseYaml(buildAgentPermissionProfilePolicyYaml()),
+    );
+
+    const openclawLargeDeal = evaluatePolicy(parsed, {
+      tool: 'hubspot.deals.update',
+      params: { properties: { amount: 15000 } },
+      agent: {
+        id: '33333333-3333-4333-8333-333333333333',
+        name: 'openclaw',
+        permission_profile: 'openclaw_agent',
+      },
+    });
+    assert.equal(openclawLargeDeal.effect, 'require_approval');
+    assert.equal(openclawLargeDeal.rule_matched?.match.agent_profile, 'openclaw_agent');
+
+    const nemoclawSmallDeal = evaluatePolicy(parsed, {
+      tool: 'hubspot.deals.update',
+      params: { properties: { amount: 15000 } },
+      agent: {
+        id: '44444444-4444-4444-8444-444444444444',
+        name: 'nemoclaw',
+        permission_profile: 'nemoclaw_sandboxed_agent',
+      },
+    });
+    assert.equal(nemoclawSmallDeal.effect, 'allow');
+    assert.equal(
+      nemoclawSmallDeal.rule_matched?.match.agent_profile,
+      'nemoclaw_sandboxed_agent',
+    );
+
+    const nemoclawLargeDeal = evaluatePolicy(parsed, {
+      tool: 'hubspot.deals.update',
+      params: { properties: { amount: 82000 } },
+      agent: {
+        id: '55555555-5555-4555-8555-555555555555',
+        name: 'nemoclaw',
+        permission_profile: 'nemoclaw_sandboxed_agent',
+      },
+    });
+    assert.equal(nemoclawLargeDeal.effect, 'require_approval');
+
+    const openclawDelete = evaluatePolicy(parsed, {
+      tool: 'hubspot.contacts.delete',
+      params: {},
+      agent: {
+        id: '66666666-6666-4666-8666-666666666666',
+        name: 'openclaw',
+        permission_profile: 'openclaw_agent',
+      },
+    });
+    assert.equal(openclawDelete.effect, 'deny');
   });
 });
 

@@ -75,6 +75,17 @@ rules:
       rule.match.tool === 'apollo.people.search' &&
       rule.effect === 'allow',
     ));
+    assert.ok(doc.rules.some((rule) =>
+      rule.match.agent_profile === 'openclaw_agent' &&
+      rule.match.tool === 'hubspot.deals.update' &&
+      rule.match.when?.['properties.amount'] &&
+      rule.effect === 'require_approval',
+    ));
+    assert.ok(doc.rules.some((rule) =>
+      rule.match.agent_profile === 'nemoclaw_sandboxed_agent' &&
+      rule.match.tool === '*.delete' &&
+      rule.effect === 'deny',
+    ));
   });
 
   it('rejects malformed YAML with BadRequestException', () => {
@@ -286,6 +297,18 @@ rules:
       .insert(agents)
       .values({ orgId, name: 'analyst', permissionProfile: 'read_only_analyst' })
       .returning();
+    const [openclaw] = await db
+      .insert(agents)
+      .values({ orgId, name: 'openclaw', permissionProfile: 'openclaw_agent' })
+      .returning();
+    const [nemoclaw] = await db
+      .insert(agents)
+      .values({
+        orgId,
+        name: 'nemoclaw',
+        permissionProfile: 'nemoclaw_sandboxed_agent',
+      })
+      .returning();
     await svc.setActive({
       orgId,
       name: 'profiles',
@@ -314,5 +337,43 @@ rules:
     });
     assert.equal(analystRead.effect, 'allow');
     assert.equal(analystRead.rule_matched?.match.agent_profile, 'read_only_analyst');
+
+    const openclawDeal = await svc.evaluate(orgId, {
+      agentId: openclaw!.id,
+      tool: 'hubspot.deals.update',
+      params: { properties: { amount: 15000 } },
+    });
+    assert.equal(openclawDeal.effect, 'require_approval');
+    assert.equal(openclawDeal.rule_matched?.match.agent_profile, 'openclaw_agent');
+
+    const nemoclawSmallDeal = await svc.evaluate(orgId, {
+      agentId: nemoclaw!.id,
+      tool: 'hubspot.deals.update',
+      params: { properties: { amount: 15000 } },
+    });
+    assert.equal(nemoclawSmallDeal.effect, 'allow');
+    assert.equal(
+      nemoclawSmallDeal.rule_matched?.match.agent_profile,
+      'nemoclaw_sandboxed_agent',
+    );
+
+    const nemoclawLargeDeal = await svc.evaluate(orgId, {
+      agentId: nemoclaw!.id,
+      tool: 'hubspot.deals.update',
+      params: { properties: { amount: 82000 } },
+    });
+    assert.equal(nemoclawLargeDeal.effect, 'require_approval');
+    assert.equal(
+      nemoclawLargeDeal.rule_matched?.match.agent_profile,
+      'nemoclaw_sandboxed_agent',
+    );
+
+    const openclawDelete = await svc.evaluate(orgId, {
+      agentId: openclaw!.id,
+      tool: 'hubspot.contacts.delete',
+      params: {},
+    });
+    assert.equal(openclawDelete.effect, 'deny');
+    assert.equal(openclawDelete.rule_matched?.match.agent_profile, 'openclaw_agent');
   });
 });

@@ -1,0 +1,105 @@
+version: 1
+default: deny
+
+# Policy for governing OpenClaw (github.com/openclaw/openclaw): a self-hosted,
+# open-source autonomous agent that takes action from chat messages — WhatsApp,
+# Telegram, Slack, Signal — using skills it (or a human) installed from ClawHub,
+# with no human-in-the-loop by default.
+#
+# The premise: OpenClaw acts on a free-form instruction from whoever can reach
+# the chat surface, using skills of mixed provenance, and it will confidently
+# talk itself into scope creep — "follow up with everyone who went quiet" can
+# become "email the whole database" if nothing outside the agent stops it.
+# Independent safety research has already documented real incidents of exactly
+# this failure mode. So nothing here trusts OpenClaw's own judgment, prompt, or
+# skill list — every sensitive call is decided server-side against the actual
+# params of the actual call in front of it.
+#
+# Scope: this policy governs the revenue-stack connectors OpenClaw reaches
+# through Agentbase's MCP server (HubSpot, Salesforce, Gmail, Outreach, Apollo)
+# — the same catalog byoa-hermes governs. OpenClaw's *native* machine actions
+# (shell exec, filesystem, raw browser control) aren't an Agentbase connector
+# today; those stay under OpenClaw's own permission model, or under NemoClaw's
+# sandbox if you're running OpenClaw inside one — see ../byoa-nemoclaw.
+#
+#   allow            — safe reads and reversible writes (enrichment, drafts, CRM upserts)
+#   require_approval — anything that leaves the building, moves real money, or
+#                       commits to a number OpenClaw decided was reasonable
+#   deny              — destructive actions, no matter how confident OpenClaw is
+#
+# Rules are evaluated top-to-bottom; the first match wins. Condition paths
+# under `when:` are resolved against the tool's params.
+rules:
+  # --- Enrichment: read-only, always allow -------------------------------
+  - match: { tool: 'apollo.*' }
+    effect: allow
+    reason: 'enrichment is read-only'
+
+  # --- CRM reads + reversible writes: allow ------------------------------
+  - match: { tool: 'hubspot.contacts.search' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.create' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.update' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.upsert' }
+    effect: allow
+  - match: { tool: 'hubspot.contacts.associate' }
+    effect: allow
+  - match: { tool: 'hubspot.notes.create' }
+    effect: allow
+  - match: { tool: 'hubspot.connection.test' }
+    effect: allow
+
+  # --- Drafting is safe; sending is not ----------------------------------
+  - match: { tool: 'gmail.draft.create' }
+    effect: allow
+    reason: 'drafts never leave the outbox without a human'
+
+  # A chat-triggered agent does not get to email the world on its own,
+  # regardless of how urgent it decided the message was.
+  - match: { tool: 'gmail.send' }
+    effect: require_approval
+    approver_role: approver
+    reason: 'external send — a human confirms recipient + body before anything leaves'
+    slack_channel: '#critical-approvals'
+
+  # --- Money + pipeline state: tighter than a supervised CLI session -----
+  # OpenClaw runs from a phone message with nobody watching the session, so
+  # the deal-value bar for auto-approval sits lower here than in byoa-hermes.
+  - match:
+      tool: 'hubspot.deals.update'
+      when:
+        properties.amount: { gte: 10000 }
+    effect: require_approval
+    approver_role: approver
+    reason: 'deal change over $10k — confirm before OpenClaw "cleans up the pipeline"'
+    slack_channel: '#critical-approvals'
+
+  - match: { tool: 'hubspot.deals.update' }
+    effect: allow
+
+  - match: { tool: 'hubspot.deals.create' }
+    effect: allow
+
+  - match: { tool: 'hubspot.deals.associate' }
+    effect: allow
+
+  # A new opportunity hitting the pipeline gets a human ✓
+  - match: { tool: 'salesforce.opportunity.create' }
+    effect: require_approval
+    approver_role: approver
+    reason: 'new opportunity — confirm before it hits the pipeline'
+
+  # Enrolling a real person in an outbound sequence is an external action —
+  # "use your judgement" is not a substitute for a human confirming it.
+  - match: { tool: 'outreach.sequences.enroll' }
+    effect: require_approval
+    approver_role: approver
+    reason: 'enrolls a real contact in outbound — human confirms'
+    slack_channel: '#critical-approvals'
+
+  # --- Destructive actions: never -----------------------------------------
+  - match: { tool: '*.delete' }
+    effect: deny
+    reason: 'no autonomous deletes, no matter how confident OpenClaw is'
