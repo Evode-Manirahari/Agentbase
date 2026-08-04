@@ -55,12 +55,16 @@ export interface Connector {
     ctx?: ConnectorInvokeContext,
   ): Promise<ConnectorResult>;
   /**
-   * Declares whether retrying this tool is safe. Optional, and a connector that
+   * Declares whether retrying this call is safe. Optional, and a connector that
    * does not implement it is treated as `'none'` — the pessimistic reading.
    * Defaulting the other way would silently convert every unaudited connector
    * into a duplicate-effect risk.
+   *
+   * Takes params as well as the tool because for some connectors the answer
+   * lives in the arguments, not the verb: `shell.run` is safe to repeat when
+   * the command is `git status` and catastrophic when it is `npm publish`.
    */
-  idempotency?(tool: string): IdempotencyMode;
+  idempotency?(tool: string, params?: Record<string, unknown>): IdempotencyMode;
 }
 
 const PropertyValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
