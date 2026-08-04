@@ -140,8 +140,32 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
+// Applied when an org has no active policy. Fails closed: a control plane
+// whose default is `allow` is not a control plane, and "we hadn't written a
+// policy yet" is exactly when an agent is most likely to do something nobody
+// intended.
+//
+// This is a deliberate breaking change from the pre-1.0 behaviour. An org that
+// wants the old permissive default must opt in explicitly via
+// AGENTBASE_FALLBACK_POLICY=allow, which logs a warning at boot — the same
+// fail-closed-with-an-explicit-escape-hatch shape as
+// AGENTBASE_ALLOW_UNAUTHENTICATED.
 export const FALLBACK_POLICY: PolicyDocument = {
+  version: 1,
+  default: 'deny',
+  rules: [],
+};
+
+export const LEGACY_ALLOW_FALLBACK_POLICY: PolicyDocument = {
   version: 1,
   default: 'allow',
   rules: [],
 };
+
+export function resolveFallbackPolicy(
+  env: Record<string, string | undefined> = process.env,
+): PolicyDocument {
+  return env['AGENTBASE_FALLBACK_POLICY'] === 'allow'
+    ? LEGACY_ALLOW_FALLBACK_POLICY
+    : FALLBACK_POLICY;
+}

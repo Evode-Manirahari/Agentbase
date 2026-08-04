@@ -77,6 +77,10 @@ class StubRegistry {
   invocations: { tool: string; params: Record<string, unknown> }[] = [];
   result: ConnectorResult = { ok: true, data: { stub: true } };
   resolveAlways = true;
+  // Widens the window between "connector called" and "outcome recorded" so
+  // concurrency tests deterministically exercise the race the reservation is
+  // there to close.
+  delayMs = 0;
   resolve(_tool: string): Connector | null {
     if (!this.resolveAlways) return null;
     return {
@@ -84,6 +88,9 @@ class StubRegistry {
       supports: () => true,
       invoke: async (tool, params) => {
         this.invocations.push({ tool, params });
+        if (this.delayMs > 0) {
+          await new Promise((r) => setTimeout(r, this.delayMs));
+        }
         return this.result;
       },
     };
@@ -814,6 +821,149 @@ describe('ActionsService.execute', () => {
     const result = retried.result as { error: { code: string } };
     // The retry's error code is now persisted (overwrites the original).
     assert.equal(result.error.code, 'http_502');
+  });
+
+  // ---------------------------------------------------------------------
+  // Effect safety. These are the tests that make the product claim true:
+  // the idempotency key bounds the SIDE EFFECT, not merely the record of it.
+  // ---------------------------------------------------------------------
+
+  it('concurrent executes sharing an idempotency key invoke the connector once', async () => {
+    registry.delayMs = 120; // hold the connector open so all callers overlap
+    const key = `idem-${randomUUID()}`;
+
+    const settled = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        svc.execute({
+          orgId,
+          agentId,
+          tool: 'gmail.send',
+          params: { to: 'cto@globex.com' },
+          idempotencyKey: key,
+        }),
+      ),
+    );
+
+    // The claim. Eight concurrent agent retries, one email.
+    assert.equal(
+      registry.invocations.length,
+      1,
+      `expected exactly one connector call, got ${registry.invocations.length}`,
+    );
+
+    // And exactly one action row owns the key.
+    const rows = await db
+      .select()
+      .from(actions)
+      .where(eq(actions.idempotencyKey, key));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.dispatchState, 'settled');
+    assert.equal(rows[0]!.status, 'executed');
+
+    // Every caller gets a coherent answer pointing at that one action.
+    for (const r of settled) {
+      assert.equal(r.action_id, rows[0]!.id);
+    }
+  });
+
+  it('reserves the action row before the connector is invoked', async () => {
+    let stateDuringInvoke: string | null = null;
+    const key = `idem-${randomUUID()}`;
+    registry.resolveAlways = false; // replaced below
+
+    const probing: Connector = {
+      name: 'probe',
+      supports: () => true,
+      invoke: async () => {
+        // Mid-flight: the row must already exist and be marked in_flight, so a
+        // crash right here is recoverable rather than invisible.
+        const [row] = await db
+          .select()
+          .from(actions)
+          .where(eq(actions.idempotencyKey, key));
+        stateDuringInvoke = row?.dispatchState ?? null;
+        return { ok: true, data: {} };
+      },
+    };
+    registry.resolve = () => probing;
+
+    await svc.execute({
+      orgId,
+      agentId,
+      tool: 'gmail.send',
+      params: {},
+      idempotencyKey: key,
+    });
+
+    assert.equal(stateDuringInvoke, 'in_flight');
+  });
+
+  it('marks a dispatch that never settled as unknown and does not retry it', async () => {
+    const key = `idem-${randomUUID()}`;
+    const [stuck] = await db
+      .insert(actions)
+      .values({
+        orgId,
+        agentId,
+        tool: 'gmail.send',
+        params: {},
+        status: 'pending',
+        policyDecision: makeDecision() as unknown as Record<string, unknown>,
+        idempotencyKey: key,
+        dispatchState: 'in_flight',
+        dispatchedAt: new Date(Date.now() - 60 * 60 * 1000), // an hour ago
+      })
+      .returning();
+
+    const swept = await svc.reconcileStaleDispatches(5 * 60 * 1000);
+    assert.equal(swept, 1);
+
+    const [row] = await db
+      .select()
+      .from(actions)
+      .where(eq(actions.id, stuck!.id));
+    assert.equal(row!.dispatchState, 'unknown');
+    assert.equal(row!.status, 'failed');
+    const res = row!.result as { error: { code: string } };
+    assert.equal(res.error.code, 'dispatch_unknown');
+    // Critically: the sweeper resolved state without calling the connector.
+    assert.equal(registry.invocations.length, 0);
+  });
+
+  it('leaves a fresh in-flight dispatch alone', async () => {
+    await db.insert(actions).values({
+      orgId,
+      agentId,
+      tool: 'gmail.send',
+      params: {},
+      status: 'pending',
+      policyDecision: makeDecision() as unknown as Record<string, unknown>,
+      dispatchState: 'in_flight',
+      dispatchedAt: new Date(), // just now — still legitimately running
+    });
+    assert.equal(await svc.reconcileStaleDispatches(5 * 60 * 1000), 0);
+  });
+
+  it('refuses a concurrent retry of the same failed action', async () => {
+    registry.result = {
+      ok: false,
+      error: { code: 'http_503', message: 'upstream down' },
+    };
+    const first = await execute('t.t', {});
+    registry.delayMs = 120;
+    registry.result = { ok: true, data: {} };
+    registry.invocations.length = 0;
+
+    const outcomes = await Promise.allSettled([
+      svc.retry({ orgId, actionId: first.action_id, operatorId: 'op-a' }),
+      svc.retry({ orgId, actionId: first.action_id, operatorId: 'op-b' }),
+    ]);
+
+    const fulfilled = outcomes.filter((o) => o.status === 'fulfilled');
+    const rejected = outcomes.filter((o) => o.status === 'rejected');
+    assert.equal(fulfilled.length, 1, 'exactly one retry should win');
+    assert.equal(rejected.length, 1, 'the loser should be rejected, not queued');
+    assert.equal(registry.invocations.length, 1, 'one connector call only');
   });
 });
 

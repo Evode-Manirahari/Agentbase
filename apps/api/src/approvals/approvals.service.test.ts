@@ -53,15 +53,32 @@ class StubRegistry {
     ok: false,
     error: { code: 'stub_default', message: 'stub default' },
   };
+  // Widens the dispatch window so concurrent decide() calls overlap.
+  delayMs = 0;
+  // Records the orgId dispatch was scoped to, so we can prove an approved
+  // action runs against the tenant's own credentials.
+  orgScopedCalls: string[] = [];
   resolve(_tool: string): Connector {
     return {
       name: 'stub',
       supports: () => true,
       invoke: async (tool, params) => {
         this.invocations.push({ tool, params });
+        if (this.delayMs > 0) {
+          await new Promise((r) => setTimeout(r, this.delayMs));
+        }
         return this.result;
       },
     };
+  }
+}
+
+// A registry that exposes resolveForOrg, like the real one does once
+// org-scoped connector credentials are configured.
+class StubOrgScopedRegistry extends StubRegistry {
+  async resolveForOrg(orgId: string, tool: string): Promise<Connector> {
+    this.orgScopedCalls.push(orgId);
+    return this.resolve(tool);
   }
 }
 
@@ -555,6 +572,106 @@ describe('ApprovalsService.decide', () => {
     const failed = out.items.find((it) => it.outcome === 'failed');
     if (!failed || failed.outcome !== 'failed') throw new Error('expected failed item');
     assert.equal(failed.error.code, 'not_found');
+  });
+
+  // ---------------------------------------------------------------------
+  // Effect safety on the human-approval path.
+  // ---------------------------------------------------------------------
+
+  it('concurrent approvals of the same action dispatch the connector once', async () => {
+    const { approvalId } = await seedAction();
+    registry.delayMs = 120;
+    registry.result = { ok: true, data: {} };
+
+    // Two approvers (or one impatient double-click) land at the same instant.
+    const outcomes = await Promise.allSettled([
+      svc.decide({
+        approvalId,
+        orgId,
+        decision: 'approve',
+        decidedByEmail: 'alice@agentbase.test',
+      }),
+      svc.decide({
+        approvalId,
+        orgId,
+        decision: 'approve',
+        decidedByEmail: 'bob@agentbase.test',
+      }),
+    ]);
+
+    const fulfilled = outcomes.filter((o) => o.status === 'fulfilled');
+    assert.equal(fulfilled.length, 1, 'exactly one decide should win');
+    assert.equal(
+      registry.invocations.length,
+      1,
+      `expected one dispatch, got ${registry.invocations.length}`,
+    );
+  });
+
+  it('an approve racing a deny produces one outcome and at most one dispatch', async () => {
+    const { approvalId, actionId } = await seedAction();
+    registry.delayMs = 80;
+    registry.result = { ok: true, data: {} };
+
+    const outcomes = await Promise.allSettled([
+      svc.decide({
+        approvalId,
+        orgId,
+        decision: 'approve',
+        decidedByEmail: 'alice@agentbase.test',
+      }),
+      svc.decide({
+        approvalId,
+        orgId,
+        decision: 'deny',
+        decidedByEmail: 'bob@agentbase.test',
+      }),
+    ]);
+
+    assert.equal(
+      outcomes.filter((o) => o.status === 'fulfilled').length,
+      1,
+      'exactly one decision should stick',
+    );
+
+    const [a] = await db
+      .select()
+      .from(approvals)
+      .where(eq(approvals.id, approvalId));
+    const [act] = await db.select().from(actions).where(eq(actions.id, actionId));
+
+    // Whichever won, the recorded decision and the dispatch must agree: a
+    // denied approval must never have called the connector.
+    if (a!.decision === 'denied') {
+      assert.equal(registry.invocations.length, 0);
+      assert.equal(act!.status, 'denied');
+    } else {
+      assert.equal(a!.decision, 'approved');
+      assert.equal(registry.invocations.length, 1);
+    }
+  });
+
+  it('dispatches an approved action through the org-scoped resolver', async () => {
+    const orgScoped = new StubOrgScopedRegistry();
+    orgScoped.result = { ok: true, data: {} };
+    const scopedSvc = new ApprovalsService(
+      db,
+      audit,
+      orgScoped as unknown as ConnectorRegistry,
+      new StubSlack() as unknown as SlackService,
+      noopAgentRuns,
+    );
+    const { approvalId } = await seedAction();
+
+    await scopedSvc.decide({
+      approvalId,
+      orgId,
+      decision: 'approve',
+      decidedByEmail: 'alice@agentbase.test',
+    });
+
+    // The tenant's own credentials, not process env fallback.
+    assert.deepEqual(orgScoped.orgScopedCalls, [orgId]);
   });
 });
 

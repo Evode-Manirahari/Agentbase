@@ -5,6 +5,7 @@ import {
   matchesToolPattern,
   getByPath,
   FALLBACK_POLICY,
+  resolveFallbackPolicy,
 } from './policy-engine.js';
 import {
   buildAgentPermissionProfilePolicyYaml,
@@ -88,14 +89,37 @@ describe('evaluatePolicy — defaults', () => {
     assert.equal(evaluatePolicy(doc, { tool: 'foo', params: {} }).effect, 'allow');
   });
 
-  it('FALLBACK_POLICY allows everything and carries fallback=true', () => {
+  it('FALLBACK_POLICY denies everything and carries fallback=true', () => {
     const d = evaluatePolicy(
       FALLBACK_POLICY,
       { tool: 'whatever.tool', params: {} },
       { isFallback: true },
     );
-    assert.equal(d.effect, 'allow');
+    // Fail closed. An org that has not written a policy yet must not have a
+    // gate that permits every tool call.
+    assert.equal(d.effect, 'deny');
     assert.equal(d.fallback, true);
+  });
+
+  it('resolveFallbackPolicy defaults to deny', () => {
+    assert.equal(resolveFallbackPolicy({}).default, 'deny');
+  });
+
+  it('resolveFallbackPolicy honours the explicit allow escape hatch', () => {
+    assert.equal(
+      resolveFallbackPolicy({ AGENTBASE_FALLBACK_POLICY: 'allow' }).default,
+      'allow',
+    );
+  });
+
+  it('resolveFallbackPolicy ignores any other value', () => {
+    for (const v of ['deny', 'ALLOW', 'true', '1', '']) {
+      assert.equal(
+        resolveFallbackPolicy({ AGENTBASE_FALLBACK_POLICY: v }).default,
+        'deny',
+        `AGENTBASE_FALLBACK_POLICY=${v} must not open the gate`,
+      );
+    }
   });
 });
 
