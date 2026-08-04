@@ -9,7 +9,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database, EffectReceipt } from '@agentbase/db';
 import { actions, effectReceipts } from '@agentbase/db';
-import type { ConnectorResult } from '@agentbase/connector-hubspot';
+import type { ConnectorResult, IdempotencyMode } from '@agentbase/connector-hubspot';
 import { AuditService } from '../audit/audit.service.js';
 
 export interface AttemptHandle {
@@ -44,6 +44,7 @@ export class EffectReceiptsService {
     actionId: string;
     connectorName: string;
     idempotencyKeySent: string | null;
+    idempotencyMode: IdempotencyMode;
   }): Promise<AttemptHandle> {
     const attempt = await this.nextAttempt(input.actionId);
     const [row] = await this.db
@@ -53,6 +54,7 @@ export class EffectReceiptsService {
         attempt,
         connectorName: input.connectorName,
         idempotencyKeySent: input.idempotencyKeySent,
+        idempotencyMode: input.idempotencyMode,
         outcome: 'indeterminate',
       })
       .returning({ id: effectReceipts.id, attempt: effectReceipts.attempt });
@@ -145,6 +147,7 @@ export class EffectReceiptsService {
         attempt: effectReceipts.attempt,
         connector: effectReceipts.connectorName,
         idempotency_key_sent: effectReceipts.idempotencyKeySent,
+        idempotency_mode: effectReceipts.idempotencyMode,
         started_at: effectReceipts.startedAt,
         tool: actions.tool,
         params: actions.params,

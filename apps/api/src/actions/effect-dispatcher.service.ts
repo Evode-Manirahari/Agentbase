@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Connector, ConnectorResult } from '@agentbase/connector-hubspot';
+import type {
+  Connector,
+  ConnectorResult,
+  IdempotencyMode,
+} from '@agentbase/connector-hubspot';
 import { EffectReceiptsService } from './effect-receipts.service.js';
 import {
   assertRequestUnchanged,
@@ -21,6 +25,8 @@ export interface DispatchOutput {
   result: ConnectorResult;
   connectorName: string | null;
   idempotencyKeySent: string | null;
+  // What the retry guarantee was for this dispatch.
+  idempotencyMode: IdempotencyMode;
   // True when the result came from a recorded receipt rather than the provider.
   replayed: boolean;
 }
@@ -87,22 +93,32 @@ export class EffectDispatcher {
         },
         connectorName: null,
         idempotencyKeySent: null,
+        idempotencyMode: 'none',
         replayed: false,
       };
     }
 
-    const key = providerIdempotencyKey(input.actionId);
+    // A connector that does not declare its idempotency is treated as `none`.
+    // Defaulting optimistically would silently turn every unaudited connector
+    // into a duplicate-effect risk the moment someone clicks Retry.
+    const mode: IdempotencyMode = input.connector.idempotency?.(input.tool) ?? 'none';
+    // Only send a key where the provider actually honours one. Attaching it
+    // otherwise records a guarantee we do not have.
+    const key = mode === 'key' ? providerIdempotencyKey(input.actionId) : null;
     const handle = await this.receipts.begin({
       actionId: input.actionId,
       connectorName: input.connector.name,
       idempotencyKeySent: key,
+      idempotencyMode: mode,
     });
 
     let result: ConnectorResult;
     try {
-      result = await input.connector.invoke(input.tool, input.params, {
-        idempotencyKey: key,
-      });
+      result = await input.connector.invoke(
+        input.tool,
+        input.params,
+        key ? { idempotencyKey: key } : {},
+      );
     } catch (err) {
       // We threw somewhere around the call. We do NOT know whether the request
       // reached the provider, so the attempt stays `indeterminate` — settling
@@ -121,6 +137,7 @@ export class EffectDispatcher {
       result,
       connectorName: input.connector.name,
       idempotencyKeySent: key,
+      idempotencyMode: mode,
       replayed: false,
     };
   }
@@ -142,6 +159,7 @@ export class EffectDispatcher {
         },
         connectorName: null,
         idempotencyKeySent: null,
+        idempotencyMode: 'none',
         replayed: true,
       };
     }
@@ -167,6 +185,7 @@ export class EffectDispatcher {
           },
       connectorName: receipt.connectorName,
       idempotencyKeySent: receipt.idempotencyKeySent,
+      idempotencyMode: receipt.idempotencyMode,
       replayed: true,
     };
   }

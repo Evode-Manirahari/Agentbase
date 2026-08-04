@@ -60,6 +60,20 @@ export const attemptOutcome = pgEnum('attempt_outcome', [
   'indeterminate',
 ]);
 
+// Whether retrying this operation against this provider is safe. A property of
+// THEIR API, recorded per attempt so the evidence says what the guarantee
+// actually was at the time — not what we would like it to have been.
+//
+//   key     — provider honours an idempotency key we supply; our retry is
+//             their same request
+//   natural — idempotent by construction (deleting a named resource)
+//   none    — a retry may produce a second effect
+export const idempotencyMode = pgEnum('idempotency_mode', [
+  'key',
+  'natural',
+  'none',
+]);
+
 export const connectorProvider = pgEnum('connector_provider', [
   'hubspot',
   'salesforce',
@@ -238,6 +252,10 @@ export const effectReceipts = pgTable(
     connectorName: text('connector_name').notNull(),
     // Echoed back so an operator can prove which key was on the wire.
     idempotencyKeySent: text('idempotency_key_sent'),
+    // What the retry guarantee was for this attempt. Recorded rather than
+    // looked up later because a connector's declaration can change, and the
+    // question an incident asks is "what was true when this ran?".
+    idempotencyMode: idempotencyMode('idempotency_mode').notNull().default('none'),
     outcome: attemptOutcome('outcome').notNull(),
     // The provider's own identifier for the thing that happened, when it gives
     // us one (Stripe charge id, GitHub ref sha, Terraform apply id). This is

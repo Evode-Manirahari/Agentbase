@@ -317,6 +317,28 @@ export class ActionsService {
       );
     }
 
+    // `dispatch_state = 'unknown'` means we sent something and never learned
+    // its fate. The sweeper marks such rows `failed`, which made them look
+    // retryable — but "failed" here means "we do not know", not "nothing
+    // happened". Re-sending is only safe if the provider will collapse the two
+    // requests; otherwise this button is how one deployment becomes two.
+    //
+    // The escape hatch is not a force flag. It is resolving the effect:
+    // POST /v1/effects/:receiptId/resolve, where a human records what they
+    // actually found at the provider.
+    if (original.dispatchState === 'unknown') {
+      const connector = await this.resolveConnector(input.orgId, original.tool);
+      const mode = connector?.idempotency?.(original.tool) ?? 'none';
+      if (mode === 'none') {
+        throw new ConflictException(
+          `cannot retry action ${input.actionId}: its dispatch outcome is unknown and ` +
+            `${connector?.name ?? 'this connector'} does not support idempotent retry of ` +
+            `'${original.tool}'. The effect may already exist. Resolve the effect receipt ` +
+            `with what you find at the provider instead of re-sending.`,
+        );
+      }
+    }
+
     const rl = await this.rateLimit.check({
       orgId: input.orgId,
       agentId: original.agentId,

@@ -25,6 +25,7 @@ import type {
   Connector,
   ConnectorInvokeContext,
   ConnectorResult,
+  IdempotencyMode,
 } from '@agentbase/connector-hubspot';
 import { EffectDispatcher } from './effect-dispatcher.service.js';
 import { EffectReceiptsService } from './effect-receipts.service.js';
@@ -88,6 +89,9 @@ class FakeProvider implements Connector {
   supports(): boolean {
     return true;
   }
+
+  /** Declared 'key' by default; individual tests override to widen coverage. */
+  idempotency?: (tool: string) => IdempotencyMode = () => 'key';
 }
 
 let client: ReturnType<typeof postgres>;
@@ -363,6 +367,77 @@ describe('effect commit protocol', () => {
       connector: provider,
     });
     assert.equal(out.result.ok, true);
+  });
+
+  // -------------------------------------------------------------------
+  // The guarantee is conditional on the provider, and says so.
+  // -------------------------------------------------------------------
+
+  describe('idempotency mode', () => {
+    it('sends no key to a provider that does not honour one', async () => {
+      // Attaching a key here would record a guarantee we do not have.
+      const noDedupe = new FakeProvider();
+      noDedupe.idempotency = () => 'none';
+      await effects.dispatch({
+        actionId,
+        tool: TOOL,
+        params: PARAMS,
+        approvedRequestHash: null,
+        connector: noDedupe,
+      });
+      assert.equal(noDedupe.requests[0], undefined, 'no key on the wire');
+
+      const [r] = await db
+        .select()
+        .from(effectReceipts)
+        .where(eq(effectReceipts.actionId, actionId));
+      assert.equal(r!.idempotencyMode, 'none');
+      assert.equal(r!.idempotencyKeySent, null);
+    });
+
+    it('an undeclared connector is treated as none, not assumed safe', async () => {
+      const undeclared = new FakeProvider();
+      delete (undeclared as Partial<FakeProvider>).idempotency;
+      await effects.dispatch({
+        actionId,
+        tool: TOOL,
+        params: PARAMS,
+        approvedRequestHash: null,
+        connector: undeclared,
+      });
+      const [r] = await db
+        .select()
+        .from(effectReceipts)
+        .where(eq(effectReceipts.actionId, actionId));
+      assert.equal(r!.idempotencyMode, 'none', 'pessimistic default');
+    });
+
+    it('records the mode that was in force at the time of the attempt', async () => {
+      await dispatch(); // FakeProvider declares 'key'
+      const [r] = await db
+        .select()
+        .from(effectReceipts)
+        .where(eq(effectReceipts.actionId, actionId));
+      assert.equal(r!.idempotencyMode, 'key');
+      assert.ok(r!.idempotencyKeySent);
+    });
+
+    it('without provider dedupe, retries really do duplicate — which is why the guard exists', async () => {
+      const noDedupe = new FakeProvider();
+      noDedupe.idempotency = () => 'none';
+      for (let i = 0; i < 3; i++) {
+        await effects.dispatch({
+          actionId,
+          tool: TOOL,
+          params: PARAMS,
+          approvedRequestHash: null,
+          connector: noDedupe,
+        });
+      }
+      // Not a bug in the protocol — a fact about the provider. The protocol's
+      // job is to refuse to retry into it, not to pretend it is safe.
+      assert.equal(noDedupe.committed.size, 3);
+    });
   });
 
   // -------------------------------------------------------------------

@@ -78,6 +78,9 @@ class StubPolicy {
 
 class StubRegistry {
   invocations: { tool: string; params: Record<string, unknown> }[] = [];
+  // What the fake provider claims about retry safety. Defaults to the
+  // pessimistic reading, matching an undeclared connector.
+  idempotencyMode: 'key' | 'natural' | 'none' = 'none';
   result: ConnectorResult = { ok: true, data: { stub: true } };
   resolveAlways = true;
   // Widens the window between "connector called" and "outcome recorded" so
@@ -89,6 +92,7 @@ class StubRegistry {
     return {
       name: 'stub',
       supports: () => true,
+      idempotency: () => this.idempotencyMode,
       invoke: async (tool, params) => {
         this.invocations.push({ tool, params });
         if (this.delayMs > 0) {
@@ -757,6 +761,47 @@ describe('ActionsService.execute', () => {
       svc.retry({ orgId, actionId: out.action_id, operatorId: 'op' }),
       /only 'failed' is retryable/,
     );
+  });
+
+  it('retry: refuses an unknown dispatch when the provider cannot dedupe', async () => {
+    // The sweeper marks a never-settled dispatch `failed` + `unknown`. "Failed"
+    // there means "we do not know", not "nothing happened" — so the Retry
+    // button was a way to turn one deployment into two.
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.result = { ok: false, error: { code: 'timeout', message: 'gone' } };
+    const out = await execute('t.t', {});
+    await db
+      .update(actions)
+      .set({ status: 'failed', dispatchState: 'unknown' })
+      .where(eq(actions.id, out.action_id));
+
+    registry.invocations.length = 0;
+    await assert.rejects(
+      svc.retry({ orgId, actionId: out.action_id, operatorId: 'op' }),
+      /dispatch outcome is unknown/,
+    );
+    assert.equal(registry.invocations.length, 0, 'the connector was not called');
+  });
+
+  it('retry: allows an unknown dispatch when the provider honours idempotency', async () => {
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.result = { ok: false, error: { code: 'timeout', message: 'gone' } };
+    const out = await execute('t.t', {});
+    await db
+      .update(actions)
+      .set({ status: 'failed', dispatchState: 'unknown' })
+      .where(eq(actions.id, out.action_id));
+
+    // A provider that collapses our retry into the original request makes the
+    // re-send safe, so the guard must not block it.
+    registry.idempotencyMode = 'key';
+    registry.result = { ok: true, data: {} };
+    const retried = await svc.retry({
+      orgId,
+      actionId: out.action_id,
+      operatorId: 'op',
+    });
+    assert.equal(retried.status, 'executed');
   });
 
   it('retry: 409 when original decision was deny — operator must change policy', async () => {
