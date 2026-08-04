@@ -116,7 +116,8 @@ export class EffectDispatcher {
     // A connector that does not declare its idempotency is treated as `none`.
     // Defaulting optimistically would silently turn every unaudited connector
     // into a duplicate-effect risk the moment someone clicks Retry.
-    const mode: IdempotencyMode = input.connector.idempotency?.(input.tool) ?? 'none';
+    const mode: IdempotencyMode =
+      input.connector.idempotency?.(input.tool, input.params) ?? 'none';
     // Only send a key where the provider actually honours one. Attaching it
     // otherwise records a guarantee we do not have.
     const key = mode === 'key' ? providerIdempotencyKey(input.actionId) : null;

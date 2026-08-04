@@ -9,6 +9,7 @@ import {
 } from './policy-engine.js';
 import {
   buildAgentPermissionProfilePolicyYaml,
+  EffectClassName,
   PolicyDocument,
   type PolicyRule,
 } from '@agentbase/shared';
@@ -436,5 +437,178 @@ describe('evaluatePolicy — decision shape', () => {
     );
     assert.equal(d.policy_id, 'pol-abc');
     assert.equal(d.fallback, false);
+  });
+});
+
+// ---------------------------------------------------------------------
+// Effect-scoped rules. The point of these is that a policy can say
+// "anything irreversible needs a human" once, instead of enumerating every
+// tool and command that might be — and that list is exactly the one nobody
+// can keep current by hand.
+// ---------------------------------------------------------------------
+
+describe('effect-scoped matching', () => {
+  const doc = (rules: unknown[]) =>
+    ({ version: 1, default: 'deny', rules }) as unknown as PolicyDocument;
+
+  const irreversibleNeedsApproval = doc([
+    { match: { tool: '*', reversible: false }, effect: 'require_approval' },
+    { match: { tool: '*', effect_class: 'read' }, effect: 'allow' },
+  ]);
+
+  it('one rule gates every irreversible effect regardless of tool', () => {
+    for (const effectClass of ['publish', 'deploy', 'infra_write', 'vcs_write'] as const) {
+      const d = evaluatePolicy(irreversibleNeedsApproval, {
+        tool: 'shell.run',
+        params: {},
+        effect: { effectClass, reversible: false },
+      });
+      assert.equal(d.effect, 'require_approval', effectClass);
+    }
+  });
+
+  it('reads still pass', () => {
+    const d = evaluatePolicy(irreversibleNeedsApproval, {
+      tool: 'shell.run',
+      params: {},
+      effect: { effectClass: 'read', reversible: true },
+    });
+    assert.equal(d.effect, 'allow');
+  });
+
+  it('matches a list of effect classes', () => {
+    const d = doc([
+      {
+        match: { tool: '*', effect_class: ['publish', 'deploy'] },
+        effect: 'require_approval',
+      },
+    ]);
+    assert.equal(
+      evaluatePolicy(d, {
+        tool: 't',
+        params: {},
+        effect: { effectClass: 'deploy', reversible: false },
+      }).effect,
+      'require_approval',
+    );
+    assert.equal(
+      evaluatePolicy(d, {
+        tool: 't',
+        params: {},
+        effect: { effectClass: 'egress', reversible: false },
+      }).effect,
+      'deny',
+      'a class outside the list falls through to the default',
+    );
+  });
+
+  it('effect_class and reversible compose as AND', () => {
+    const d = doc([
+      {
+        match: { tool: '*', effect_class: 'workspace_write', reversible: true },
+        effect: 'allow',
+      },
+    ]);
+    assert.equal(
+      evaluatePolicy(d, {
+        tool: 't',
+        params: {},
+        effect: { effectClass: 'workspace_write', reversible: true },
+      }).effect,
+      'allow',
+    );
+    // rm is a workspace_write that is NOT reversible — must not be allowed.
+    assert.equal(
+      evaluatePolicy(d, {
+        tool: 't',
+        params: {},
+        effect: { effectClass: 'workspace_write', reversible: false },
+      }).effect,
+      'deny',
+    );
+  });
+
+  it('an unclassified action does not match an effect-scoped ALLOW', () => {
+    // The dangerous direction. If a missing assessment were a wildcard, an
+    // `allow` rule for reads would start allowing everything the moment a
+    // connector stopped classifying.
+    const d = doc([{ match: { tool: '*', effect_class: 'read' }, effect: 'allow' }]);
+    assert.equal(
+      evaluatePolicy(d, { tool: 't', params: {} }).effect,
+      'deny',
+      'falls through to the default rather than being allowed',
+    );
+  });
+
+  it('an unclassified action does not match an effect-scoped rule of any effect', () => {
+    const d = doc([
+      { match: { tool: '*', reversible: false }, effect: 'require_approval' },
+    ]);
+    assert.equal(evaluatePolicy(d, { tool: 't', params: {}, effect: null }).effect, 'deny');
+  });
+
+  it('rules without effect predicates are unaffected', () => {
+    const d = doc([{ match: { tool: 'hubspot.*' }, effect: 'allow' }]);
+    assert.equal(
+      evaluatePolicy(d, { tool: 'hubspot.contacts.upsert', params: {} }).effect,
+      'allow',
+      'existing policies keep working with no assessment present',
+    );
+  });
+
+  it('effect predicates compose with tool patterns and when-conditions', () => {
+    const d = doc([
+      {
+        match: {
+          tool: 'shell.*',
+          effect_class: 'publish',
+          when: { registry: 'public' },
+        },
+        effect: 'deny',
+      },
+    ]);
+    const base = { effectClass: 'publish' as const, reversible: false };
+    assert.equal(
+      evaluatePolicy(d, {
+        tool: 'shell.run',
+        params: { registry: 'public' },
+        effect: base,
+      }).effect,
+      'deny',
+    );
+    assert.equal(
+      evaluatePolicy(d, {
+        tool: 'shell.run',
+        params: { registry: 'internal' },
+        effect: base,
+      }).effect,
+      'deny',
+      'when-condition fails, falls to default (also deny) — but via no rule',
+    );
+    assert.equal(
+      evaluatePolicy(d, { tool: 'hubspot.x', params: { registry: 'public' }, effect: base })
+        .rule_index,
+      null,
+      'tool pattern still bounds the rule',
+    );
+  });
+});
+
+describe('EffectClassName stays in step with the classifier', () => {
+  it('every class the classifier can emit is expressible in policy', () => {
+    // The schema deliberately does not import from @agentbase/effects, so this
+    // is the thing keeping the two from drifting apart.
+    const classifierClasses = [
+      'read',
+      'workspace_write',
+      'vcs_write',
+      'deploy',
+      'publish',
+      'infra_write',
+      'egress',
+      'external_comms',
+      'unknown',
+    ];
+    assert.deepEqual([...EffectClassName.options].sort(), [...classifierClasses].sort());
   });
 });

@@ -11,6 +11,7 @@ import { DB } from '../db/db.module.js';
 import type { Database } from '@agentbase/db';
 import { agents, policies } from '@agentbase/db';
 import { evaluatePolicy, resolveFallbackPolicy } from './policy-engine.js';
+import type { EffectClassName } from '@agentbase/shared';
 
 @Injectable()
 export class PolicyService {
@@ -123,6 +124,10 @@ export class PolicyService {
       tool: string;
       params: Record<string, unknown>;
       agentId?: string | undefined;
+      // What the action will consequentially do, when the connector can grade
+      // it. Passed in rather than derived here so the policy layer stays
+      // independent of the classifier.
+      effect?: { effectClass: EffectClassName; reversible: boolean } | null;
     },
   ): Promise<PolicyDecision> {
     const active = await this.getActive(orgId);
