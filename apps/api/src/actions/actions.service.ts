@@ -17,7 +17,11 @@ import { RateLimitService } from './rate-limit.service.js';
 import { EffectDispatcher } from './effect-dispatcher.service.js';
 import { requestHash } from './effect-commit.js';
 import type { Connector } from '@agentbase/connector-hubspot';
-import type { ActionStatus, PolicyDecision } from '@agentbase/shared';
+import type {
+  ActionStatus,
+  EffectClassName,
+  PolicyDecision,
+} from '@agentbase/shared';
 
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -124,10 +128,17 @@ export class ActionsService {
       };
     }
 
+    // Grade the action BEFORE policy runs, so a rule can say "anything
+    // irreversible needs approval" instead of enumerating every tool that
+    // might be. Resolution is a local lookup — it reaches no provider — so
+    // doing it here costs nothing the deny path would not already pay.
+    const graded = await this.assessEffect(input.orgId, input.tool, input.params);
+
     const decision = await this.policy.evaluate(input.orgId, {
       tool: input.tool,
       params: input.params,
       agentId: input.agentId,
+      effect: graded,
     });
 
     if (decision.effect === 'deny') {
@@ -328,7 +339,11 @@ export class ActionsService {
     // actually found at the provider.
     if (original.dispatchState === 'unknown') {
       const connector = await this.resolveConnector(input.orgId, original.tool);
-      const mode = connector?.idempotency?.(original.tool) ?? 'none';
+      const mode =
+        connector?.idempotency?.(
+          original.tool,
+          original.params as Record<string, unknown>,
+        ) ?? 'none';
       if (mode === 'none') {
         throw new ConflictException(
           `cannot retry action ${input.actionId}: its dispatch outcome is unknown and ` +
@@ -460,6 +475,37 @@ export class ActionsService {
       .where(eq(agents.id, agentId))
       .limit(1);
     return rows[0]?.name ?? agentId;
+  }
+
+  /**
+   * Ask the resolving connector what this call will consequentially do.
+   * Connectors that cannot say return null, and the policy engine treats a
+   * missing assessment as a non-match rather than a wildcard — see
+   * effectMatches().
+   */
+  private async assessEffect(
+    orgId: string,
+    tool: string,
+    params: Record<string, unknown>,
+  ): Promise<{ effectClass: EffectClassName; reversible: boolean } | null> {
+    try {
+      const connector = (await this.resolveConnector(orgId, tool)) as
+        | (Connector & {
+            assess?: (p: Record<string, unknown>) => {
+              effectClass: EffectClassName;
+              reversible: boolean;
+            } | null;
+          })
+        | null;
+      const a = connector?.assess?.(params);
+      return a ? { effectClass: a.effectClass, reversible: a.reversible } : null;
+    } catch (err) {
+      // A classifier that throws must not take the gate down with it. No
+      // assessment means effect-scoped rules do not fire, which fails toward
+      // the policy default rather than toward allow.
+      this.log.warn(`effect assessment failed for ${tool}: ${(err as Error).message}`);
+      return null;
+    }
   }
 
   private async resolveConnector(orgId: string, tool: string) {

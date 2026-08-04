@@ -332,12 +332,39 @@ export const AGENT_PERMISSION_PROFILE_OPTIONS = AgentPermissionProfile.options.m
   (key) => AGENT_PERMISSION_PROFILES[key],
 );
 
+// Mirrors @agentbase/effects' EffectClass. Duplicated rather than imported so
+// the policy schema — which customers write against — does not depend on the
+// classifier package. The two are kept in step by a test.
+export const EffectClassName = z.enum([
+  'read',
+  'workspace_write',
+  'vcs_write',
+  'deploy',
+  'publish',
+  'infra_write',
+  'egress',
+  'external_comms',
+  'unknown',
+]);
+export type EffectClassName = z.infer<typeof EffectClassName>;
+
 export const PolicyRule = z.object({
   match: z.object({
     tool: z.string().min(1),
     agent_id: z.string().uuid().optional(),
     agent_name: z.string().min(1).optional(),
     agent_profile: AgentPermissionProfile.optional(),
+    // Match on what the action WILL DO rather than what it is called. Lets a
+    // policy say "anything that publishes needs approval" once, instead of
+    // enumerating every tool and command that might publish — and the list of
+    // things that publish is exactly the list nobody can keep current by hand.
+    effect_class: z
+      .union([EffectClassName, z.array(EffectClassName).min(1)])
+      .optional(),
+    // The single most useful rule in the language:
+    //   - match: { tool: "*", reversible: false }
+    //     effect: require_approval
+    reversible: z.boolean().optional(),
     when: z.record(Condition).optional(),
   }),
   effect: PolicyEffect,
