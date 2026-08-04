@@ -117,7 +117,7 @@ function makeEffects(replay = false): EffectDispatcher {
     get: (k: string) =>
       k === 'AGENTBASE_REPLAY' ? (replay ? '1' : undefined) : undefined,
   } as unknown as ConfigService;
-  return new EffectDispatcher(new EffectReceiptsService(db), config);
+  return new EffectDispatcher(new EffectReceiptsService(db, audit), config);
 }
 
 describe('ApprovalsService.decide', () => {

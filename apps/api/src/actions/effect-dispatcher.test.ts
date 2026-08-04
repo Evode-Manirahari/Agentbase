@@ -19,7 +19,8 @@ import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { ConfigService } from '@nestjs/config';
-import { schema, orgs, agents, actions, effectReceipts } from '@agentbase/db';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { schema, orgs, agents, actions, auditLog, effectReceipts } from '@agentbase/db';
 import type {
   Connector,
   ConnectorInvokeContext,
@@ -28,6 +29,7 @@ import type {
 import { EffectDispatcher } from './effect-dispatcher.service.js';
 import { EffectReceiptsService } from './effect-receipts.service.js';
 import { RequestHashMismatchError, requestHash } from './effect-commit.js';
+import { AuditService } from '../audit/audit.service.js';
 
 const DB_URL =
   process.env.DATABASE_URL ??
@@ -90,10 +92,12 @@ class FakeProvider implements Connector {
 
 let client: ReturnType<typeof postgres>;
 let db: ReturnType<typeof drizzle<typeof schema>>;
+let audit: AuditService;
 
 before(() => {
   client = postgres(DB_URL, { max: 5 });
   db = drizzle(client, { schema });
+  audit = new AuditService(db);
 });
 
 after(async () => {
@@ -105,7 +109,7 @@ function dispatcher(replay = false): EffectDispatcher {
     get: (k: string) =>
       k === 'AGENTBASE_REPLAY' ? (replay ? '1' : undefined) : undefined,
   } as unknown as ConfigService;
-  return new EffectDispatcher(new EffectReceiptsService(db), config);
+  return new EffectDispatcher(new EffectReceiptsService(db, audit), config);
 }
 
 describe('effect commit protocol', () => {
@@ -359,6 +363,175 @@ describe('effect commit protocol', () => {
       connector: provider,
     });
     assert.equal(out.result.ok, true);
+  });
+
+  // -------------------------------------------------------------------
+  // Ending a quarantine. An indeterminate state with no exit is a leak, not
+  // a safety property — a human has to be able to say what they found.
+  // -------------------------------------------------------------------
+
+  describe('operator resolution', () => {
+    let receipts: EffectReceiptsService;
+
+    beforeEach(() => {
+      receipts = new EffectReceiptsService(db, audit);
+    });
+
+    async function quarantined(): Promise<string> {
+      provider.crash = 'after_effect';
+      await assert.rejects(dispatch());
+      const [r] = await db
+        .select()
+        .from(effectReceipts)
+        .where(eq(effectReceipts.actionId, actionId));
+      assert.equal(r!.outcome, 'indeterminate');
+      return r!.id;
+    }
+
+    it('surfaces an indeterminate attempt on the operator queue', async () => {
+      await quarantined();
+      const queue = await receipts.indeterminateForOrg(orgId);
+      assert.equal(queue.length, 1);
+      assert.equal(queue[0]!.action_id, actionId);
+      assert.equal(queue[0]!.tool, TOOL);
+      assert.ok(queue[0]!.idempotency_key_sent, 'the operator can see the key to search on');
+    });
+
+    it('resolving committed settles the receipt and the action, without re-dispatching', async () => {
+      const receiptId = await quarantined();
+      const requestsBefore = provider.requests.length;
+
+      await receipts.resolve({
+        orgId,
+        receiptId,
+        outcome: 'committed',
+        providerRef: 'sha-1',
+        operatorId: 'alice@agentbase.test',
+        note: 'confirmed deleted in the GitHub UI',
+      });
+
+      // Critically: resolving is NOT a retry. If the effect already landed,
+      // attempting it again is the exact failure this whole protocol prevents.
+      assert.equal(provider.requests.length, requestsBefore);
+
+      const [r] = await db
+        .select()
+        .from(effectReceipts)
+        .where(eq(effectReceipts.id, receiptId));
+      assert.equal(r!.outcome, 'committed');
+      assert.equal(r!.providerRef, 'sha-1');
+      assert.ok(r!.settledAt);
+
+      const [a] = await db.select().from(actions).where(eq(actions.id, actionId));
+      assert.equal(a!.status, 'executed');
+      assert.equal(a!.dispatchState, 'settled');
+    });
+
+    it('resolving failed marks the action failed', async () => {
+      const receiptId = await quarantined();
+      await receipts.resolve({
+        orgId,
+        receiptId,
+        outcome: 'failed',
+        operatorId: 'alice@agentbase.test',
+      });
+      const [a] = await db.select().from(actions).where(eq(actions.id, actionId));
+      assert.equal(a!.status, 'failed');
+      assert.equal(a!.dispatchState, 'settled');
+    });
+
+    it('leaves an audit event naming the human who decided', async () => {
+      const receiptId = await quarantined();
+      await receipts.resolve({
+        orgId,
+        receiptId,
+        outcome: 'committed',
+        operatorId: 'alice@agentbase.test',
+      });
+      const events = await db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.orgId, orgId));
+      const resolved = events.filter((e) => e.eventType === 'effect.resolved');
+      assert.equal(resolved.length, 1);
+      assert.equal(resolved[0]!.actorId, 'alice@agentbase.test');
+    });
+
+    it('two operators resolving the same attempt: one wins, one gets a conflict', async () => {
+      const receiptId = await quarantined();
+      const outcomes = await Promise.allSettled([
+        receipts.resolve({
+          orgId,
+          receiptId,
+          outcome: 'committed',
+          operatorId: 'alice@agentbase.test',
+        }),
+        receipts.resolve({
+          orgId,
+          receiptId,
+          outcome: 'failed',
+          operatorId: 'bob@agentbase.test',
+        }),
+      ]);
+      assert.equal(outcomes.filter((o) => o.status === 'fulfilled').length, 1);
+      assert.equal(outcomes.filter((o) => o.status === 'rejected').length, 1);
+    });
+
+    it('refuses to resolve an attempt that already settled itself', async () => {
+      await dispatch(); // clean run — settles `committed` on its own
+      const [r] = await db
+        .select()
+        .from(effectReceipts)
+        .where(eq(effectReceipts.actionId, actionId));
+      await assert.rejects(
+        receipts.resolve({
+          orgId,
+          receiptId: r!.id,
+          outcome: 'failed',
+          operatorId: 'alice@agentbase.test',
+        }),
+        ConflictException,
+      );
+    });
+
+    it('cannot resolve another tenant’s receipt', async () => {
+      const receiptId = await quarantined();
+      const [other] = await db
+        .insert(orgs)
+        .values({ name: 'Other', slug: `oth-${randomUUID().slice(0, 8)}` })
+        .returning();
+      try {
+        await assert.rejects(
+          receipts.resolve({
+            orgId: other!.id,
+            receiptId,
+            outcome: 'committed',
+            operatorId: 'mallory@evil.test',
+          }),
+          NotFoundException,
+        );
+      } finally {
+        await db.delete(orgs).where(eq(orgs.id, other!.id));
+      }
+    });
+
+    it('history is scoped to the owning tenant', async () => {
+      await quarantined();
+      assert.equal((await receipts.historyForOrg(orgId, actionId)).length, 1);
+      const [other] = await db
+        .insert(orgs)
+        .values({ name: 'Other', slug: `oth-${randomUUID().slice(0, 8)}` })
+        .returning();
+      try {
+        assert.equal(
+          (await receipts.historyForOrg(other!.id, actionId)).length,
+          0,
+          'another org sees nothing',
+        );
+      } finally {
+        await db.delete(orgs).where(eq(orgs.id, other!.id));
+      }
+    });
   });
 
   it('a missing connector opens no attempt', async () => {

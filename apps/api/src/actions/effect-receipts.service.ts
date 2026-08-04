@@ -1,9 +1,16 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database, EffectReceipt } from '@agentbase/db';
-import { effectReceipts } from '@agentbase/db';
+import { actions, effectReceipts } from '@agentbase/db';
 import type { ConnectorResult } from '@agentbase/connector-hubspot';
+import { AuditService } from '../audit/audit.service.js';
 
 export interface AttemptHandle {
   id: string;
@@ -14,7 +21,10 @@ export interface AttemptHandle {
 export class EffectReceiptsService {
   private readonly log = new Logger(EffectReceiptsService.name);
 
-  constructor(@Inject(DB) private readonly db: Database) {}
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly audit: AuditService,
+  ) {}
 
   /**
    * Claim the next attempt for an action and record that we are about to call
@@ -120,6 +130,134 @@ export class EffectReceiptsService {
       this.log.debug(`${rows.length} indeterminate effect attempt(s) awaiting resolution`);
     }
     return rows;
+  }
+
+  /**
+   * The operator queue, scoped to one tenant. Receipts carry no org of their
+   * own — they inherit it from the action, so scoping goes through the join
+   * rather than a denormalised column that could drift out of agreement.
+   */
+  async indeterminateForOrg(orgId: string, limit = 100) {
+    return this.db
+      .select({
+        receipt_id: effectReceipts.id,
+        action_id: effectReceipts.actionId,
+        attempt: effectReceipts.attempt,
+        connector: effectReceipts.connectorName,
+        idempotency_key_sent: effectReceipts.idempotencyKeySent,
+        started_at: effectReceipts.startedAt,
+        tool: actions.tool,
+        params: actions.params,
+      })
+      .from(effectReceipts)
+      .innerJoin(actions, eq(actions.id, effectReceipts.actionId))
+      .where(
+        and(
+          eq(actions.orgId, orgId),
+          eq(effectReceipts.outcome, 'indeterminate'),
+        ),
+      )
+      .orderBy(effectReceipts.startedAt)
+      .limit(limit);
+  }
+
+  /** Full evidence trail for one action, scoped to the tenant that owns it. */
+  async historyForOrg(orgId: string, actionId: string): Promise<EffectReceipt[]> {
+    const rows = await this.db
+      .select({ r: effectReceipts })
+      .from(effectReceipts)
+      .innerJoin(actions, eq(actions.id, effectReceipts.actionId))
+      .where(and(eq(actions.orgId, orgId), eq(effectReceipts.actionId, actionId)))
+      .orderBy(effectReceipts.attempt);
+    return rows.map((x) => x.r);
+  }
+
+  /**
+   * End a quarantine.
+   *
+   * Only a human (or a provider-side lookup they ran) can resolve an
+   * indeterminate attempt, because the system genuinely cannot tell — that is
+   * the whole reason the state exists. This records what they found and moves
+   * the action to match.
+   *
+   * The conditional `WHERE outcome = 'indeterminate'` is what makes two
+   * operators resolving the same attempt safe: the loser gets a conflict rather
+   * than overwriting the first verdict.
+   */
+  async resolve(input: {
+    orgId: string;
+    receiptId: string;
+    outcome: 'committed' | 'failed';
+    providerRef?: string | undefined;
+    operatorId: string;
+    note?: string | undefined;
+  }): Promise<{ actionId: string; attempt: number }> {
+    const [owned] = await this.db
+      .select({ id: effectReceipts.id, actionId: effectReceipts.actionId })
+      .from(effectReceipts)
+      .innerJoin(actions, eq(actions.id, effectReceipts.actionId))
+      .where(and(eq(effectReceipts.id, input.receiptId), eq(actions.orgId, input.orgId)))
+      .limit(1);
+    if (!owned) throw new NotFoundException('effect receipt not found');
+
+    const claimed = await this.db
+      .update(effectReceipts)
+      .set({
+        outcome: input.outcome,
+        providerRef: input.providerRef ?? null,
+        settledAt: new Date(),
+        receipt: {
+          ok: input.outcome === 'committed',
+          resolved_by_operator: input.operatorId,
+          note: input.note ?? null,
+        },
+      })
+      .where(
+        and(
+          eq(effectReceipts.id, input.receiptId),
+          eq(effectReceipts.outcome, 'indeterminate'),
+        ),
+      )
+      .returning({
+        actionId: effectReceipts.actionId,
+        attempt: effectReceipts.attempt,
+      });
+    const row = claimed[0];
+    if (!row) {
+      throw new ConflictException('effect attempt is no longer indeterminate');
+    }
+
+    // The action follows the verdict. `settled` is now truthful: a human
+    // established what happened, which is exactly what the state means.
+    await this.db
+      .update(actions)
+      .set({
+        status: input.outcome === 'committed' ? 'executed' : 'failed',
+        dispatchState: 'settled',
+        completedAt: new Date(),
+      })
+      .where(eq(actions.id, row.actionId));
+
+    await this.audit.record({
+      orgId: input.orgId,
+      actorType: 'user',
+      actorId: input.operatorId,
+      eventType: 'effect.resolved',
+      payload: {
+        receiptId: input.receiptId,
+        actionId: row.actionId,
+        attempt: row.attempt,
+        outcome: input.outcome,
+        providerRef: input.providerRef ?? null,
+        note: input.note ?? null,
+      },
+    });
+
+    this.log.log(
+      `effect attempt ${row.attempt} on action ${row.actionId} resolved ` +
+        `${input.outcome} by ${input.operatorId}`,
+    );
+    return row;
   }
 
   private async nextAttempt(actionId: string): Promise<number> {
