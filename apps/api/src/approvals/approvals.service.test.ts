@@ -223,6 +223,10 @@ describe('ApprovalsService.decide', () => {
 
     const [ac] = await db.select().from(actions).where(eq(actions.id, actionId));
     assert.equal(ac!.status, 'executed');
+    // The approved dispatch is a real external effect and must be tracked as
+    // one, not left on the `not_dispatched` default.
+    assert.equal(ac!.dispatchState, 'settled');
+    assert.ok(ac!.dispatchedAt, 'an approved dispatch records when it started');
     const stored = ac!.result as { ok: boolean; data: unknown };
     assert.equal(stored.ok, true);
     assert.deepEqual(stored.data, { id: 'hs-123', updated: true });
@@ -234,6 +238,35 @@ describe('ApprovalsService.decide', () => {
     const types = events.map((e) => e.eventType);
     assert.ok(types.includes('approval.approved'));
     assert.ok(types.includes('action.executed'));
+  });
+
+  it('approve marks the dispatch in_flight before the connector is called', async () => {
+    // A human just approved a high-value action; this is the most consequential
+    // dispatch in the system. If it crashes mid-call the row must be visible to
+    // reconcileStaleDispatches(), which only ever looks at `in_flight`.
+    const { actionId, approvalId } = await seedAction();
+    let stateDuringInvoke: string | null = null;
+    registry.resolve = () => ({
+      name: 'probe',
+      supports: () => true,
+      invoke: async () => {
+        const [row] = await db
+          .select()
+          .from(actions)
+          .where(eq(actions.id, actionId));
+        stateDuringInvoke = row?.dispatchState ?? null;
+        return { ok: true, data: {} };
+      },
+    });
+
+    await svc.decide({
+      approvalId,
+      orgId,
+      decision: 'approve',
+      decidedByEmail: 'alice@agentbase.test',
+    });
+
+    assert.equal(stateDuringInvoke, 'in_flight');
   });
 
   it('approve + connector failure: action ends failed with error code in result', async () => {

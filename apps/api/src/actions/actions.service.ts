@@ -93,7 +93,14 @@ export class ActionsService {
           scope: rl.scope,
         },
       };
-      const action = await this.recordAction(input, 'failed', decision, storedResult);
+      const recorded = await this.recordAction(
+        input,
+        'failed',
+        decision,
+        storedResult,
+      );
+      if (recorded.conflict) return recorded.conflict;
+      const action = recorded.action;
       await this.audit.record({
         orgId: input.orgId,
         actorType: 'agent',
@@ -121,7 +128,9 @@ export class ActionsService {
     });
 
     if (decision.effect === 'deny') {
-      const action = await this.recordAction(input, 'denied', decision, null);
+      const recorded = await this.recordAction(input, 'denied', decision, null);
+      if (recorded.conflict) return recorded.conflict;
+      const action = recorded.action;
       await this.audit.record({
         orgId: input.orgId,
         actorType: 'agent',
@@ -133,12 +142,16 @@ export class ActionsService {
     }
 
     if (decision.effect === 'require_approval') {
-      const action = await this.recordAction(
+      const recorded = await this.recordAction(
         input,
         'awaiting_approval',
         decision,
         null,
       );
+      // Losing the key race here is the case that used to double-post: the
+      // winner already has an approval row and a Slack card for this action.
+      if (recorded.conflict) return recorded.conflict;
+      const action = recorded.action;
       const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS);
       const [approval] = await this.db
         .insert(approvals)
@@ -211,15 +224,10 @@ export class ActionsService {
       );
       return reservation.conflict;
     }
+    // The reservation already persisted `in_flight` + `dispatchedAt`. If the
+    // process dies anywhere below, the sweeper promotes the row to `unknown`
+    // rather than retrying it — see reconcileStaleDispatches().
     const action = reservation.action;
-
-    // Mark in-flight before crossing the network. If the process dies here the
-    // row stays `in_flight`, which the sweeper promotes to `unknown` rather
-    // than retrying — see reconcileStaleDispatches().
-    await this.db
-      .update(actions)
-      .set({ dispatchState: 'in_flight', dispatchedAt: new Date() })
-      .where(eq(actions.id, action.id));
 
     const connector = await this.resolveConnector(input.orgId, input.tool);
     let result: ConnectorResult;
@@ -520,7 +528,16 @@ export class ActionsService {
           policyDecision: decision as unknown as Record<string, unknown>,
           result: null,
           idempotencyKey: input.idempotencyKey ?? null,
-          dispatchState: 'not_dispatched',
+          // `in_flight` is claimed in the same insert as the key, not in a
+          // follow-up update. Two statements would leave a window where a crash
+          // strands the row at `not_dispatched`: the sweeper only looks at
+          // `in_flight`, and retry() only accepts `failed`, so nothing would
+          // ever resolve it and same-key replays would return `pending` forever.
+          // Marking it in-flight a moment before the call is the conservative
+          // error: the worst case is an action reported `unknown` whose effect
+          // never happened, and `unknown` is never auto-retried.
+          dispatchState: 'in_flight',
+          dispatchedAt: new Date(),
           completedAt: null,
         })
         .returning();
@@ -588,12 +605,20 @@ export class ActionsService {
     return stale.length;
   }
 
+  // The non-dispatching counterpart to reserveAction(): used by the deny,
+  // require_approval, and rate-limited paths, none of which call a connector.
+  // Like reserveAction() it reports whether it lost an idempotency race, because
+  // losing still matters here — the caller must not go on to insert a second
+  // approval, post a second Slack card, or emit an audit event describing a row
+  // it did not create.
   private async recordAction(
     input: ExecuteInput,
     status: ActionStatus,
     decision: PolicyDecision,
     result: Record<string, unknown> | null,
-  ) {
+  ): Promise<
+    { action: Action; conflict: null } | { action: null; conflict: ExecuteOutput }
+  > {
     try {
       const [created] = await this.db
         .insert(actions)
@@ -613,24 +638,23 @@ export class ActionsService {
         })
         .returning();
       if (!created) throw new Error('failed to record action');
-      return created;
+      return { action: created, conflict: null };
     } catch (err) {
-      // Concurrent request claimed the same idempotency key. Return the
-      // existing row so the client sees a coherent response rather than a 500.
-      // No external effect is at risk here: recordAction only serves the
-      // deny / awaiting_approval / rate-limited paths, none of which invoke a
-      // connector. The allow path reserves instead — see reserveAction().
+      // A concurrent request claimed the same idempotency key. Return the
+      // winner's stored outcome so the client sees a coherent response rather
+      // than a 500 — and so the caller stops before duplicating this action's
+      // approval, Slack card, or audit trail.
       if (input.idempotencyKey && isUniqueViolation(err)) {
-        const existing = await this.findActionRowByIdempotencyKey(
+        const existing = await this.findByIdempotencyKey(
           input.orgId,
           input.agentId,
           input.idempotencyKey,
         );
         if (existing) {
-          this.log.warn(
-            `idempotency race org=${input.orgId} agent=${input.agentId} key=${input.idempotencyKey} — connector called twice`,
+          this.log.debug(
+            `idempotency record lost org=${input.orgId} agent=${input.agentId} key=${input.idempotencyKey} — no duplicate approval or audit emitted`,
           );
-          return existing;
+          return { action: null, conflict: existing };
         }
       }
       throw err;

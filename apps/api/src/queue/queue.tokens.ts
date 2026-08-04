@@ -2,6 +2,11 @@ export const QUEUE = Symbol('QUEUE');
 export const REDIS_CONNECTION = Symbol('REDIS_CONNECTION');
 export const QUEUE_NAME = 'agentbase';
 export const EXPIRY_JOB = 'approval.expiry_sweep';
+// Promotes dispatches that started but never settled to `unknown`. Without a
+// recurring caller the `unknown` state is unreachable in production: a crashed
+// dispatch would sit `in_flight` forever, its idempotency key held, and
+// same-key replays would keep returning `pending`.
+export const DISPATCH_RECONCILE_JOB = 'action.dispatch_reconcile';
 export const AGENT_RUN_JOB = 'agent.run';
 
 export interface AgentRunJobData {

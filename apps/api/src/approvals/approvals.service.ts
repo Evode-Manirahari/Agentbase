@@ -221,9 +221,20 @@ export class ApprovalsService {
       if (claimed.length === 0) {
         throw new ConflictException('approval already decided');
       }
+      // `in_flight` is claimed in the same transaction that wins the approval,
+      // for the same reason ActionsService.reserveAction() claims it in the
+      // insert: the sweeper only sees `in_flight`, so a dispatch marked after
+      // the fact is invisible if the process dies before the mark lands. This
+      // is the highest-consequence dispatch in the system — a human just
+      // approved a $60k deal update — and it was the one path that left
+      // dispatch_state on its `not_dispatched` default the whole way through.
       await tx
         .update(actions)
-        .set({ status: 'approved' })
+        .set({
+          status: 'approved',
+          dispatchState: 'in_flight',
+          dispatchedAt: new Date(),
+        })
         .where(eq(actions.id, action.id));
       return { branch: 'approved' as const, approval, action, userId };
     });
@@ -305,6 +316,7 @@ export class ApprovalsService {
       .set({
         status: finalStatus,
         result: storedResult,
+        dispatchState: 'settled',
         completedAt: new Date(),
       })
       .where(eq(actions.id, action.id));
