@@ -10,6 +10,7 @@ import {
   afterEach,
 } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
@@ -29,6 +30,8 @@ import { AuditService } from '../audit/audit.service.js';
 import type { PolicyService } from '../policy/policy.service.js';
 import type { ConnectorRegistry } from '../connectors/connector-registry.js';
 import type { SlackService } from '../slack/slack.service.js';
+import { EffectDispatcher } from './effect-dispatcher.service.js';
+import { EffectReceiptsService } from './effect-receipts.service.js';
 import type {
   RateLimitResult,
   RateLimitService,
@@ -149,6 +152,16 @@ after(async () => {
   await client.end();
 });
 
+// Builds the effect dispatcher the services now depend on. `replay` flips the
+// hard mode switch that makes it incapable of reaching a connector.
+function makeEffects(replay = false): EffectDispatcher {
+  const config = {
+    get: (k: string) =>
+      k === 'AGENTBASE_REPLAY' ? (replay ? '1' : undefined) : undefined,
+  } as unknown as ConfigService;
+  return new EffectDispatcher(new EffectReceiptsService(db), config);
+}
+
 describe('ActionsService.execute', () => {
   let orgId: string;
   let agentId: string;
@@ -182,6 +195,7 @@ describe('ActionsService.execute', () => {
       registry as unknown as ConnectorRegistry,
       slack as unknown as SlackService,
       rateLimit as unknown as RateLimitService,
+      makeEffects(),
     );
   });
 
@@ -974,6 +988,7 @@ describe('ActionsService.execute', () => {
       registry as unknown as ConnectorRegistry,
       slack as unknown as SlackService,
       rateLimit as unknown as RateLimitService,
+      makeEffects(),
     );
 
     await assert.rejects(
@@ -1108,6 +1123,7 @@ describe('ActionsService.listForOrg', () => {
       new StubRegistry() as unknown as ConnectorRegistry,
       new StubSlack() as unknown as SlackService,
       new StubRateLimit() as unknown as RateLimitService,
+      makeEffects(),
     );
   });
 

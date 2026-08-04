@@ -11,6 +11,7 @@ import {
   afterEach,
 } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
@@ -43,6 +44,8 @@ const noopAgentRuns = {
 import { AuditService } from '../audit/audit.service.js';
 import type { ConnectorRegistry } from '../connectors/connector-registry.js';
 import type { SlackService } from '../slack/slack.service.js';
+import { EffectDispatcher } from '../actions/effect-dispatcher.service.js';
+import { EffectReceiptsService } from '../actions/effect-receipts.service.js';
 
 const DB_URL =
   process.env.DATABASE_URL ?? 'postgresql://agentbase:agentbase@localhost:5433/agentbase';
@@ -107,6 +110,16 @@ after(async () => {
   await client.end();
 });
 
+// Builds the effect dispatcher the services now depend on. `replay` flips the
+// hard mode switch that makes it incapable of reaching a connector.
+function makeEffects(replay = false): EffectDispatcher {
+  const config = {
+    get: (k: string) =>
+      k === 'AGENTBASE_REPLAY' ? (replay ? '1' : undefined) : undefined,
+  } as unknown as ConfigService;
+  return new EffectDispatcher(new EffectReceiptsService(db), config);
+}
+
 describe('ApprovalsService.decide', () => {
   let orgId: string;
   let agentId: string;
@@ -165,6 +178,7 @@ describe('ApprovalsService.decide', () => {
       registry as unknown as ConnectorRegistry,
       new StubSlack() as unknown as SlackService,
       noopAgentRuns,
+      makeEffects(),
     );
   });
 
@@ -355,6 +369,7 @@ describe('ApprovalsService.decide', () => {
       emptyRegistry as unknown as ConnectorRegistry,
       new StubSlack() as unknown as SlackService,
       noopAgentRuns,
+      makeEffects(),
     );
 
     const result = await svcNoConnector.decide({
@@ -484,6 +499,7 @@ describe('ApprovalsService.decide', () => {
       registry as unknown as ConnectorRegistry,
       slackStub as unknown as SlackService,
       noopAgentRuns,
+      makeEffects(),
     );
 
     const result = await svcWithSlack.decide({
@@ -512,6 +528,7 @@ describe('ApprovalsService.decide', () => {
       registry as unknown as ConnectorRegistry,
       slackStub as unknown as SlackService,
       noopAgentRuns,
+      makeEffects(),
     );
     await svcWithSlack.decide({ approvalId, orgId, decision: 'deny' });
     assert.equal(slackStub.updates.length, 0);
@@ -693,6 +710,7 @@ describe('ApprovalsService.decide', () => {
       orgScoped as unknown as ConnectorRegistry,
       new StubSlack() as unknown as SlackService,
       noopAgentRuns,
+      makeEffects(),
     );
     const { approvalId } = await seedAction();
 
@@ -730,6 +748,7 @@ describe('ApprovalsService.list / getOne', () => {
       new StubRegistry() as unknown as ConnectorRegistry,
       new StubSlack() as unknown as SlackService,
       noopAgentRuns,
+      makeEffects(),
     );
   });
 

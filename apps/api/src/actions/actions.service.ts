@@ -14,7 +14,9 @@ import { PolicyService } from '../policy/policy.service.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
 import { SlackService } from '../slack/slack.service.js';
 import { RateLimitService } from './rate-limit.service.js';
-import type { Connector, ConnectorResult } from '@agentbase/connector-hubspot';
+import { EffectDispatcher } from './effect-dispatcher.service.js';
+import { requestHash } from './effect-commit.js';
+import type { Connector } from '@agentbase/connector-hubspot';
 import type { ActionStatus, PolicyDecision } from '@agentbase/shared';
 
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
@@ -45,6 +47,7 @@ export class ActionsService {
     private readonly connectors: ConnectorRegistry,
     private readonly slack: SlackService,
     private readonly rateLimit: RateLimitService,
+    private readonly effects: EffectDispatcher,
   ) {}
 
   async execute(input: ExecuteInput): Promise<ExecuteOutput> {
@@ -230,18 +233,16 @@ export class ActionsService {
     const action = reservation.action;
 
     const connector = await this.resolveConnector(input.orgId, input.tool);
-    let result: ConnectorResult;
-    if (!connector) {
-      result = {
-        ok: false,
-        error: {
-          code: 'no_connector',
-          message: `no connector resolves tool ${input.tool}`,
-        },
-      };
-    } else {
-      result = await connector.invoke(input.tool, input.params);
-    }
+    const dispatched = await this.effects.dispatch({
+      actionId: action.id,
+      tool: input.tool,
+      params: input.params,
+      // The allow path had no approval, so there is no approved hash to bind
+      // against — the request was never shown to a human.
+      approvedRequestHash: null,
+      connector,
+    });
+    const result = dispatched.result;
 
     const finalStatus: ActionStatus = result.ok ? 'executed' : 'failed';
     const storedResult = result.ok
@@ -267,9 +268,11 @@ export class ActionsService {
         actionId: action.id,
         tool: input.tool,
         decision,
-        connector: connector?.name ?? null,
+        connector: dispatched.connectorName,
         ok: result.ok,
         error: result.ok ? null : result.error ?? null,
+        idempotency_key_sent: dispatched.idempotencyKeySent,
+        replayed: dispatched.replayed,
       },
     });
 
@@ -375,21 +378,19 @@ export class ActionsService {
     }
 
     const connector = await this.resolveConnector(input.orgId, original.tool);
-    let result: ConnectorResult;
-    if (!connector) {
-      result = {
-        ok: false,
-        error: {
-          code: 'no_connector',
-          message: `no connector resolves tool ${original.tool}`,
-        },
-      };
-    } else {
-      result = await connector.invoke(
-        original.tool,
-        original.params as Record<string, unknown>,
-      );
-    }
+    // The retry goes through the same commit protocol: it opens a NEW attempt
+    // row, and it carries the SAME provider idempotency key as the original
+    // (derived from the action id). A provider that honours the key collapses
+    // the two into one effect — which is what makes retrying a failed action
+    // safe even though we cannot always tell why it failed.
+    const dispatched = await this.effects.dispatch({
+      actionId: input.actionId,
+      tool: original.tool,
+      params: original.params as Record<string, unknown>,
+      approvedRequestHash: original.requestHash,
+      connector,
+    });
+    const result = dispatched.result;
 
     const newStatus: ActionStatus = result.ok ? 'executed' : 'failed';
     const storedResult = result.ok
@@ -528,6 +529,7 @@ export class ActionsService {
           policyDecision: decision as unknown as Record<string, unknown>,
           result: null,
           idempotencyKey: input.idempotencyKey ?? null,
+          requestHash: requestHash(input.tool, input.params),
           // `in_flight` is claimed in the same insert as the key, not in a
           // follow-up update. Two statements would leave a window where a crash
           // strands the row at `not_dispatched`: the sweeper only looks at
@@ -631,6 +633,10 @@ export class ActionsService {
           policyDecision: decision as unknown as Record<string, unknown>,
           result,
           idempotencyKey: input.idempotencyKey ?? null,
+          // Set here too, not only on the allow path: the require_approval
+          // branch runs through recordAction, and that is precisely the action
+          // whose hash a human will later be bound to.
+          requestHash: requestHash(input.tool, input.params),
           completedAt:
             status === 'executed' || status === 'denied' || status === 'failed'
               ? new Date()

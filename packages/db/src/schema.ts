@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
   uuid,
@@ -43,6 +44,20 @@ export const dispatchState = pgEnum('dispatch_state', [
   'in_flight',
   'settled',
   'unknown',
+]);
+
+// The outcome of ONE dispatch attempt against a provider. Distinct from
+// `actions.dispatch_state`, which is the current belief about the action;
+// this is the append-only history of what was actually attempted.
+//
+//   committed   — the provider answered and we hold a receipt
+//   failed      — the provider answered with an error; nothing landed
+//   indeterminate — we never learned the outcome. The effect may or may not
+//                   exist. This is the row that must never be silently retried
+export const attemptOutcome = pgEnum('attempt_outcome', [
+  'committed',
+  'failed',
+  'indeterminate',
 ]);
 
 export const connectorProvider = pgEnum('connector_provider', [
@@ -151,6 +166,18 @@ export const actions = pgTable(
     policyDecision: jsonb('policy_decision').$type<Record<string, unknown>>(),
     result: jsonb('result').$type<Record<string, unknown>>(),
     idempotencyKey: text('idempotency_key'),
+    // sha256 over the canonical (tool, params) pair, computed when the action
+    // is created. An approval is bound to this hash: a human approved THIS
+    // request, not this row id. If the two ever disagree at dispatch time the
+    // commit is refused, so an approved action cannot be dispatched with
+    // params other than the ones a human actually read.
+    requestHash: text('request_hash'),
+    // Deterministic key handed to the PROVIDER (Stripe's Idempotency-Key,
+    // GitHub's, etc). Distinct from `idempotencyKey`, which is the caller's
+    // key for deduplicating requests to us. This one deduplicates OUR requests
+    // to them, which is the only thing that makes a retry safe when we cannot
+    // tell whether the first attempt landed.
+    providerIdempotencyKey: text('provider_idempotency_key'),
     dispatchState: dispatchState('dispatch_state').notNull().default('not_dispatched'),
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -188,6 +215,46 @@ export const approvals = pgTable(
   },
   (t) => ({
     decisionIdx: index('approvals_decision_idx').on(t.decision),
+  }),
+);
+
+// Append-only record of every dispatch attempt against a provider, and the
+// evidence it produced. This is the artifact that answers "what actually
+// happened out there?" after a crash — and the artifact replay serves instead
+// of touching the provider again.
+//
+// One row per ATTEMPT, not per action: an action that was attempted, crashed
+// indeterminate, and was later reconciled has two rows telling that story.
+export const effectReceipts = pgTable(
+  'effect_receipts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actionId: uuid('action_id')
+      .notNull()
+      .references(() => actions.id, { onDelete: 'cascade' }),
+    // 1-based. Unique per action so two concurrent dispatchers cannot both
+    // claim the same attempt number — the insert is the claim.
+    attempt: integer('attempt').notNull(),
+    connectorName: text('connector_name').notNull(),
+    // Echoed back so an operator can prove which key was on the wire.
+    idempotencyKeySent: text('idempotency_key_sent'),
+    outcome: attemptOutcome('outcome').notNull(),
+    // The provider's own identifier for the thing that happened, when it gives
+    // us one (Stripe charge id, GitHub ref sha, Terraform apply id). This is
+    // what makes an effect provable rather than merely logged.
+    providerRef: text('provider_ref'),
+    // Full recorded response. Replay returns this verbatim.
+    receipt: jsonb('receipt').$type<Record<string, unknown>>(),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    settledAt: timestamp('settled_at', { withTimezone: true }),
+  },
+  (t) => ({
+    actionIdx: index('effect_receipts_action_idx').on(t.actionId),
+    attemptIdx: uniqueIndex('effect_receipts_attempt_idx').on(t.actionId, t.attempt),
+    // Operator queue: every attempt whose outcome nobody knows.
+    indeterminateIdx: index('effect_receipts_indeterminate_idx')
+      .on(t.outcome)
+      .where(sql`outcome = 'indeterminate'`),
   }),
 );
 
@@ -345,6 +412,7 @@ export type Policy = typeof policies.$inferSelect;
 export type Action = typeof actions.$inferSelect;
 export type Approval = typeof approvals.$inferSelect;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
+export type EffectReceipt = typeof effectReceipts.$inferSelect;
 export type WebhookSubscription = typeof webhookSubscriptions.$inferSelect;
 export type ConnectorCredential = typeof connectorCredentials.$inferSelect;
 export type OAuthState = typeof oauthStates.$inferSelect;

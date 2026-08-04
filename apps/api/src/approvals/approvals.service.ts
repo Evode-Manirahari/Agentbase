@@ -14,6 +14,7 @@ import { ConnectorRegistry } from '../connectors/connector-registry.js';
 import type { Connector } from '@agentbase/connector-hubspot';
 import { SlackService } from '../slack/slack.service.js';
 import { AgentRunsService } from '../agent-runtime/agent-runs.service.js';
+import { EffectDispatcher } from '../actions/effect-dispatcher.service.js';
 import type {
   ActionStatus,
   ApprovalDecisionResponse,
@@ -58,6 +59,7 @@ export class ApprovalsService {
     private readonly connectors: ConnectorRegistry,
     private readonly slack: SlackService,
     private readonly agentRuns: AgentRunsService,
+    private readonly effects: EffectDispatcher,
   ) {}
 
   // Mirrors ActionsService.resolveConnector: prefer the org-scoped resolver so
@@ -296,15 +298,18 @@ export class ApprovalsService {
     // action could dispatch with credentials that are not theirs.
     const action = phase1.action;
     const connector = await this.resolveConnector(action.orgId, action.tool);
-    const result = !connector
-      ? {
-          ok: false as const,
-          error: {
-            code: 'no_connector',
-            message: `no connector resolves tool ${action.tool}`,
-          },
-        }
-      : await connector.invoke(action.tool, action.params);
+    // Through the commit protocol, and bound to the request hash: a human
+    // approved "delete branch release/v2", not "whatever row 8f3c holds by the
+    // time we get here". If the params no longer hash to what was approved,
+    // dispatch() throws and nothing is sent.
+    const dispatched = await this.effects.dispatch({
+      actionId: action.id,
+      tool: action.tool,
+      params: action.params,
+      approvedRequestHash: action.requestHash,
+      connector,
+    });
+    const result = dispatched.result;
 
     const finalStatus: ActionStatus = result.ok ? 'executed' : 'failed';
     const storedResult = result.ok
@@ -341,7 +346,9 @@ export class ApprovalsService {
       payload: {
         actionId: action.id,
         tool: action.tool,
-        connector: connector?.name ?? null,
+        connector: dispatched.connectorName,
+        idempotency_key_sent: dispatched.idempotencyKeySent,
+        replayed: dispatched.replayed,
         ok: result.ok,
         error: result.ok ? null : result.error ?? null,
       },
