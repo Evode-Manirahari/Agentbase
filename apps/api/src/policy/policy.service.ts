@@ -10,7 +10,7 @@ import {
 import { DB } from '../db/db.module.js';
 import type { Database } from '@agentbase/db';
 import { agents, policies } from '@agentbase/db';
-import { evaluatePolicy, FALLBACK_POLICY } from './policy-engine.js';
+import { evaluatePolicy, resolveFallbackPolicy } from './policy-engine.js';
 
 @Injectable()
 export class PolicyService {
@@ -48,7 +48,7 @@ export class PolicyService {
         name: null,
         version: null,
         yaml: null,
-        document: FALLBACK_POLICY,
+        document: resolveFallbackPolicy(),
         is_fallback: true,
       };
     }
@@ -113,7 +113,7 @@ export class PolicyService {
     },
   ): Promise<PolicyDecision> {
     const active = await this.getActive(orgId);
-    const doc = active.document ?? FALLBACK_POLICY;
+    const doc = active.document ?? resolveFallbackPolicy();
     const agent = action.agentId
       ? await this.agentContext(orgId, action.agentId)
       : null;

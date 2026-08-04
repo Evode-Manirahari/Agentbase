@@ -38,6 +38,17 @@ Every domain table — `agents`, `policies`, `approvals`, `actions`, `audit_log`
 - **Audit log** — every state transition is recorded: agent registered, agent revoked, policy installed, action proposed, action approved, action denied, action executed, action failed, approval expired. Each row stores actor type, actor id, event type, the action payload, and timestamp.
 - **Audit export** — RFC 4180 CSV or JSON straight from the dashboard, capped at 10,000 rows by default with a 50,000 hard ceiling. CSV cells with formula-injection prefixes (`=`, `+`, `-`, `@`) are neutralized with a leading apostrophe so an `Open in Excel` won't execute scalar values. Filenames include an ISO timestamp.
 
+### Effect safety
+
+The gate exists to bound *side effects*, not merely to record them. Four properties, each covered by a test:
+
+- **Fail-closed policy default** — an org with no active policy denies every action. The permissive pre-1.0 default is available only via an explicit `AGENTBASE_FALLBACK_POLICY=allow`, matching the `AGENTBASE_ALLOW_UNAUTHENTICATED` escape-hatch pattern.
+- **Reservation before dispatch** — the action row, and with it the unique `(org_id, agent_id, idempotency_key)` index, is claimed *before* the connector is invoked. Concurrent agent retries sharing a key therefore produce **at most one** external call; the losing request never reaches the connector. (Claiming the key after dispatch, as earlier builds did, deduplicated the record of a send but not the send.)
+- **Single dispatch on approval** — approve/deny transitions use a conditional `WHERE decision = 'pending'` update. A transaction alone is insufficient under `READ COMMITTED`: two concurrent approvals both read `pending` and both pass a naive check. The loser now receives `409` and dispatches nothing. Operator retries of a failed action are claimed the same way.
+- **Explicit `unknown` on indeterminate dispatch** — if the process dies between calling a connector and recording its response, the action is swept to `dispatch_state = 'unknown'` and **never retried automatically**. The external effect may or may not have landed; resolving it requires a provider-side lookup or a human. We do not guess.
+
+**Limit, stated plainly:** Agentbase can guarantee at-most-once *release* from the gate and that a replay issues no new write. It cannot guarantee universal exactly-once *application* at the provider — that requires the upstream API to offer idempotency keys or a reliable read-after-write lookup, and several do not.
+
 ### Deployment model
 
 Pilots run on Agentbase-managed multi-tenant infrastructure (Fly.io: Postgres + Redis + API + dashboard). Single-tenant deployment, VPC peering, and customer-cloud delivery are on the roadmap — not built today.

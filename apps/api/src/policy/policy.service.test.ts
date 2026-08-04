@@ -145,11 +145,12 @@ describe('PolicyService.getActive / setActive', () => {
     if (orgId) await db.delete(orgs).where(eq(orgs.id, orgId));
   });
 
-  it('getActive returns fallback (allow-all) when no active policy', async () => {
+  it('getActive returns fallback (deny-all) when no active policy', async () => {
     const active = await svc.getActive(orgId);
     assert.equal(active.policy_id, null);
     assert.equal(active.is_fallback, true);
-    assert.equal(active.document?.default, 'allow');
+    // Fail closed: no policy installed means no action is permitted.
+    assert.equal(active.document?.default, 'deny');
     assert.deepEqual(active.document?.rules, []);
   });
 
@@ -252,12 +253,12 @@ describe('PolicyService.evaluate', () => {
     if (orgId) await db.delete(orgs).where(eq(orgs.id, orgId));
   });
 
-  it('uses fallback policy (allow-all) when no active policy is set', async () => {
+  it('uses fallback policy (deny-all) when no active policy is set', async () => {
     const decision = await svc.evaluate(orgId, {
       tool: 'random.tool',
       params: {},
     });
-    assert.equal(decision.effect, 'allow');
+    assert.equal(decision.effect, 'deny');
     assert.equal(decision.fallback, true);
   });
 

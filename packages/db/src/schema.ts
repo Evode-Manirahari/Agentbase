@@ -27,6 +27,24 @@ export const approvalDecision = pgEnum('approval_decision', [
   'denied',
   'expired',
 ]);
+// Where an action is in the dispatch lifecycle, tracked separately from
+// `status` because the two answer different questions. `status` is what the
+// gate decided; `dispatch_state` is what we know about the external side
+// effect.
+//
+//   not_dispatched — no connector call has been attempted
+//   in_flight      — a connector call is running, or the process died mid-call
+//   settled        — the connector returned and the outcome is recorded
+//   unknown        — we dispatched but never learned the outcome (crash, timeout).
+//                    NEVER auto-retried: the effect may or may not have landed,
+//                    and guessing wrong sends the email twice.
+export const dispatchState = pgEnum('dispatch_state', [
+  'not_dispatched',
+  'in_flight',
+  'settled',
+  'unknown',
+]);
+
 export const connectorProvider = pgEnum('connector_provider', [
   'hubspot',
   'salesforce',
@@ -133,6 +151,8 @@ export const actions = pgTable(
     policyDecision: jsonb('policy_decision').$type<Record<string, unknown>>(),
     result: jsonb('result').$type<Record<string, unknown>>(),
     idempotencyKey: text('idempotency_key'),
+    dispatchState: dispatchState('dispatch_state').notNull().default('not_dispatched'),
+    dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp('completed_at', { withTimezone: true }),
   },
@@ -140,7 +160,11 @@ export const actions = pgTable(
     orgIdx: index('actions_org_idx').on(t.orgId),
     agentIdx: index('actions_agent_idx').on(t.agentId),
     statusIdx: index('actions_status_idx').on(t.status),
+    // Claimed BEFORE the connector is invoked, so it bounds external side
+    // effects rather than merely deduplicating the record of them.
     idemIdx: uniqueIndex('actions_idem_idx').on(t.orgId, t.agentId, t.idempotencyKey),
+    // Sweeper: find dispatches that never settled.
+    inFlightIdx: index('actions_in_flight_idx').on(t.dispatchState, t.dispatchedAt),
   }),
 );
 

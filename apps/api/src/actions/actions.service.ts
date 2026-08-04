@@ -5,9 +5,9 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, lt, ne } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
-import type { Database } from '@agentbase/db';
+import type { Action, Database } from '@agentbase/db';
 import { actions, agents, approvals } from '@agentbase/db';
 import { AuditService } from '../audit/audit.service.js';
 import { PolicyService } from '../policy/policy.service.js';
@@ -48,11 +48,12 @@ export class ActionsService {
   ) {}
 
   async execute(input: ExecuteInput): Promise<ExecuteOutput> {
-    // Idempotency: if this (org, agent, key) tuple was already processed,
-    // return the stored outcome instead of re-evaluating policy and re-calling
-    // the connector. Agents that retry on network errors get exactly-one
-    // CRM/email side effect for a given key. Idempotent replays bypass the
-    // rate limiter — the original request already paid the cost.
+    // Idempotency fast path: if this (org, agent, key) tuple was already
+    // processed, return the stored outcome instead of re-evaluating policy and
+    // re-calling the connector. This read is an optimisation, not the
+    // guarantee — the guarantee is the reservation in reserveAction(), which
+    // claims the key before the connector is invoked. Idempotent replays
+    // bypass the rate limiter: the original request already paid the cost.
     if (input.idempotencyKey) {
       const cached = await this.findByIdempotencyKey(
         input.orgId,
@@ -197,6 +198,29 @@ export class ActionsService {
     }
 
     // effect === 'allow' — dispatch to a connector.
+    //
+    // Reserve first, invoke second. The row (and with it the unique
+    // idempotency key) is claimed BEFORE any external call, so a concurrent
+    // request carrying the same key loses the race at the database and never
+    // reaches the connector. Claiming it afterwards — which is what this code
+    // used to do — deduplicates the record of the send but not the send.
+    const reservation = await this.reserveAction(input, decision);
+    if (reservation.conflict) {
+      this.log.debug(
+        `idempotency reservation lost org=${input.orgId} agent=${input.agentId} key=${input.idempotencyKey} — no connector call made`,
+      );
+      return reservation.conflict;
+    }
+    const action = reservation.action;
+
+    // Mark in-flight before crossing the network. If the process dies here the
+    // row stays `in_flight`, which the sweeper promotes to `unknown` rather
+    // than retrying — see reconcileStaleDispatches().
+    await this.db
+      .update(actions)
+      .set({ dispatchState: 'in_flight', dispatchedAt: new Date() })
+      .where(eq(actions.id, action.id));
+
     const connector = await this.resolveConnector(input.orgId, input.tool);
     let result: ConnectorResult;
     if (!connector) {
@@ -216,12 +240,16 @@ export class ActionsService {
       ? { ok: true, data: result.data ?? null }
       : { ok: false, error: result.error ?? { code: 'unknown', message: 'unknown error' } };
 
-    const action = await this.recordAction(
-      input,
-      finalStatus,
-      decision,
-      storedResult,
-    );
+    await this.db
+      .update(actions)
+      .set({
+        status: finalStatus,
+        result: storedResult,
+        dispatchState: 'settled',
+        completedAt: new Date(),
+      })
+      .where(eq(actions.id, action.id));
+
     await this.audit.record({
       orgId: input.orgId,
       actorType: 'agent',
@@ -317,6 +345,27 @@ export class ActionsService {
       };
     }
 
+    // Claim the retry before dispatching. Two operators clicking Retry on the
+    // same failed action must produce one connector call, not two — the
+    // conditional update is the claim, and losing it means someone else is
+    // already in flight.
+    const claimed = await this.db
+      .update(actions)
+      .set({ dispatchState: 'in_flight', dispatchedAt: new Date() })
+      .where(
+        and(
+          eq(actions.id, input.actionId),
+          eq(actions.status, 'failed'),
+          ne(actions.dispatchState, 'in_flight'),
+        ),
+      )
+      .returning({ id: actions.id });
+    if (claimed.length === 0) {
+      throw new ConflictException(
+        `action ${input.actionId} is already being retried`,
+      );
+    }
+
     const connector = await this.resolveConnector(input.orgId, original.tool);
     let result: ConnectorResult;
     if (!connector) {
@@ -344,6 +393,7 @@ export class ActionsService {
       .set({
         status: newStatus,
         result: storedResult,
+        dispatchState: 'settled',
         completedAt: new Date(),
       })
       .where(eq(actions.id, input.actionId));
@@ -448,6 +498,96 @@ export class ActionsService {
     };
   }
 
+  // Claim the idempotency key before any external call. Returns either the
+  // reserved row (we own this key, proceed to dispatch) or the outcome of the
+  // request that beat us (we made no connector call at all).
+  private async reserveAction(
+    input: ExecuteInput,
+    decision: PolicyDecision,
+  ): Promise<
+    | { action: Action; conflict: null }
+    | { action: null; conflict: ExecuteOutput }
+  > {
+    try {
+      const [created] = await this.db
+        .insert(actions)
+        .values({
+          orgId: input.orgId,
+          agentId: input.agentId,
+          tool: input.tool,
+          params: input.params,
+          status: 'pending',
+          policyDecision: decision as unknown as Record<string, unknown>,
+          result: null,
+          idempotencyKey: input.idempotencyKey ?? null,
+          dispatchState: 'not_dispatched',
+          completedAt: null,
+        })
+        .returning();
+      if (!created) throw new Error('failed to reserve action');
+      return { action: created, conflict: null };
+    } catch (err) {
+      if (input.idempotencyKey && isUniqueViolation(err)) {
+        const existing = await this.findByIdempotencyKey(
+          input.orgId,
+          input.agentId,
+          input.idempotencyKey,
+        );
+        // The winner may still be mid-flight, in which case `status` is
+        // 'pending' and the caller should poll rather than assume success.
+        if (existing) return { action: null, conflict: existing };
+      }
+      throw err;
+    }
+  }
+
+  // A dispatch that never settled means the process died between "we called
+  // the connector" and "we recorded what it said". The external effect may
+  // have landed or may not have. We mark it `unknown` and stop — we do not
+  // retry, because retrying an unknown send is how a customer gets two emails.
+  // Resolving it requires either a provider-side lookup or a human.
+  async reconcileStaleDispatches(olderThanMs = 5 * 60 * 1000): Promise<number> {
+    const cutoff = new Date(Date.now() - olderThanMs);
+    const stale = await this.db
+      .update(actions)
+      .set({
+        status: 'failed',
+        dispatchState: 'unknown',
+        result: {
+          ok: false,
+          error: {
+            code: 'dispatch_unknown',
+            message:
+              'dispatch started but never settled; the external effect may or may not have occurred. Not retried automatically.',
+          },
+        },
+        completedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(actions.dispatchState, 'in_flight'),
+          lt(actions.dispatchedAt, cutoff),
+        ),
+      )
+      .returning({ id: actions.id, orgId: actions.orgId, tool: actions.tool });
+
+    for (const row of stale) {
+      await this.audit.record({
+        orgId: row.orgId,
+        actorType: 'system',
+        actorId: 'dispatch_reconciler',
+        eventType: 'action.dispatch_unknown',
+        payload: { actionId: row.id, tool: row.tool },
+      });
+    }
+    if (stale.length > 0) {
+      this.log.warn(
+        `${stale.length} action(s) marked dispatch_state=unknown — external effect indeterminate`,
+      );
+    }
+    return stale.length;
+  }
+
   private async recordAction(
     input: ExecuteInput,
     status: ActionStatus,
@@ -475,10 +615,11 @@ export class ActionsService {
       if (!created) throw new Error('failed to record action');
       return created;
     } catch (err) {
-      // Concurrent request claimed the same idempotency key while we were
-      // executing. Return the existing row so the client sees a coherent
-      // response rather than a 500. The connector side effect happened twice
-      // in this rare race; document for buyers as best-effort dedup.
+      // Concurrent request claimed the same idempotency key. Return the
+      // existing row so the client sees a coherent response rather than a 500.
+      // No external effect is at risk here: recordAction only serves the
+      // deny / awaiting_approval / rate-limited paths, none of which invoke a
+      // connector. The allow path reserves instead — see reserveAction().
       if (input.idempotencyKey && isUniqueViolation(err)) {
         const existing = await this.findActionRowByIdempotencyKey(
           input.orgId,

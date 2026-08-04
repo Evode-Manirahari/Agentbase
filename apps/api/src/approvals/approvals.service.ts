@@ -11,6 +11,7 @@ import type { Database } from '@agentbase/db';
 import { actions, agents, approvals, users } from '@agentbase/db';
 import { AuditService } from '../audit/audit.service.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
+import type { Connector } from '@agentbase/connector-hubspot';
 import { SlackService } from '../slack/slack.service.js';
 import { AgentRunsService } from '../agent-runtime/agent-runs.service.js';
 import type {
@@ -58,6 +59,18 @@ export class ApprovalsService {
     private readonly slack: SlackService,
     private readonly agentRuns: AgentRunsService,
   ) {}
+
+  // Mirrors ActionsService.resolveConnector: prefer the org-scoped resolver so
+  // dispatch uses the tenant's own credentials, falling back to the static
+  // registry only where an org-scoped one isn't wired (tests, single-tenant).
+  private async resolveConnector(orgId: string, tool: string) {
+    const registry = this.connectors as ConnectorRegistry & {
+      resolveForOrg?: (orgId: string, tool: string) => Promise<Connector | null>;
+    };
+    return registry.resolveForOrg
+      ? registry.resolveForOrg(orgId, tool)
+      : registry.resolve(tool);
+  }
 
   async list(orgId: string, limit = 100): Promise<ApprovalListResponse> {
     const rows = await this.db
@@ -163,14 +176,23 @@ export class ApprovalsService {
       }
 
       if (input.decision === 'deny') {
-        await tx
+        // Same conditional claim as the approve branch. A deny racing an
+        // approve must not leave the approval recorded as denied while the
+        // approve branch goes on to dispatch the connector.
+        const claimed = await tx
           .update(approvals)
           .set({
             decision: 'denied',
             decidedAt: new Date(),
             decidedByUserId: userId,
           })
-          .where(eq(approvals.id, approval.id));
+          .where(
+            and(eq(approvals.id, approval.id), eq(approvals.decision, 'pending')),
+          )
+          .returning({ id: approvals.id });
+        if (claimed.length === 0) {
+          throw new ConflictException('approval already decided');
+        }
         await tx
           .update(actions)
           .set({ status: 'denied', completedAt: new Date() })
@@ -179,14 +201,26 @@ export class ApprovalsService {
       }
 
       // 'approve' — set intermediate states; dispatch happens after tx commits.
-      await tx
+      //
+      // The `decision = 'pending'` predicate is what makes this safe, not the
+      // surrounding transaction. Under READ COMMITTED two concurrent approvals
+      // both read 'pending' above and both pass the check; only a conditional
+      // update lets exactly one of them win. The loser gets 409 and dispatches
+      // nothing — otherwise a double-click sends the email twice.
+      const claimed = await tx
         .update(approvals)
         .set({
           decision: 'approved',
           decidedAt: new Date(),
           decidedByUserId: userId,
         })
-        .where(eq(approvals.id, approval.id));
+        .where(
+          and(eq(approvals.id, approval.id), eq(approvals.decision, 'pending')),
+        )
+        .returning({ id: approvals.id });
+      if (claimed.length === 0) {
+        throw new ConflictException('approval already decided');
+      }
       await tx
         .update(actions)
         .set({ status: 'approved' })
@@ -244,8 +278,13 @@ export class ApprovalsService {
     }
 
     // approve branch — dispatch through the same connector path used by effect:allow.
+    //
+    // resolveForOrg, not resolve: an approved action must run against the
+    // org's own stored (AES-encrypted) connector credentials. The unscoped
+    // resolver falls back to process env, which means one tenant's approved
+    // action could dispatch with credentials that are not theirs.
     const action = phase1.action;
-    const connector = this.connectors.resolve(action.tool);
+    const connector = await this.resolveConnector(action.orgId, action.tool);
     const result = !connector
       ? {
           ok: false as const,
