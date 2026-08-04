@@ -14,6 +14,7 @@ import { ExpiryProcessor } from './expiry.processor.js';
 import { QueueController } from './queue.controller.js';
 import {
   AGENT_RUN_JOB,
+  DISPATCH_RECONCILE_JOB,
   EMAIL_REPLY_POLL_JOB,
   EXPIRY_JOB,
   QUEUE,
@@ -24,6 +25,7 @@ import {
   type EmailReplyPollJobData,
   type SdrFollowupJobData,
 } from './queue.tokens.js';
+import { ActionsService } from '../actions/actions.service.js';
 import { AgentRunProcessor } from '../agent-runtime/agent-run.processor.js';
 import { EmailsService } from '../agent-runtime/emails.service.js';
 import { AuditModule } from '../audit/audit.module.js';
@@ -35,6 +37,11 @@ import {
 
 const SWEEP_INTERVAL_MS = 60_000;
 const EMAIL_REPLY_POLL_INTERVAL_MS = 10 * 60 * 1000;
+// How long a dispatch may stay in flight before we stop believing it is still
+// running. Deliberately generous: promoting to `unknown` early would label
+// slow-but-live connector calls indeterminate.
+const DISPATCH_RECONCILE_INTERVAL_MS = 60_000;
+const DISPATCH_STALE_AFTER_MS = 5 * 60 * 1000;
 
 @Global()
 @Module({
@@ -75,6 +82,8 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
     // production; absent in test contexts that don't import it.
     @Optional() private readonly agentRuns?: AgentRunProcessor,
     @Optional() private readonly emails?: EmailsService,
+    // Same pattern again: ActionsModule provides this in production.
+    @Optional() private readonly actions?: ActionsService,
   ) {}
 
   async onModuleInit() {
@@ -90,6 +99,24 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
       );
     } catch (err) {
       this.log.warn(`failed to register expiry scheduler: ${(err as Error).message}`);
+    }
+
+    if (this.actions) {
+      try {
+        await this.queue.upsertJobScheduler(
+          DISPATCH_RECONCILE_JOB,
+          { every: DISPATCH_RECONCILE_INTERVAL_MS },
+          {
+            name: DISPATCH_RECONCILE_JOB,
+            data: {},
+            opts: { attempts: 1, removeOnComplete: 100, removeOnFail: 100 },
+          },
+        );
+      } catch (err) {
+        this.log.warn(
+          `failed to register dispatch reconciler: ${(err as Error).message}`,
+        );
+      }
     }
 
     if (this.emails) {
@@ -115,6 +142,15 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
       async (job) => {
         if (job.name === EXPIRY_JOB) {
           return this.processor.sweep();
+        }
+        if (job.name === DISPATCH_RECONCILE_JOB) {
+          if (!this.actions) {
+            return { skipped: true, reason: 'actions service not wired' };
+          }
+          const reconciled = await this.actions.reconcileStaleDispatches(
+            DISPATCH_STALE_AFTER_MS,
+          );
+          return { reconciled };
         }
         if (job.name === WEBHOOK_DELIVER_JOB) {
           if (!this.webhooks) {
@@ -157,7 +193,12 @@ export class QueueModule implements OnModuleInit, OnModuleDestroy {
       }
     });
 
-    this.log.log(`queue '${QUEUE_NAME}' ready; expiry sweep every ${SWEEP_INTERVAL_MS / 1000}s`);
+    this.log.log(
+      `queue '${QUEUE_NAME}' ready; expiry sweep every ${SWEEP_INTERVAL_MS / 1000}s` +
+        (this.actions
+          ? `; dispatch reconcile every ${DISPATCH_RECONCILE_INTERVAL_MS / 1000}s`
+          : ''),
+    );
   }
 
   async onModuleDestroy() {
