@@ -1,0 +1,21 @@
+{
+  "name": "@agentbase/effects",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import @swc-node/register/esm-register --test 'src/**/*.test.ts'"
+  },
+  "devDependencies": {
+    "@swc-node/register": "^1.10.9",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

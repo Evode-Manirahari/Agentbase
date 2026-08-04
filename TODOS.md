@@ -2,16 +2,24 @@
 
 Deferred work captured during reviews. Each item has enough context to pick up cold.
 
+> **Demand status, verified 2026-08-04: Agentbase has ZERO customers and no way to
+> take money.** There is no Stripe, no billing code, and no plan/invoice/seat table in
+> `packages/db/src/schema.ts` — grep `stripe|billing|checkout|payment` across the API,
+> web app, and schema returns nothing. Earlier revisions of this file described "Daniel"
+> as "the $1k/mo customer who pushed for RBAC" and referred to "Maya's actual workflows."
+> **Both were personas invented during a 2026-06-05 office-hours exercise, not real
+> people.** They have been removed below. Do not cite them — or any customer — as
+> evidence for prioritisation until a named human has actually paid.
+
 ## Approach B — Agent self-serve onboarding + RBAC
 
 - **What:** Let an agent self-onboard with no human in the loop — a bootstrap path past
   `ClerkAuthGuard` on `POST /v1/agents` so an agent can discover via MCP, create a scoped
   identity, enroll credentials, and make its first governed call; then a human approves/pays.
   Ship RBAC (role-based permissions) as a first-class primitive.
-- **Why:** This is what makes the pivot "software agents want" (agent as first-class user), and
-  RBAC is Daniel's explicit ask before he rolls Agentbase out to his ops team (the $1k/mo
-  customer who pushed for it).
-- **Pros:** Defensible; converts Daniel's expansion; delivers the real agent-first front door.
+- **Why:** This is what makes the pivot "software agents want" (agent as first-class user).
+  RBAC is a hypothesised requirement, not a request from anyone — no user has asked for it.
+- **Pros:** Delivers the agent-first front door if the hypothesis holds.
 - **Cons:** Net-new auth surface; opens the abuse/funding question (what stops a rogue agent
   self-registering?) — must be answered before public launch. ~30 days.
 - **Context:** Design doc Approach B —
@@ -34,8 +42,9 @@ Deferred work captured during reviews. Each item has enough context to pick up c
 - **Context:** Deferred from Approach A in the eng-review Step 0 scope challenge. Design doc
   "Product Surface: Semantic Commands" section. Existing low-level catalog:
   `packages/mcp-server/src/catalog.ts`.
-- **Guardrail:** Start with Maya's actual workflows only. Do NOT build a catalog. Not the
-  positioning headline — trust stays the headline.
+- **Guardrail:** Start with one real user's actual workflows — and there is no such user
+  yet, so this stays blocked. Do NOT build a catalog. Not the positioning headline —
+  trust stays the headline.
 - **Depends on / blocked by:** Best sequenced with Approach B.
 
 ## PARKED — "Customization runtime for the agent era" (do NOT build)
