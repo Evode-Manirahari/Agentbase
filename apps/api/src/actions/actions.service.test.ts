@@ -944,6 +944,123 @@ describe('ActionsService.execute', () => {
     assert.equal(await svc.reconcileStaleDispatches(5 * 60 * 1000), 0);
   });
 
+  it('a reservation that never reaches its next update is still sweepable', async () => {
+    // The reservation persists `in_flight` in the same insert that claims the
+    // key, rather than inserting `not_dispatched` and transitioning in a second
+    // statement. This kills the first `update` the service issues, standing in
+    // for a process that dies right there. If the dispatch state depended on
+    // that update, the row would strand at `not_dispatched`: the sweeper only
+    // looks at `in_flight` and retry() only accepts `failed`, so nothing would
+    // ever resolve it and same-key replays would return `pending` forever.
+    const key = `idem-${randomUUID()}`;
+    let updates = 0;
+    const brittleDb = new Proxy(db, {
+      get(target, prop, receiver) {
+        if (prop === 'update') {
+          return (...args: unknown[]) => {
+            if (++updates === 1) {
+              throw new Error('process died before the next update landed');
+            }
+            return (target.update as (...a: unknown[]) => unknown)(...args);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const brittle = new ActionsService(
+      brittleDb,
+      audit,
+      policy as unknown as PolicyService,
+      registry as unknown as ConnectorRegistry,
+      slack as unknown as SlackService,
+      rateLimit as unknown as RateLimitService,
+    );
+
+    await assert.rejects(
+      brittle.execute({
+        orgId,
+        agentId,
+        tool: 'gmail.send',
+        params: {},
+        idempotencyKey: key,
+      }),
+    );
+
+    const [stranded] = await db
+      .select()
+      .from(actions)
+      .where(eq(actions.idempotencyKey, key));
+    assert.equal(stranded!.dispatchState, 'in_flight');
+    assert.ok(stranded!.dispatchedAt, 'dispatchedAt must be set for the sweeper');
+
+    // Therefore reachable by reconciliation rather than stuck forever. The
+    // sweeper is global, so assert on this row rather than the total count —
+    // concurrent suites leave in-flight rows of their own.
+    assert.ok((await svc.reconcileStaleDispatches(0)) >= 1);
+    const [swept] = await db
+      .select()
+      .from(actions)
+      .where(eq(actions.id, stranded!.id));
+    assert.equal(swept!.dispatchState, 'unknown');
+    assert.equal(swept!.status, 'failed');
+  });
+
+  it('concurrent require_approval sharing a key posts one card and one approval', async () => {
+    // recordAction() does not call a connector, but losing the key race still
+    // matters: the loser used to go on and insert a second approval row and
+    // post a second Slack card for the winner's action.
+    policy.decision = makeDecision({
+      effect: 'require_approval',
+      approver_role: 'approver',
+      reason: 'high value',
+    });
+    slack.isConfiguredValue = true;
+    slack.postedCard = { channel: 'C123', ts: '1.1' };
+    const key = `idem-${randomUUID()}`;
+
+    const settled = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        svc.execute({
+          orgId,
+          agentId,
+          tool: 'hubspot.deals.update',
+          params: { amount: 60000 },
+          idempotencyKey: key,
+        }),
+      ),
+    );
+
+    const rows = await db
+      .select()
+      .from(actions)
+      .where(eq(actions.idempotencyKey, key));
+    assert.equal(rows.length, 1, 'one action row owns the key');
+    const actionId = rows[0]!.id;
+
+    const approvalRows = await db
+      .select()
+      .from(approvals)
+      .where(eq(approvals.actionId, actionId));
+    assert.equal(approvalRows.length, 1, 'one approval, not one per caller');
+
+    assert.equal(slack.posts.length, 1, 'one Slack card, not eight');
+
+    const events = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.orgId, orgId));
+    const awaiting = events.filter(
+      (e) => e.eventType === 'action.awaiting_approval',
+    );
+    assert.equal(awaiting.length, 1, 'one audit event for one action');
+
+    // Every caller still gets a coherent answer pointing at that action.
+    for (const r of settled) {
+      assert.equal(r.action_id, actionId);
+      assert.equal(r.status, 'awaiting_approval');
+    }
+  });
+
   it('refuses a concurrent retry of the same failed action', async () => {
     registry.result = {
       ok: false,

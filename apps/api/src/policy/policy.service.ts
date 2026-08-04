@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, max } from 'drizzle-orm';
 import { parse as parseYaml } from 'yaml';
 import {
@@ -14,7 +14,20 @@ import { evaluatePolicy, resolveFallbackPolicy } from './policy-engine.js';
 
 @Injectable()
 export class PolicyService {
-  constructor(@Inject(DB) private readonly db: Database) {}
+  private readonly log = new Logger(PolicyService.name);
+
+  constructor(@Inject(DB) private readonly db: Database) {
+    // The escape hatch out of the fail-closed default is legitimate, but it
+    // must never be quiet: an operator reading logs should be able to see that
+    // this deployment permits every tool call an unpolicied org makes.
+    if (resolveFallbackPolicy().default === 'allow') {
+      this.log.warn(
+        'AGENTBASE_FALLBACK_POLICY=allow — orgs with no active policy ALLOW every ' +
+          'tool call. This is the pre-1.0 permissive default and is not recommended ' +
+          'in production; remove the variable to fail closed.',
+      );
+    }
+  }
 
   parseAndValidate(yaml: string): PolicyDocument {
     let raw: unknown;
