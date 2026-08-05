@@ -15,6 +15,7 @@ import type { Connector } from '@agentbase/connector-hubspot';
 import { SlackService } from '../slack/slack.service.js';
 import { AgentRunsService } from '../agent-runtime/agent-runs.service.js';
 import { EffectDispatcher } from '../actions/effect-dispatcher.service.js';
+import { RequestHashMismatchError } from '../actions/effect-commit.js';
 import type {
   ActionStatus,
   ApprovalDecisionResponse,
@@ -302,13 +303,67 @@ export class ApprovalsService {
     // approved "delete branch release/v2", not "whatever row 8f3c holds by the
     // time we get here". If the params no longer hash to what was approved,
     // dispatch() throws and nothing is sent.
-    const dispatched = await this.effects.dispatch({
-      actionId: action.id,
-      tool: action.tool,
-      params: action.params,
-      approvedRequestHash: action.requestHash,
-      connector,
-    });
+    let dispatched;
+    try {
+      dispatched = await this.effects.dispatch({
+        actionId: action.id,
+        tool: action.tool,
+        params: action.params,
+        approvedRequestHash: action.requestHash,
+        connector,
+      });
+    } catch (err) {
+      if (err instanceof RequestHashMismatchError) {
+        // Phase 1 already committed `in_flight`. Leaving it there would let the
+        // sweeper promote this to `unknown` — which asserts the effect MAY have
+        // occurred, when the refusal is positive proof that nothing was sent.
+        // For a `none` connector that false `unknown` would also make the
+        // action permanently non-retryable.
+        await this.db
+          .update(actions)
+          .set({
+            status: 'failed',
+            dispatchState: 'settled',
+            result: {
+              ok: false,
+              error: {
+                code: 'request_changed_after_approval',
+                message: err.message,
+              },
+            },
+            completedAt: new Date(),
+          })
+          .where(eq(actions.id, action.id));
+        await this.audit.record({
+          orgId: input.orgId,
+          actorType: 'system',
+          actorId: 'effect_gate',
+          eventType: 'action.request_changed_after_approval',
+          payload: {
+            actionId: action.id,
+            tool: action.tool,
+            approvalId: phase1.approval.id,
+          },
+        });
+        // The action is terminal, so everything waiting on it has to be told
+        // BEFORE we throw. Otherwise the Slack card sits "pending" forever on a
+        // decision that will never come, and any agent run paused on this
+        // action never resumes — a refusal that protects the effect but strands
+        // the workflow is only half a fix.
+        await this.maybeUpdateSlackCard({
+          approval: phase1.approval,
+          action: phase1.action,
+          decision: 'approved',
+          decidedByDisplay:
+            input.decidedByEmail ?? phase1.approval.decidedByUserId ?? 'web',
+          actionStatus: 'failed',
+          errorCode: 'request_changed_after_approval',
+        });
+        void this.agentRuns.notifyActionResolved(action.id);
+        throw new ConflictException(err.message);
+      }
+      throw err;
+    }
     const result = dispatched.result;
 
     const finalStatus: ActionStatus = result.ok ? 'executed' : 'failed';

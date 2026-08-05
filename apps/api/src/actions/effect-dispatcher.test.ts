@@ -110,8 +110,11 @@ after(async () => {
 
 function dispatcher(replay = false): EffectDispatcher {
   const config = {
-    get: (k: string) =>
-      k === 'AGENTBASE_REPLAY' ? (replay ? '1' : undefined) : undefined,
+    // Returns '' rather than undefined for the non-replay case. Undefined
+    // makes EffectDispatcher.isReplay fall through to process.env, so an
+    // exported AGENTBASE_REPLAY=1 would silently put the whole suite in replay
+    // mode — every connector assertion would pass while nothing was called.
+    get: (k: string) => (k === 'AGENTBASE_REPLAY' ? (replay ? '1' : '') : undefined),
   } as unknown as ConfigService;
   return new EffectDispatcher(new EffectReceiptsService(db, audit), config);
 }
@@ -552,6 +555,38 @@ describe('effect commit protocol', () => {
       assert.equal(outcomes.filter((o) => o.status === 'rejected').length, 1);
     });
 
+    it('a late provider answer cannot overrule a human who already looked', async () => {
+      // The sequence that used to destroy evidence: begin writes attempt N as
+      // indeterminate; the connector is slow; an operator investigates and
+      // records `committed` with the ref they found; the connector then answers
+      // `ok: false` and settle() rewrote the row to failed, nulled the ref, and
+      // discarded who decided it.
+      const receiptId = await quarantined();
+      await receipts.resolve({
+        orgId,
+        receiptId,
+        outcome: 'committed',
+        providerRef: 'sha-operator-found',
+        operatorId: 'alice@agentbase.test',
+      });
+
+      // The late answer arrives against the same attempt handle.
+      await receipts.settle(
+        { id: receiptId, attempt: 1 },
+        { ok: false, error: { code: 'timeout', message: 'too late' } },
+        null,
+      );
+
+      const [r] = await db
+        .select()
+        .from(effectReceipts)
+        .where(eq(effectReceipts.id, receiptId));
+      assert.equal(r!.outcome, 'committed', "the human's verdict stands");
+      assert.equal(r!.providerRef, 'sha-operator-found', 'their reference survives');
+      const stored = r!.receipt as { resolved_by_operator?: string };
+      assert.equal(stored.resolved_by_operator, 'alice@agentbase.test');
+    });
+
     it('refuses to resolve an attempt that already settled itself', async () => {
       await dispatch(); // clean run — settles `committed` on its own
       const [r] = await db
@@ -607,6 +642,36 @@ describe('effect commit protocol', () => {
         await db.delete(orgs).where(eq(orgs.id, other!.id));
       }
     });
+  });
+
+  it('a connector that never answers is bounded, and stays indeterminate', async () => {
+    // An unresponsive provider must not hold the caller forever. Timing out
+    // does not establish an outcome — it frees the request and leaves the
+    // attempt honestly unknown.
+    const hung = new FakeProvider();
+    hung.invoke = () => new Promise(() => {}); // never settles
+    process.env['AGENTBASE_DISPATCH_TIMEOUT_MS'] = '150';
+    try {
+      await assert.rejects(
+        effects.dispatch({
+          actionId,
+          tool: TOOL,
+          params: PARAMS,
+          approvedRequestHash: null,
+          connector: hung,
+        }),
+        /did not answer within/,
+      );
+    } finally {
+      delete process.env['AGENTBASE_DISPATCH_TIMEOUT_MS'];
+    }
+
+    const [r] = await db
+      .select()
+      .from(effectReceipts)
+      .where(eq(effectReceipts.actionId, actionId));
+    assert.equal(r!.outcome, 'indeterminate');
+    assert.equal(r!.settledAt, null);
   });
 
   it('a missing connector opens no attempt', async () => {

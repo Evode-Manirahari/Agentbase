@@ -114,8 +114,11 @@ after(async () => {
 // hard mode switch that makes it incapable of reaching a connector.
 function makeEffects(replay = false): EffectDispatcher {
   const config = {
-    get: (k: string) =>
-      k === 'AGENTBASE_REPLAY' ? (replay ? '1' : undefined) : undefined,
+    // Returns '' rather than undefined for the non-replay case. Undefined
+    // makes EffectDispatcher.isReplay fall through to process.env, so an
+    // exported AGENTBASE_REPLAY=1 would silently put the whole suite in replay
+    // mode — every connector assertion would pass while nothing was called.
+    get: (k: string) => (k === 'AGENTBASE_REPLAY' ? (replay ? '1' : '') : undefined),
   } as unknown as ConfigService;
   return new EffectDispatcher(new EffectReceiptsService(db, audit), config);
 }

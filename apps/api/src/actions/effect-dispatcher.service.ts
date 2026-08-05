@@ -45,6 +45,13 @@ export interface DispatchOutput {
  *     unless a human or a provider lookup resolves it
  *   - in replay, the recorded receipt is returned and nothing is sent at all
  */
+// A provider that accepts the connection and never answers would otherwise
+// hold this request forever, and leave an `indeterminate` row that a human has
+// to clear. Timing out does not make the outcome known — it stays
+// indeterminate, which is correct — but it frees the caller and bounds how much
+// manual work one unresponsive provider can create.
+const DISPATCH_TIMEOUT_MS = 60_000;
+
 @Injectable()
 export class EffectDispatcher {
   private readonly log = new Logger(EffectDispatcher.name);
@@ -66,6 +73,19 @@ export class EffectDispatcher {
         process.env['AGENTBASE_REPLAY'] ??
         '') === '1'
     );
+  }
+
+  private timeoutMs(): number {
+    const raw =
+      this.config.get<string>('AGENTBASE_DISPATCH_TIMEOUT_MS') ??
+      process.env['AGENTBASE_DISPATCH_TIMEOUT_MS'];
+    const n = raw ? Number(raw) : NaN;
+    // Node coerces delays above 2^31-1 to 1ms, so an over-large value would
+    // silently abort every connector call instantly and fill the operator
+    // queue with indeterminate attempts. Out-of-range means "use the default",
+    // not "use something absurd".
+    const MAX_TIMER_MS = 2_147_483_647;
+    return Number.isFinite(n) && n > 0 && n <= MAX_TIMER_MS ? n : DISPATCH_TIMEOUT_MS;
   }
 
   async dispatch(input: DispatchInput): Promise<DispatchOutput> {
@@ -101,7 +121,8 @@ export class EffectDispatcher {
     // A connector that does not declare its idempotency is treated as `none`.
     // Defaulting optimistically would silently turn every unaudited connector
     // into a duplicate-effect risk the moment someone clicks Retry.
-    const mode: IdempotencyMode = input.connector.idempotency?.(input.tool) ?? 'none';
+    const mode: IdempotencyMode =
+      input.connector.idempotency?.(input.tool, input.params) ?? 'none';
     // Only send a key where the provider actually honours one. Attaching it
     // otherwise records a guarantee we do not have.
     const key = mode === 'key' ? providerIdempotencyKey(input.actionId) : null;
@@ -114,10 +135,14 @@ export class EffectDispatcher {
 
     let result: ConnectorResult;
     try {
-      result = await input.connector.invoke(
+      result = await withTimeout(
+        input.connector.invoke(
+          input.tool,
+          input.params,
+          key ? { idempotencyKey: key } : {},
+        ),
+        this.timeoutMs(),
         input.tool,
-        input.params,
-        key ? { idempotencyKey: key } : {},
       );
     } catch (err) {
       // We threw somewhere around the call. We do NOT know whether the request
@@ -188,5 +213,31 @@ export class EffectDispatcher {
       idempotencyMode: receipt.idempotencyMode,
       replayed: true,
     };
+  }
+}
+
+/**
+ * Rejects if the connector has not answered in time. The caller's catch leaves
+ * the attempt `indeterminate`, which is the honest state: a timeout tells us
+ * nothing about whether the provider acted.
+ */
+async function withTimeout<T>(
+  work: Promise<T>,
+  ms: number,
+  tool: string,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`connector did not answer within ${ms}ms for ${tool}`)),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }

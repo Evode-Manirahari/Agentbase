@@ -70,6 +70,13 @@ below — is not manually retryable either unless the provider can dedupe.
 happened: a Stripe charge id, a GitHub ref sha, a Terraform apply id. That is the
 difference between "we logged a success" and evidence someone else can check.
 
+**On "append-only":** a row is *inserted once per attempt* and *settled once*.
+The settlement fields are mutable exactly once — the transition out of
+`indeterminate` is a conditional update that only fires while the row is still
+indeterminate. So attempts are never merged, overwritten, or deleted, and a late
+provider response cannot overrule a verdict a human already recorded. That is a
+weaker statement than a true append-only log, and it is the accurate one.
+
 ## The guarantee is conditional, and says so
 
 **At-most-once holds when the provider can collapse our retry into the original
@@ -103,7 +110,7 @@ was true when this ran?*
 connector reports `none`. The way forward is not a force flag; it is to establish
 what actually happened:
 
-```
+```http
 POST /v1/effects/:receiptId/resolve
 { "outcome": "committed", "provider_ref": "sha-1", "note": "confirmed in the GitHub UI" }
 ```
@@ -142,7 +149,7 @@ would manufacture evidence for something that may never have happened. It return
 The protocol is measured against a provider double that counts the effects
 **that actually exist on its side**, not the calls we think we made:
 
-```
+```text
 ✔ ten retries across every crash point produce at most one effect
 ✔ replay returns the recorded receipt and reaches no provider at all
 ```
@@ -153,7 +160,7 @@ but before we hear, and clean.
 The assertion is load-bearing rather than decorative — removing the idempotency
 key from the wire and re-running yields:
 
-```
+```text
 not ok - ten retries across every crash point produce at most one effect
     expected: 1
     actual: 8
@@ -173,7 +180,7 @@ cd apps/api && pnpm exec node --import @swc-node/register/esm-register \
 | Object | Purpose |
 |---|---|
 | `actions.request_hash` | What a human approved |
-| `actions.provider_idempotency_key` | Dedupes *our* requests to *them*, distinct from the caller's key to us |
+| `effect_receipts.idempotency_key_sent` | The key actually put on the wire — dedupes *our* requests to *them*, distinct from the caller's key to us |
 | `actions.dispatch_state` | `not_dispatched` / `in_flight` / `settled` / `unknown` |
 | `effect_receipts` | Append-only, one row per attempt |
 | `effect_receipts.idempotency_mode` | The retry guarantee in force at the time |
@@ -188,7 +195,13 @@ cd apps/api && pnpm exec node --import @swc-node/register/esm-register \
   for an operation that is not idempotent will produce duplicates, and nothing
   here detects that. Audit connectors before trusting the mode.
 - **Provider-side dedupe windows expire.** Stripe's idempotency keys last 24
-  hours. A retry after the window is a new request regardless of what we send.
+  hours. A retry after the window is a new request regardless of what we send —
+  so `retry()` refuses a `key`-mode retry of an unknown dispatch older than 24h
+  and sends the operator to resolve the receipt instead.
+- **A connector that never answers is bounded, not resolved.** Dispatch times
+  out after 60s (`AGENTBASE_DISPATCH_TIMEOUT_MS`). The attempt stays
+  `indeterminate`, because a timeout tells us nothing about whether the provider
+  acted — it frees the caller, it does not establish an outcome.
 - **Replay fidelity is bounded by what was recorded.** An effect dispatched
   before this layer existed has no receipt, and replay will correctly refuse to
   invent one.

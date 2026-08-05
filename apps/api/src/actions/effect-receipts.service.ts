@@ -72,7 +72,13 @@ export class EffectReceiptsService {
     result: ConnectorResult,
     providerRef: string | null,
   ): Promise<void> {
-    await this.db
+    // Conditional on the row still being indeterminate, for the same reason
+    // resolve() is. A slow connector can answer AFTER an operator has already
+    // investigated and recorded a verdict; an unconditional update would then
+    // overwrite their finding — replacing `committed` with `failed`, nulling
+    // the provider reference they looked up, and discarding who decided it.
+    // A late answer does not get to overrule a human who went and looked.
+    const claimed = await this.db
       .update(effectReceipts)
       .set({
         outcome: result.ok ? 'committed' : 'failed',
@@ -82,7 +88,20 @@ export class EffectReceiptsService {
           : { ok: false, error: result.error ?? null }) as Record<string, unknown>,
         settledAt: new Date(),
       })
-      .where(eq(effectReceipts.id, handle.id));
+      .where(
+        and(
+          eq(effectReceipts.id, handle.id),
+          eq(effectReceipts.outcome, 'indeterminate'),
+        ),
+      )
+      .returning({ id: effectReceipts.id });
+
+    if (claimed.length === 0) {
+      this.log.warn(
+        `effect attempt ${handle.attempt} answered after it was already resolved — ` +
+          `keeping the recorded verdict and discarding the late provider response`,
+      );
+    }
   }
 
   /**
@@ -103,6 +122,27 @@ export class EffectReceiptsService {
         ),
       )
       .orderBy(desc(effectReceipts.attempt))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * The FIRST attempt against an action, which is the only honest basis for a
+   * retry decision.
+   *
+   * `actions.dispatched_at` cannot be used: the retry claim overwrites it, so
+   * retrying at hour 23 restarts the local clock and a retry at hour 30 would
+   * pass a 24h check long after the provider expired the original key. The
+   * connector's CURRENT idempotency mode is no better — a connector can be
+   * changed between the attempt and the retry. Attempt 1 is immutable, and its
+   * recorded mode and start time are what actually governed the effect.
+   */
+  async firstAttempt(actionId: string): Promise<EffectReceipt | null> {
+    const [row] = await this.db
+      .select()
+      .from(effectReceipts)
+      .where(eq(effectReceipts.actionId, actionId))
+      .orderBy(effectReceipts.attempt)
       .limit(1);
     return row ?? null;
   }

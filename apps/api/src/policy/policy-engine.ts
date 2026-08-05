@@ -1,6 +1,7 @@
 import type {
   AgentPermissionProfile,
   Condition,
+  EffectClassName,
   ConditionOperator,
   PolicyDocument,
   PolicyDecision,
@@ -14,6 +15,13 @@ export interface ActionContext {
     id: string;
     name: string;
     permission_profile: AgentPermissionProfile;
+  } | null;
+  // What this action will consequentially do, when the connector can say.
+  // Absent for connectors that do not classify — see effectMatches() for why
+  // absence is treated as a non-match rather than a wildcard.
+  effect?: {
+    effectClass: EffectClassName;
+    reversible: boolean;
   } | null;
 }
 
@@ -52,8 +60,39 @@ export function evaluatePolicy(
   };
 }
 
+/**
+ * Match a rule's effect predicates against what the action will actually do.
+ *
+ * When a rule asks about the effect and the action carries no assessment, this
+ * is a NON-match. That is the conservative reading in both directions: an
+ * `allow` rule scoped to reads will not fire for an unclassified action, and a
+ * `require_approval` rule scoped to irreversible effects will not fire either —
+ * so the action falls through to whatever the later rules or the default say,
+ * and the default is deny.
+ *
+ * Treating a missing assessment as a wildcard would be the dangerous choice: an
+ * `allow` rule for `effect_class: read` would start allowing everything the
+ * moment a connector stopped classifying.
+ */
+function effectMatches(rule: PolicyRule, action: ActionContext): boolean {
+  const wantClass = rule.match.effect_class;
+  const wantReversible = rule.match.reversible;
+  if (wantClass === undefined && wantReversible === undefined) return true;
+  if (!action.effect) return false;
+
+  if (wantClass !== undefined) {
+    const allowed = Array.isArray(wantClass) ? wantClass : [wantClass];
+    if (!allowed.includes(action.effect.effectClass)) return false;
+  }
+  if (wantReversible !== undefined && action.effect.reversible !== wantReversible) {
+    return false;
+  }
+  return true;
+}
+
 function ruleMatches(rule: PolicyRule, action: ActionContext): boolean {
   if (!matchesToolPattern(rule.match.tool, action.tool)) return false;
+  if (!effectMatches(rule, action)) return false;
   if (rule.match.agent_id && action.agent?.id !== rule.match.agent_id) return false;
   if (rule.match.agent_name && action.agent?.name !== rule.match.agent_name) return false;
   if (

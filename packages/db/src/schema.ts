@@ -186,12 +186,11 @@ export const actions = pgTable(
     // commit is refused, so an approved action cannot be dispatched with
     // params other than the ones a human actually read.
     requestHash: text('request_hash'),
-    // Deterministic key handed to the PROVIDER (Stripe's Idempotency-Key,
-    // GitHub's, etc). Distinct from `idempotencyKey`, which is the caller's
-    // key for deduplicating requests to us. This one deduplicates OUR requests
-    // to them, which is the only thing that makes a retry safe when we cannot
-    // tell whether the first attempt landed.
-    providerIdempotencyKey: text('provider_idempotency_key'),
+    // NOTE: there is deliberately no `provider_idempotency_key` column here.
+    // The key is a pure function of the action id, and what was ACTUALLY put on
+    // the wire is recorded per attempt in `effect_receipts.idempotency_key_sent`.
+    // A second copy on this row could disagree with the sent one, and the copy
+    // that matters during an incident is the one the provider saw.
     dispatchState: dispatchState('dispatch_state').notNull().default('not_dispatched'),
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -232,10 +231,16 @@ export const approvals = pgTable(
   }),
 );
 
-// Append-only record of every dispatch attempt against a provider, and the
-// evidence it produced. This is the artifact that answers "what actually
-// happened out there?" after a crash — and the artifact replay serves instead
-// of touching the provider again.
+// Every dispatch attempt against a provider, and the evidence it produced.
+// This is the artifact that answers "what actually happened out there?" after a
+// crash — and the artifact replay serves instead of touching the provider again.
+//
+// Rows are inserted once per attempt and settled once: the transition out of
+// `indeterminate` is conditional on the row still being indeterminate, so
+// attempts are never merged, overwritten, or deleted, and a late provider
+// response cannot overrule a verdict a human already recorded. Not a true
+// append-only log — the settlement fields are mutable exactly once — and
+// describing it as one would overstate the guarantee.
 //
 // One row per ATTEMPT, not per action: an action that was attempted, crashed
 // indeterminate, and was later reconciled has two rows telling that story.
