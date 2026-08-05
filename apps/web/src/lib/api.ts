@@ -95,6 +95,21 @@ export interface ApprovalRow {
   slack_ts: string | null;
 }
 
+// One dispatch attempt whose outcome nobody knows. The request went out and
+// the answer never came back, so the effect may or may not exist — which is
+// why this is an operator queue and not a retry queue.
+export interface IndeterminateEffectRow {
+  receipt_id: string;
+  action_id: string;
+  attempt: number;
+  connector: string;
+  idempotency_key_sent: string | null;
+  idempotency_mode: 'key' | 'natural' | 'none';
+  started_at: string;
+  tool: string;
+  params: Record<string, unknown>;
+}
+
 export interface AuditRow {
   id: string;
   orgId: string;
@@ -358,6 +373,25 @@ export const api = {
         result?: Record<string, unknown>;
         policy_decision: unknown;
       }>(`/v1/actions/${actionId}/retry`, { method: 'POST' }),
+  },
+  effects: {
+    indeterminate: (limit = 100) =>
+      req<{ items: IndeterminateEffectRow[]; count: number }>(
+        `/v1/effects/indeterminate?limit=${limit}`,
+      ),
+    resolve: (
+      receiptId: string,
+      body: { outcome: 'committed' | 'failed'; provider_ref?: string; note?: string },
+    ) =>
+      req<{
+        receipt_id: string;
+        action_id: string;
+        attempt: number;
+        outcome: string;
+      }>(`/v1/effects/${receiptId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   },
   approvals: {
     list: () => req<{ items: ApprovalRow[] }>(`/v1/approvals`),

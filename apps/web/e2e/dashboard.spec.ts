@@ -40,6 +40,21 @@ test.describe('dashboard renders every route', () => {
     await expect(page.getByRole('heading', { name: 'Actions' })).toBeVisible();
   });
 
+  test('effects page renders the quarantine queue', async ({ page }) => {
+    await page.goto('/effects');
+    await expect(page.getByRole('heading', { name: 'Effects' })).toBeVisible();
+    // An empty queue is the normal state, and the page has to say so rather
+    // than looking broken — this is the screen an operator opens during an
+    // incident, and a blank panel reads as a failure.
+    await expect(page.getByText(/Nothing in quarantine/i)).toBeVisible();
+  });
+
+  test('effects is reachable from the nav', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('link', { name: 'Effects' }).click();
+    await expect(page.getByRole('heading', { name: 'Effects' })).toBeVisible();
+  });
+
   test('audit page renders', async ({ page }) => {
     await page.goto('/audit');
     await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible();
