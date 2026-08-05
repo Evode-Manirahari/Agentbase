@@ -11,6 +11,18 @@ export interface ApprovalCardInput {
   reason: string | null;
   expiresAt: Date | null;
   channelOverride?: string | null;
+  // What the gate determined this action will actually do. Present when the
+  // connector could classify it. The person about to click Approve is being
+  // asked whether an effect is acceptable, and `{"command":"npm publish"}`
+  // states the command without stating the consequence — the reviewer has to
+  // supply "that is irreversible and public" from their own knowledge, at a
+  // glance, on a phone. Putting the grade on the card is the difference
+  // between a decision and a reflex.
+  effect?: {
+    effectClass: string;
+    reversible: boolean;
+    summary: string;
+  } | null;
 }
 
 export interface PostedCard {
@@ -128,15 +140,41 @@ export class SlackService {
   }
 }
 
-function buildPendingBlocks(input: ApprovalCardInput): KnownBlock[] {
+// Exported for tests: the card is what a human reads before authorising an
+// irreversible effect, so its content is worth asserting on directly.
+export function buildPendingBlocks(input: ApprovalCardInput): KnownBlock[] {
   const fields = [
     mrkdwn(`*Agent*\n${input.agentName}`),
     mrkdwn(`*Tool*\n\`${input.tool}\``),
   ];
+  if (input.effect) {
+    const e = input.effect;
+    fields.push(
+      mrkdwn(
+        `*Effect*\n\`${e.effectClass}\` — ` +
+          (e.reversible ? 'reversible' : '*irreversible*'),
+      ),
+    );
+  }
   if (input.reason) fields.push(mrkdwn(`*Reason*\n${input.reason}`));
   if (input.expiresAt) {
     fields.push(mrkdwn(`*Expires*\n<!date^${Math.floor(input.expiresAt.getTime() / 1000)}^{date_short_pretty} {time}|${input.expiresAt.toISOString()}>`));
   }
+  const consequence = input.effect
+    ? [
+        {
+          type: 'context' as const,
+          elements: [
+            {
+              type: 'mrkdwn' as const,
+              text: input.effect.reversible
+                ? `${input.effect.summary}. This can be undone.`
+                : `⚠️ ${input.effect.summary}. *This cannot be undone.*`,
+            },
+          ],
+        },
+      ]
+    : [];
   const paramsJson = JSON.stringify(input.params, null, 2);
   const truncated = paramsJson.length > 2500 ? paramsJson.slice(0, 2497) + '…' : paramsJson;
   return [
@@ -145,6 +183,7 @@ function buildPendingBlocks(input: ApprovalCardInput): KnownBlock[] {
       text: { type: 'plain_text', text: '🛂 Approval needed', emoji: true },
     },
     { type: 'section', fields },
+    ...consequence,
     {
       type: 'section',
       text: { type: 'mrkdwn', text: `*Params*\n\`\`\`${truncated}\`\`\`` },
