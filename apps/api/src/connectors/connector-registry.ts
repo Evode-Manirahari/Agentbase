@@ -5,6 +5,7 @@ import { SalesforceConnector } from '@agentbase/connector-salesforce';
 import { GmailConnector } from '@agentbase/connector-gmail';
 import { OutreachConnector } from '@agentbase/connector-outreach';
 import { ApolloConnector } from '@agentbase/connector-apollo';
+import { ShellConnector, SHELL_TOOLS } from '@agentbase/connector-shell';
 import {
   ConnectorCredentialsService,
   type ConnectorConfig,
@@ -14,11 +15,22 @@ import type { ConnectorProvider } from '@agentbase/shared';
 @Injectable()
 export class ConnectorRegistry {
   private readonly envConfig: Record<ConnectorProvider, ConnectorConfig | null>;
+  // Shell is not a credentialed provider — there is no token to store and no
+  // per-org config — so it sits outside ConnectorProvider rather than being
+  // forced into an enum that also backs the connector_credentials table.
+  private readonly shell: ShellConnector;
 
   constructor(
     config: ConfigService,
     @Optional() private readonly credentials?: ConnectorCredentialsService,
   ) {
+    const shellEnabled =
+      (config.get<string>('AGENTBASE_SHELL_ENABLED') ?? '').trim() === '1';
+    const shellCwd = config.get<string>('AGENTBASE_SHELL_CWD');
+    this.shell = new ShellConnector({
+      enabled: shellEnabled,
+      ...(shellCwd ? { cwd: shellCwd } : {}),
+    });
     const hubspotToken = config.get<string>('HUBSPOT_ACCESS_TOKEN');
     const sfToken = config.get<string>('SALESFORCE_ACCESS_TOKEN');
     const sfInstanceUrl = config.get<string>('SALESFORCE_INSTANCE_URL');
@@ -59,6 +71,12 @@ export class ConnectorRegistry {
   }
 
   resolve(tool: string): Connector | null {
+    // Resolved even when execution is disabled, deliberately. The connector's
+    // assess() is what lets policy classify the command, so a disabled shell
+    // still gets graded and gated — and the caller gets `shell_disabled`,
+    // which names the misconfiguration, rather than `no_connector`, which
+    // looks like the tool does not exist.
+    if (isShellTool(tool)) return this.shell;
     const provider = providerForTool(tool);
     if (!provider) return null;
     const connector = buildConnector(provider, this.envConfig[provider]);
@@ -66,6 +84,7 @@ export class ConnectorRegistry {
   }
 
   async resolveForOrg(orgId: string, tool: string): Promise<Connector | null> {
+    if (isShellTool(tool)) return this.shell;
     const provider = providerForTool(tool);
     if (!provider) return null;
     const config = this.credentials
@@ -76,7 +95,7 @@ export class ConnectorRegistry {
   }
 
   list(): { name: string }[] {
-    return CONNECTOR_PROVIDERS.map((name) => ({ name }));
+    return [...CONNECTOR_PROVIDERS.map((name) => ({ name })), { name: 'shell' }];
   }
 }
 
@@ -87,6 +106,10 @@ const CONNECTOR_PROVIDERS: ConnectorProvider[] = [
   'outreach',
   'apollo',
 ];
+
+function isShellTool(tool: string): boolean {
+  return (SHELL_TOOLS as readonly string[]).includes(tool);
+}
 
 function providerForTool(tool: string): ConnectorProvider | null {
   const [prefix] = tool.split('.');

@@ -21,13 +21,14 @@
     "lint": "eslint src --max-warnings=0"
   },
   "dependencies": {
+    "@agentbase/connector-apollo": "workspace:*",
+    "@agentbase/connector-gmail": "workspace:*",
+    "@agentbase/connector-hubspot": "workspace:*",
+    "@agentbase/connector-outreach": "workspace:*",
+    "@agentbase/connector-salesforce": "workspace:*",
+    "@agentbase/connector-shell": "workspace:*",
     "@agentbase/sdk": "workspace:*",
     "@agentbase/shared": "workspace:*",
-    "@agentbase/connector-hubspot": "workspace:*",
-    "@agentbase/connector-salesforce": "workspace:*",
-    "@agentbase/connector-gmail": "workspace:*",
-    "@agentbase/connector-apollo": "workspace:*",
-    "@agentbase/connector-outreach": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.0.4"
   },
   "devDependencies": {

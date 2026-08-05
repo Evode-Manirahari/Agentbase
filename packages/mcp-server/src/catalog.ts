@@ -3,6 +3,7 @@ import { GMAIL_TOOLS } from '@agentbase/connector-gmail';
 import { HUBSPOT_TOOLS } from '@agentbase/connector-hubspot';
 import { OUTREACH_TOOLS } from '@agentbase/connector-outreach';
 import { SALESFORCE_TOOLS } from '@agentbase/connector-salesforce';
+import { SHELL_TOOLS } from '@agentbase/connector-shell';
 
 export interface ToolCatalogEntry {
   name: string;
@@ -19,6 +20,7 @@ const PROVIDER_LABEL: Record<string, string> = {
   hubspot: 'HubSpot',
   outreach: 'Outreach',
   salesforce: 'Salesforce',
+  shell: 'shell',
 };
 
 function describe(toolName: string): string {
@@ -52,7 +54,26 @@ export function buildCatalog(): ToolCatalogEntry[] {
     ...OUTREACH_TOOLS,
     ...SALESFORCE_TOOLS,
   ];
-  return all.map(entry);
+  // shell.run is described by hand rather than by the generic template: the
+  // agent needs to know the command is graded and may be held for approval,
+  // and that compound lines are refused. A tool description an agent
+  // misunderstands turns into an approval queue full of retries.
+  return [
+    ...all.map(entry),
+    ...SHELL_TOOLS.map((name) => ({
+      name,
+      description:
+        'Run a single shell command through the Agentbase effect gate. The ' +
+        'command is classified by consequence (read / workspace_write / ' +
+        'vcs_write / deploy / publish / infra_write / egress) before it runs, ' +
+        'and policy may allow it, hold it for human approval, or deny it. ' +
+        'Submit ONE command per call — compound lines (`a && b`, `a | b`) are ' +
+        'refused so each effect gets its own receipt. Commands containing ' +
+        '$(...), backticks, or eval are refused because their contents cannot ' +
+        'be classified. Params: { command: string, cwd?: string, timeout_ms?: number }.',
+      inputSchema: { type: 'object' as const, additionalProperties: true as const },
+    })),
+  ];
 }
 
 export function isCatalogTool(name: string, catalog: ToolCatalogEntry[]): boolean {
