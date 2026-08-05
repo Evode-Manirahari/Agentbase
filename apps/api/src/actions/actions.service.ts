@@ -21,6 +21,12 @@ import type { ActionStatus, PolicyDecision } from '@agentbase/shared';
 
 const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 
+// How long a provider idempotency key stays good. Stripe's window is 24 hours
+// and it is the shortest of the majors, so we take it as the bound. Past it,
+// re-sending the same key is a NEW request to the provider — the retry looks
+// at-most-once to us and is not.
+const IDEMPOTENCY_KEY_TTL_MS = 24 * 60 * 60 * 1000;
+
 export interface ExecuteInput {
   orgId: string;
   agentId: string;
@@ -329,6 +335,21 @@ export class ActionsService {
     if (original.dispatchState === 'unknown') {
       const connector = await this.resolveConnector(input.orgId, original.tool);
       const mode = connector?.idempotency?.(original.tool) ?? 'none';
+      // A `key` mode retry is only safe inside the provider's dedupe window.
+      // Outside it, the key no longer collapses anything and the retry is a
+      // fresh effect — the same duplicate this guard exists to prevent, just
+      // slower to arrive.
+      const dispatchedAt = original.dispatchedAt?.getTime() ?? 0;
+      const keyExpired =
+        mode === 'key' && Date.now() - dispatchedAt > IDEMPOTENCY_KEY_TTL_MS;
+      if (keyExpired) {
+        throw new ConflictException(
+          `cannot retry action ${input.actionId}: its dispatch outcome is unknown and the ` +
+            `provider idempotency key is older than ${IDEMPOTENCY_KEY_TTL_MS / 3_600_000}h, ` +
+            `so re-sending would be a new request rather than a deduplicated one. ` +
+            `Resolve the effect receipt with what you find at the provider instead.`,
+        );
+      }
       if (mode === 'none') {
         throw new ConflictException(
           `cannot retry action ${input.actionId}: its dispatch outcome is unknown and ` +

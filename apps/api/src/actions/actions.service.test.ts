@@ -160,8 +160,11 @@ after(async () => {
 // hard mode switch that makes it incapable of reaching a connector.
 function makeEffects(replay = false): EffectDispatcher {
   const config = {
-    get: (k: string) =>
-      k === 'AGENTBASE_REPLAY' ? (replay ? '1' : undefined) : undefined,
+    // Returns '' rather than undefined for the non-replay case. Undefined
+    // makes EffectDispatcher.isReplay fall through to process.env, so an
+    // exported AGENTBASE_REPLAY=1 would silently put the whole suite in replay
+    // mode — every connector assertion would pass while nothing was called.
+    get: (k: string) => (k === 'AGENTBASE_REPLAY' ? (replay ? '1' : '') : undefined),
   } as unknown as ConfigService;
   return new EffectDispatcher(new EffectReceiptsService(db, audit), config);
 }
@@ -779,6 +782,31 @@ describe('ActionsService.execute', () => {
     await assert.rejects(
       svc.retry({ orgId, actionId: out.action_id, operatorId: 'op' }),
       /dispatch outcome is unknown/,
+    );
+    assert.equal(registry.invocations.length, 0, 'the connector was not called');
+  });
+
+  it('retry: refuses a key-mode retry once the provider dedupe window has passed', async () => {
+    // Stripe keys last 24h. Past that the key collapses nothing and the retry
+    // is a fresh effect — the same duplicate the guard exists to prevent, just
+    // slower to arrive.
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.result = { ok: false, error: { code: 'timeout', message: 'gone' } };
+    const out = await execute('t.t', {});
+    await db
+      .update(actions)
+      .set({
+        status: 'failed',
+        dispatchState: 'unknown',
+        dispatchedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      })
+      .where(eq(actions.id, out.action_id));
+
+    registry.idempotencyMode = 'key';
+    registry.invocations.length = 0;
+    await assert.rejects(
+      svc.retry({ orgId, actionId: out.action_id, operatorId: 'op' }),
+      /older than 24h/,
     );
     assert.equal(registry.invocations.length, 0, 'the connector was not called');
   });

@@ -72,7 +72,13 @@ export class EffectReceiptsService {
     result: ConnectorResult,
     providerRef: string | null,
   ): Promise<void> {
-    await this.db
+    // Conditional on the row still being indeterminate, for the same reason
+    // resolve() is. A slow connector can answer AFTER an operator has already
+    // investigated and recorded a verdict; an unconditional update would then
+    // overwrite their finding — replacing `committed` with `failed`, nulling
+    // the provider reference they looked up, and discarding who decided it.
+    // A late answer does not get to overrule a human who went and looked.
+    const claimed = await this.db
       .update(effectReceipts)
       .set({
         outcome: result.ok ? 'committed' : 'failed',
@@ -82,7 +88,20 @@ export class EffectReceiptsService {
           : { ok: false, error: result.error ?? null }) as Record<string, unknown>,
         settledAt: new Date(),
       })
-      .where(eq(effectReceipts.id, handle.id));
+      .where(
+        and(
+          eq(effectReceipts.id, handle.id),
+          eq(effectReceipts.outcome, 'indeterminate'),
+        ),
+      )
+      .returning({ id: effectReceipts.id });
+
+    if (claimed.length === 0) {
+      this.log.warn(
+        `effect attempt ${handle.attempt} answered after it was already resolved — ` +
+          `keeping the recorded verdict and discarding the late provider response`,
+      );
+    }
   }
 
   /**
