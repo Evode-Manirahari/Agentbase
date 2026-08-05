@@ -58,6 +58,7 @@ describe('MetricsService.overview', () => {
     result?: Record<string, unknown> | null;
     policyDecision?: Record<string, unknown> | null;
     createdAt?: Date;
+    dispatchState?: 'not_dispatched' | 'in_flight' | 'settled' | 'unknown';
   }) {
     await db.insert(actions).values({
       orgId,
@@ -67,9 +68,45 @@ describe('MetricsService.overview', () => {
       status: opts.status,
       result: opts.result ?? null,
       policyDecision: opts.policyDecision ?? null,
+      ...(opts.dispatchState ? { dispatchState: opts.dispatchState } : {}),
       ...(opts.createdAt ? { createdAt: opts.createdAt } : {}),
     });
   }
+
+  // An unknown dispatch is recorded status=failed because the action did not
+  // complete. Counting it as a failure asserts nothing happened, which is
+  // precisely what nobody knows — and it buries the number an operator needs.
+  describe('unknown dispatches are not failures', () => {
+    it('counts them separately and keeps them out of failure_rate', async () => {
+      await insertAction({ status: 'executed' });
+      await insertAction({ status: 'executed' });
+      await insertAction({ status: 'failed' }); // a real failure
+      await insertAction({ status: 'failed', dispatchState: 'unknown' });
+      await insertAction({ status: 'failed', dispatchState: 'unknown' });
+
+      const m = await svc.overview(orgId);
+      assert.equal(m.total, 5);
+      assert.equal(m.indeterminate_count, 2);
+      // 1 genuine failure out of 5, not 3 of 5.
+      assert.equal(m.failure_rate, 1 / 5);
+    });
+
+    it('is zero when nothing is quarantined', async () => {
+      await insertAction({ status: 'executed' });
+      await insertAction({ status: 'failed' });
+      const m = await svc.overview(orgId);
+      assert.equal(m.indeterminate_count, 0);
+      assert.equal(m.failure_rate, 1 / 2, 'real failures still counted');
+    });
+
+    it('never reports a negative failure rate', async () => {
+      // The two counts come from separate queries, so a row can settle
+      // between them. Clamped rather than allowed to go negative.
+      await insertAction({ status: 'executed', dispatchState: 'unknown' });
+      const m = await svc.overview(orgId);
+      assert.ok(m.failure_rate >= 0);
+    });
+  });
 
   it('empty org → all zeros, empty top arrays', async () => {
     const m = await svc.overview(orgId);
@@ -77,6 +114,7 @@ describe('MetricsService.overview', () => {
     assert.equal(m.deny_rate, 0);
     assert.equal(m.failure_rate, 0);
     assert.equal(m.rate_limited_count, 0);
+    assert.equal(m.indeterminate_count, 0);
     assert.deepEqual(m.top_tools, []);
     assert.deepEqual(m.top_agents, []);
     // by_status is fully populated even when empty (so the UI doesn't have

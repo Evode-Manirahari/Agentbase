@@ -146,6 +146,8 @@ export interface MetricsOverview {
     pending: number;
   };
   rate_limited_count: number;
+  // Dispatches that started and never settled. Not failures — nobody knows.
+  indeterminate_count: number;
   top_tools: { tool: string; count: number }[];
   top_agents: { agent_id: string; agent_name: string; count: number }[];
   top_policy_rules: {

@@ -162,6 +162,19 @@ function MetricsBoard({ metrics }: { metrics: MetricsOverview }) {
           ]}
           total={metrics.total}
         />
+        {metrics.indeterminate_count > 0 ? (
+          // The one number on this page that needs a person. Everything else
+          // is a rate to watch; this is a queue to clear, and it is excluded
+          // from the failure bar above precisely because it is not a failure.
+          <a
+            href="/effects"
+            className="mt-3 block rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300 hover:bg-amber-500/20"
+          >
+            {metrics.indeterminate_count} dispatch
+            {metrics.indeterminate_count === 1 ? '' : 'es'} with an unknown
+            outcome — not retried, awaiting a human. Resolve →
+          </a>
+        ) : null}
         {metrics.rate_limited_count > 0 ? (
           <div className="text-xs text-amber-400 mt-3">
             {metrics.rate_limited_count} rate-limited in window
