@@ -1317,6 +1317,107 @@ describe('ActionsService.execute', () => {
   });
 });
 
+describe('ActionsService.listForOrg — what a reviewer can see', () => {
+  // The review surface has to distinguish "it did not happen" from "nobody
+  // knows". The sweeper marks a never-settled dispatch `failed`, so status
+  // alone actively misleads on the one case where being wrong is expensive.
+  let orgId: string;
+  let agentId: string;
+  let svc: ActionsService;
+
+  beforeEach(async () => {
+    const [org] = await db
+      .insert(orgs)
+      .values({ name: 'Test', slug: `vis-${randomUUID().slice(0, 8)}` })
+      .returning();
+    orgId = org!.id;
+    const [agent] = await db
+      .insert(agents)
+      .values({ orgId, name: 'vis-agent' })
+      .returning();
+    agentId = agent!.id;
+    svc = new ActionsService(
+      db,
+      audit,
+      new StubPolicy() as unknown as PolicyService,
+      new StubRegistry() as unknown as ConnectorRegistry,
+      new StubSlack() as unknown as SlackService,
+      new StubRateLimit() as unknown as RateLimitService,
+      makeEffects(),
+      new EffectReceiptsService(db, audit),
+    );
+  });
+
+  afterEach(async () => {
+    if (orgId) await db.delete(orgs).where(eq(orgs.id, orgId));
+  });
+
+  it('exposes dispatch_state so an unknown outcome is distinguishable', async () => {
+    const [row] = await db
+      .insert(actions)
+      .values({
+        orgId,
+        agentId,
+        tool: 'shell.run',
+        params: { command: 'npm publish' },
+        status: 'failed',
+        dispatchState: 'unknown',
+        policyDecision: makeDecision() as unknown as Record<string, unknown>,
+      })
+      .returning();
+
+    const listed = (await svc.listForOrg(orgId)).items.find((i) => i.id === row!.id);
+    assert.ok(listed);
+    assert.equal(listed!.status, 'failed');
+    assert.equal(
+      listed!.dispatch_state,
+      'unknown',
+      'without this the row is indistinguishable from a genuine failure',
+    );
+  });
+
+  it('exposes the recorded effect assessment', async () => {
+    const [row] = await db
+      .insert(actions)
+      .values({
+        orgId,
+        agentId,
+        tool: 'shell.run',
+        params: {},
+        status: 'executed',
+        dispatchState: 'settled',
+        effectAssessment: {
+          effectClass: 'publish',
+          reversible: false,
+          summary: 'Publishes a package to a public registry',
+        },
+        policyDecision: makeDecision() as unknown as Record<string, unknown>,
+      })
+      .returning();
+
+    const listed = (await svc.listForOrg(orgId)).items.find((i) => i.id === row!.id);
+    assert.equal(listed!.effect_assessment?.reversible, false);
+    assert.equal(listed!.effect_assessment?.effectClass, 'publish');
+  });
+
+  it('leaves both null-ish for rows that predate the columns', async () => {
+    const [row] = await db
+      .insert(actions)
+      .values({
+        orgId,
+        agentId,
+        tool: 'hubspot.deals.update',
+        params: {},
+        status: 'executed',
+        policyDecision: makeDecision() as unknown as Record<string, unknown>,
+      })
+      .returning();
+    const listed = (await svc.listForOrg(orgId)).items.find((i) => i.id === row!.id);
+    assert.equal(listed!.effect_assessment, null);
+    assert.equal(listed!.dispatch_state, 'not_dispatched');
+  });
+});
+
 describe('ActionsService.listForOrg', () => {
   let orgId: string;
   let agentId: string;

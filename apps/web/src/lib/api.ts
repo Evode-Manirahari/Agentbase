@@ -64,6 +64,15 @@ export interface ActionRow {
   tool: string;
   params: Record<string, unknown>;
   status: 'pending' | 'awaiting_approval' | 'approved' | 'denied' | 'executed' | 'failed';
+  // What we know about the EXTERNAL side effect, which is a different question
+  // from what the gate decided. `failed` + `unknown` means "we do not know",
+  // not "nothing happened".
+  dispatch_state: 'not_dispatched' | 'in_flight' | 'settled' | 'unknown';
+  effect_assessment: {
+    effectClass: string;
+    reversible: boolean;
+    summary: string;
+  } | null;
   policy_decision: Record<string, unknown> | null;
   result: Record<string, unknown> | null;
   created_at: string;
