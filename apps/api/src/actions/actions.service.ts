@@ -15,6 +15,7 @@ import { ConnectorRegistry } from '../connectors/connector-registry.js';
 import { SlackService } from '../slack/slack.service.js';
 import { RateLimitService } from './rate-limit.service.js';
 import { EffectDispatcher } from './effect-dispatcher.service.js';
+import { EffectReceiptsService } from './effect-receipts.service.js';
 import { requestHash } from './effect-commit.js';
 import type { Connector } from '@agentbase/connector-hubspot';
 import type {
@@ -39,6 +40,14 @@ export interface ExecuteInput {
   idempotencyKey?: string | undefined;
 }
 
+interface EffectAssessmentOutcome {
+  // True only when an assessor existed and threw. A connector with no assessor
+  // is `failed: false, effect: null` — not knowing is fine, being unable to
+  // find out is not.
+  failed: boolean;
+  effect: { effectClass: EffectClassName; reversible: boolean } | null;
+}
+
 export interface ExecuteOutput {
   action_id: string;
   status: ActionStatus;
@@ -58,6 +67,7 @@ export class ActionsService {
     private readonly slack: SlackService,
     private readonly rateLimit: RateLimitService,
     private readonly effects: EffectDispatcher,
+    private readonly receipts: EffectReceiptsService,
   ) {}
 
   async execute(input: ExecuteInput): Promise<ExecuteOutput> {
@@ -140,11 +150,41 @@ export class ActionsService {
     // doing it here costs nothing the deny path would not already pay.
     const graded = await this.assessEffect(input.orgId, input.tool, input.params);
 
+    // An assessment that threw is not the same as a connector that cannot
+    // classify. We were told nothing about an action we were supposed to be
+    // able to grade, so we do not dispatch it — regardless of what the policy
+    // default happens to be.
+    if (graded.failed) {
+      const decision: PolicyDecision = {
+        effect: 'deny',
+        reason: 'effect assessment failed — cannot determine what this action does',
+        rule_index: null,
+        rule_matched: null,
+        approver_role: null,
+        policy_id: null,
+        fallback: true,
+      };
+      const recorded = await this.recordAction(input, 'denied', decision, null);
+      if (recorded.conflict) return recorded.conflict;
+      await this.audit.record({
+        orgId: input.orgId,
+        actorType: 'system',
+        actorId: 'effect_gate',
+        eventType: 'action.assessment_failed',
+        payload: { actionId: recorded.action.id, tool: input.tool },
+      });
+      return {
+        action_id: recorded.action.id,
+        status: 'denied',
+        policy_decision: decision,
+      };
+    }
+
     const decision = await this.policy.evaluate(input.orgId, {
       tool: input.tool,
       params: input.params,
       agentId: input.agentId,
-      effect: graded,
+      effect: graded.effect,
     });
 
     if (decision.effect === 'deny') {
@@ -345,19 +385,31 @@ export class ActionsService {
     // actually found at the provider.
     if (original.dispatchState === 'unknown') {
       const connector = await this.resolveConnector(input.orgId, original.tool);
-      // Params matter here: for a shell connector the retry guarantee lives in
-      // the command, not the verb — `git status` is repeatable, `npm publish`
-      // is not.
+      // Both inputs come from the FIRST attempt, not from live state.
+      //
+      // `actions.dispatched_at` is overwritten by the retry claim below, so
+      // measuring against it lets a retry at hour 23 restart the clock and a
+      // retry at hour 30 slip through a 24h check the provider already
+      // expired. Asking the connector for its mode now is no better: it can
+      // have been changed since. Attempt 1 is immutable and is what actually
+      // governed the effect.
+      const first = await this.receipts.firstAttempt(input.actionId);
       const mode =
+        first?.idempotencyMode ??
+        // No recorded attempt means nothing was ever dispatched through the
+        // protocol, so there is no evidence of an in-flight effect to protect —
+        // fall back to asking the connector, still pessimistically.
         connector?.idempotency?.(
           original.tool,
           original.params as Record<string, unknown>,
-        ) ?? 'none';
+        ) ??
+        'none';
       // A `key` mode retry is only safe inside the provider's dedupe window.
       // Outside it, the key no longer collapses anything and the retry is a
       // fresh effect — the same duplicate this guard exists to prevent, just
       // slower to arrive.
-      const dispatchedAt = original.dispatchedAt?.getTime() ?? 0;
+      const dispatchedAt =
+        first?.startedAt?.getTime() ?? original.dispatchedAt?.getTime() ?? 0;
       const keyExpired =
         mode === 'key' && Date.now() - dispatchedAt > IDEMPOTENCY_KEY_TTL_MS;
       if (keyExpired) {
@@ -511,7 +563,7 @@ export class ActionsService {
     orgId: string,
     tool: string,
     params: Record<string, unknown>,
-  ): Promise<{ effectClass: EffectClassName; reversible: boolean } | null> {
+  ): Promise<EffectAssessmentOutcome> {
     try {
       const connector = (await this.resolveConnector(orgId, tool)) as
         | (Connector & {
@@ -522,13 +574,24 @@ export class ActionsService {
           })
         | null;
       const a = connector?.assess?.(params);
-      return a ? { effectClass: a.effectClass, reversible: a.reversible } : null;
+      // No assessor at all is not a failure — most connectors cannot classify,
+      // and effect-scoped rules simply do not apply to them.
+      return {
+        failed: false,
+        effect: a ? { effectClass: a.effectClass, reversible: a.reversible } : null,
+      };
     } catch (err) {
-      // A classifier that throws must not take the gate down with it. No
-      // assessment means effect-scoped rules do not fire, which fails toward
-      // the policy default rather than toward allow.
-      this.log.warn(`effect assessment failed for ${tool}: ${(err as Error).message}`);
-      return null;
+      // A classifier that THREW is different: something that was supposed to
+      // tell us what this action does could not. Returning "no assessment"
+      // here would be an authorization bypass on an org whose policy default
+      // is `allow` — the effect-scoped require_approval rule silently stops
+      // matching and the action dispatches unreviewed. So this is reported as
+      // a distinct failure and the caller denies.
+      this.log.error(
+        `effect assessment threw for ${tool} — denying rather than dispatching ` +
+          `an action whose consequences could not be determined: ${(err as Error).message}`,
+      );
+      return { failed: true, effect: null };
     }
   }
 

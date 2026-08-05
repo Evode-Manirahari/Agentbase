@@ -345,6 +345,21 @@ export class ApprovalsService {
             approvalId: phase1.approval.id,
           },
         });
+        // The action is terminal, so everything waiting on it has to be told
+        // BEFORE we throw. Otherwise the Slack card sits "pending" forever on a
+        // decision that will never come, and any agent run paused on this
+        // action never resumes — a refusal that protects the effect but strands
+        // the workflow is only half a fix.
+        await this.maybeUpdateSlackCard({
+          approval: phase1.approval,
+          action: phase1.action,
+          decision: 'approved',
+          decidedByDisplay:
+            input.decidedByEmail ?? phase1.approval.decidedByUserId ?? 'web',
+          actionStatus: 'failed',
+          errorCode: 'request_changed_after_approval',
+        });
+        void this.agentRuns.notifyActionResolved(action.id);
         throw new ConflictException(err.message);
       }
       throw err;

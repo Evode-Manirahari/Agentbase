@@ -80,7 +80,12 @@ export class EffectDispatcher {
       this.config.get<string>('AGENTBASE_DISPATCH_TIMEOUT_MS') ??
       process.env['AGENTBASE_DISPATCH_TIMEOUT_MS'];
     const n = raw ? Number(raw) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : DISPATCH_TIMEOUT_MS;
+    // Node coerces delays above 2^31-1 to 1ms, so an over-large value would
+    // silently abort every connector call instantly and fill the operator
+    // queue with indeterminate attempts. Out-of-range means "use the default",
+    // not "use something absurd".
+    const MAX_TIMER_MS = 2_147_483_647;
+    return Number.isFinite(n) && n > 0 && n <= MAX_TIMER_MS ? n : DISPATCH_TIMEOUT_MS;
   }
 
   async dispatch(input: DispatchInput): Promise<DispatchOutput> {

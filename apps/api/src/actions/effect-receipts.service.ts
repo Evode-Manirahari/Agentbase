@@ -126,6 +126,27 @@ export class EffectReceiptsService {
     return row ?? null;
   }
 
+  /**
+   * The FIRST attempt against an action, which is the only honest basis for a
+   * retry decision.
+   *
+   * `actions.dispatched_at` cannot be used: the retry claim overwrites it, so
+   * retrying at hour 23 restarts the local clock and a retry at hour 30 would
+   * pass a 24h check long after the provider expired the original key. The
+   * connector's CURRENT idempotency mode is no better — a connector can be
+   * changed between the attempt and the retry. Attempt 1 is immutable, and its
+   * recorded mode and start time are what actually governed the effect.
+   */
+  async firstAttempt(actionId: string): Promise<EffectReceipt | null> {
+    const [row] = await this.db
+      .select()
+      .from(effectReceipts)
+      .where(eq(effectReceipts.actionId, actionId))
+      .orderBy(effectReceipts.attempt)
+      .limit(1);
+    return row ?? null;
+  }
+
   /** Full attempt history for an action, oldest first. The evidence trail. */
   async history(actionId: string): Promise<EffectReceipt[]> {
     return this.db

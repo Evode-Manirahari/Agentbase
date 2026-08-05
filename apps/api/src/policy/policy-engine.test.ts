@@ -576,15 +576,16 @@ describe('effect-scoped matching', () => {
       }).effect,
       'deny',
     );
-    assert.equal(
-      evaluatePolicy(d, {
-        tool: 'shell.run',
-        params: { registry: 'internal' },
-        effect: base,
-      }).effect,
-      'deny',
-      'when-condition fails, falls to default (also deny) — but via no rule',
-    );
+    // Both a matching deny rule and the default produce 'deny', so asserting
+    // the effect alone would pass even if `when` were ignored entirely.
+    // rule_index is what distinguishes "the rule fired" from "nothing matched".
+    const whenMissed = evaluatePolicy(d, {
+      tool: 'shell.run',
+      params: { registry: 'internal' },
+      effect: base,
+    });
+    assert.equal(whenMissed.effect, 'deny');
+    assert.equal(whenMissed.rule_index, null, 'the when-condition really excluded the rule');
     assert.equal(
       evaluatePolicy(d, { tool: 'hubspot.x', params: { registry: 'public' }, effect: base })
         .rule_index,

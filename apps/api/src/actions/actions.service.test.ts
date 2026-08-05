@@ -22,6 +22,7 @@ import {
   actions,
   approvals,
   auditLog,
+  effectReceipts,
 } from '@agentbase/db';
 import type { Connector, ConnectorResult } from '@agentbase/connector-hubspot';
 import type { PolicyDecision } from '@agentbase/shared';
@@ -81,6 +82,8 @@ class StubRegistry {
   // What the fake provider claims about retry safety. Defaults to the
   // pessimistic reading, matching an undeclared connector.
   idempotencyMode: 'key' | 'natural' | 'none' = 'none';
+  // Simulates a classifier that blows up mid-assessment.
+  assessThrows = false;
   result: ConnectorResult = { ok: true, data: { stub: true } };
   resolveAlways = true;
   // Widens the window between "connector called" and "outcome recorded" so
@@ -93,6 +96,10 @@ class StubRegistry {
       name: 'stub',
       supports: () => true,
       idempotency: () => this.idempotencyMode,
+      assess: () => {
+        if (this.assessThrows) throw new Error('classifier exploded');
+        return null;
+      },
       invoke: async (tool, params) => {
         this.invocations.push({ tool, params });
         if (this.delayMs > 0) {
@@ -100,7 +107,7 @@ class StubRegistry {
         }
         return this.result;
       },
-    };
+    } as Connector;
   }
 }
 
@@ -203,6 +210,7 @@ describe('ActionsService.execute', () => {
       slack as unknown as SlackService,
       rateLimit as unknown as RateLimitService,
       makeEffects(),
+      new EffectReceiptsService(db, audit),
     );
   });
 
@@ -791,8 +799,15 @@ describe('ActionsService.execute', () => {
     // is a fresh effect — the same duplicate the guard exists to prevent, just
     // slower to arrive.
     policy.decision = makeDecision({ effect: 'allow' });
+    // Declared before the attempt so the recorded receipt says 'key' — the
+    // guard reads attempt 1, not the connector's opinion today.
+    registry.idempotencyMode = 'key';
     registry.result = { ok: false, error: { code: 'timeout', message: 'gone' } };
     const out = await execute('t.t', {});
+    await db
+      .update(effectReceipts)
+      .set({ startedAt: new Date(Date.now() - 25 * 60 * 60 * 1000) })
+      .where(eq(effectReceipts.actionId, out.action_id));
     await db
       .update(actions)
       .set({
@@ -802,7 +817,6 @@ describe('ActionsService.execute', () => {
       })
       .where(eq(actions.id, out.action_id));
 
-    registry.idempotencyMode = 'key';
     registry.invocations.length = 0;
     await assert.rejects(
       svc.retry({ orgId, actionId: out.action_id, operatorId: 'op' }),
@@ -811,8 +825,79 @@ describe('ActionsService.execute', () => {
     assert.equal(registry.invocations.length, 0, 'the connector was not called');
   });
 
+  it('retry: a mid-window retry cannot reset the provider expiry clock', async () => {
+    // The bypass: retry() used to measure expiry from actions.dispatchedAt,
+    // which the retry claim overwrites. Retry at hour 23, and a retry at hour
+    // 30 then looks fresh — long after the provider expired the original key.
+    // The decision now comes from attempt 1, which is immutable.
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.idempotencyMode = 'key';
+    registry.result = { ok: false, error: { code: 'timeout', message: 'gone' } };
+    const out = await execute('t.t', {});
+
+    // Age the FIRST attempt past the window, but leave the action row looking
+    // freshly dispatched — exactly what a mid-window retry would have done.
+    await db
+      .update(effectReceipts)
+      .set({ startedAt: new Date(Date.now() - 25 * 60 * 60 * 1000) })
+      .where(eq(effectReceipts.actionId, out.action_id));
+    await db
+      .update(actions)
+      .set({ status: 'failed', dispatchState: 'unknown', dispatchedAt: new Date() })
+      .where(eq(actions.id, out.action_id));
+
+    registry.invocations.length = 0;
+    await assert.rejects(
+      svc.retry({ orgId, actionId: out.action_id, operatorId: 'op' }),
+      /older than 24h/,
+    );
+    assert.equal(registry.invocations.length, 0, 'the connector was not called');
+  });
+
+  it('retry: uses the mode recorded at attempt time, not the connector today', async () => {
+    // A connector can be changed between the attempt and the retry. What
+    // governed the effect is what it declared when it ran.
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.idempotencyMode = 'none';
+    registry.result = { ok: false, error: { code: 'timeout', message: 'gone' } };
+    const out = await execute('t.t', {});
+    await db
+      .update(actions)
+      .set({ status: 'failed', dispatchState: 'unknown' })
+      .where(eq(actions.id, out.action_id));
+
+    // Connector now claims it is safe. The recorded attempt says otherwise.
+    registry.idempotencyMode = 'key';
+    registry.invocations.length = 0;
+    await assert.rejects(
+      svc.retry({ orgId, actionId: out.action_id, operatorId: 'op' }),
+      /does not support idempotent retry/,
+    );
+    assert.equal(registry.invocations.length, 0);
+  });
+
+  it('an assessment that throws denies, even when the policy default is allow', async () => {
+    // CWE-863. Returning "no assessment" here would stop effect-scoped
+    // require_approval rules from matching, and on a permissive default the
+    // action would dispatch unreviewed.
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.assessThrows = true;
+    registry.invocations.length = 0;
+
+    const out = await execute('t.t', {});
+    assert.equal(out.status, 'denied');
+    assert.match(out.policy_decision.reason ?? '', /assessment failed/);
+    assert.equal(registry.invocations.length, 0, 'nothing was dispatched');
+
+    const events = await db.select().from(auditLog).where(eq(auditLog.orgId, orgId));
+    assert.ok(events.some((e) => e.eventType === 'action.assessment_failed'));
+  });
+
   it('retry: allows an unknown dispatch when the provider honours idempotency', async () => {
     policy.decision = makeDecision({ effect: 'allow' });
+    // Declared BEFORE the first attempt, so the recorded receipt says 'key' —
+    // which is what the guard now reads.
+    registry.idempotencyMode = 'key';
     registry.result = { ok: false, error: { code: 'timeout', message: 'gone' } };
     const out = await execute('t.t', {});
     await db
@@ -822,7 +907,6 @@ describe('ActionsService.execute', () => {
 
     // A provider that collapses our retry into the original request makes the
     // re-send safe, so the guard must not block it.
-    registry.idempotencyMode = 'key';
     registry.result = { ok: true, data: {} };
     const retried = await svc.retry({
       orgId,
@@ -1062,6 +1146,7 @@ describe('ActionsService.execute', () => {
       slack as unknown as SlackService,
       rateLimit as unknown as RateLimitService,
       makeEffects(),
+      new EffectReceiptsService(db, audit),
     );
 
     await assert.rejects(
@@ -1197,6 +1282,7 @@ describe('ActionsService.listForOrg', () => {
       new StubSlack() as unknown as SlackService,
       new StubRateLimit() as unknown as RateLimitService,
       makeEffects(),
+      new EffectReceiptsService(db, audit),
     );
   });
 
