@@ -38,11 +38,43 @@ const COMMANDS = [
   },
 ];
 
-function badge(status: string): string {
-  if (status === 'executed') return c.green('✔ executed');
-  if (status === 'awaiting_approval') return c.amber('🛂 awaiting_approval');
-  if (status === 'denied') return c.rose('✖ denied');
-  return c.rose(`• ${status}`);
+// The gate's decision and the command's outcome are different things, and the
+// demo has to keep them apart. With shell execution disabled — the documented
+// default — an ALLOWED command comes back `failed` / `shell_disabled`: policy
+// let it through and the connector declined to run it. Rendering that as an
+// error would make the default path look broken when it is working exactly as
+// designed.
+type Outcome = 'executed' | 'allowed_not_run' | 'held' | 'denied' | 'other';
+
+function outcomeOf(status: string, errorCode: string | null): Outcome {
+  if (status === 'executed') return 'executed';
+  if (status === 'awaiting_approval') return 'held';
+  if (status === 'denied') return 'denied';
+  if (status === 'failed' && errorCode === 'shell_disabled') return 'allowed_not_run';
+  return 'other';
+}
+
+// padEnd counts ANSI escape bytes, not glyphs, so coloured badges of different
+// escape-density come out ragged. Pad on visible width instead.
+function padVisible(s: string, width: number): string {
+  // eslint-disable-next-line no-control-regex
+  const visible = s.replace(/\x1b\[[0-9;]*m/g, '').length;
+  return s + ' '.repeat(Math.max(0, width - visible));
+}
+
+function badge(o: Outcome, status: string): string {
+  switch (o) {
+    case 'executed':
+      return c.green('✔ executed');
+    case 'allowed_not_run':
+      return c.green('✔ allowed') + c.dim(' (shell off)');
+    case 'held':
+      return c.amber('🛂 awaiting_approval');
+    case 'denied':
+      return c.rose('✖ denied');
+    default:
+      return c.rose(`• ${status}`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -57,10 +89,16 @@ async function main(): Promise<void> {
     c.dim('  One policy, four rules, naming none of these commands.\n'),
   );
 
-  const results: Array<{ command: string; status: string; actionId: string }> = [];
+  const results: Array<{
+    command: string;
+    status: string;
+    outcome: Outcome;
+    actionId: string;
+  }> = [];
 
   for (const { command, expect } of COMMANDS) {
     let status: string;
+    let errorCode: string | null = null;
     let actionId = '';
     try {
       const out = await client.execute({
@@ -70,20 +108,36 @@ async function main(): Promise<void> {
       });
       status = out.status;
       actionId = out.action_id;
+      const r = out.result as { error?: { code?: string } } | undefined;
+      errorCode = r?.error?.code ?? null;
     } catch (err) {
       status = err instanceof AgentbaseError ? `error(${err.status})` : 'error';
     }
-    results.push({ command, status, actionId });
-    console.log(`  ${badge(status).padEnd(32)} ${c.cyan(command)}`);
+    const outcome = outcomeOf(status, errorCode);
+    results.push({ command, status, outcome, actionId });
+    console.log(`  ${padVisible(badge(outcome, status), 24)} ${c.cyan(command)}`);
     console.log(`  ${' '.repeat(22)} ${c.dim(expect)}`);
   }
 
-  const held = results.filter((r) => r.status === 'awaiting_approval');
-  const denied = results.filter((r) => r.status === 'denied');
-  const ran = results.filter((r) => r.status === 'executed');
+  const held = results.filter((r) => r.outcome === 'held');
+  const denied = results.filter((r) => r.outcome === 'denied');
+  const ran = results.filter(
+    (r) => r.outcome === 'executed' || r.outcome === 'allowed_not_run',
+  );
+  const notRun = results.filter((r) => r.outcome === 'allowed_not_run');
 
   console.log(c.bold('\n  What the gate decided\n'));
-  console.log(`  ${ran.length} ran unattended, ${held.length} held for a human, ${denied.length} denied.`);
+  console.log(
+    `  ${ran.length} allowed unattended, ${held.length} held for a human, ${denied.length} denied.`,
+  );
+  if (notRun.length > 0) {
+    console.log(
+      c.dim(
+        `  (${notRun.length} allowed but not executed — the API is running without\n` +
+          '   AGENTBASE_SHELL_ENABLED=1. The gate decision is what this demo shows.)',
+      ),
+    );
+  }
   console.log(
     c.dim(
       '  The policy never mentions npm, terraform, or curl. It asks what the\n' +

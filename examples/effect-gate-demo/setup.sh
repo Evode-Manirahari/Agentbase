@@ -42,6 +42,9 @@ echo "  and gated — allowed ones report shell_disabled instead of running, whi
 echo "  is enough to see every gate decision. Start the API with"
 echo "  AGENTBASE_SHELL_ENABLED=1 to actually execute them."
 echo
+if [ "$API" != "http://localhost:3002" ]; then
+  echo "  export AGENTBASE_BASE_URL=$API"
+fi
 echo "  export AGENTBASE_API_KEY=$KEY"
 echo "  pnpm --filter '@agentbase/effect-gate-demo' start"
 echo

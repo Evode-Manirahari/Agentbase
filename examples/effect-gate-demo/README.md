@@ -3,7 +3,7 @@
 An agent runs five ordinary commands. A four-rule policy that names **none of
 them** lets two through, stops two for a human, and refuses one outright.
 
-```
+```text
 ✔ executed              git status
                         read → allowed
 ✔ executed              mkdir -p .agentbase-demo-scratch
