@@ -97,6 +97,20 @@ Early. The full demoable loop works end-to-end locally. Production auth now fail
 
 ## What works today
 
+The effect commit layer — [`docs/effect-commit.md`](./docs/effect-commit.md):
+
+A permissions gateway answers *"may this agent call this tool?"* — settled before anything leaves the machine. This layer answers the question that comes after: **the call was permitted and a human approved it, so how do we commit it exactly once, prove what happened, and survive a crash in between?**
+
+- **Effect classification** (`packages/effects`) — a shell command is graded by consequence (`read` / `workspace_write` / `vcs_write` / `deploy` / `publish` / `infra_write` / `egress` / `external_comms` / `unknown`) plus an independent `reversible` flag. Fails closed: `$(…)`, backticks, `eval`, `curl … | sh`, and unrecognised programs all grade `unknown`, never safe.
+- **Policy by consequence** — rules match on `effect_class` and `reversible`, so one rule gates every irreversible effect regardless of which tool produces it. The list of things that publish is exactly the list nobody can keep current by hand. A missing assessment is a non-match, never a wildcard.
+- **Commit protocol** — the attempt is written `indeterminate` **before** the request leaves, so a crash there leaves evidence rather than nothing. A provider idempotency key goes on the wire where the provider honours one. `effect_receipts` records one row per attempt carrying the provider's own reference.
+- **Quarantine with an exit** — an attempt whose outcome was never learned stays `indeterminate` and is never auto-retried. Retry is *refused* for a provider that cannot deduplicate, and past the 24h key window even for one that can. `GET /v1/effects/indeterminate` is the operator queue; `POST /v1/effects/:id/resolve` records what a human found.
+- **Replay** — `AGENTBASE_REPLAY=1` makes the dispatcher incapable of reaching a provider; recorded receipts are returned instead. A process-level switch, not a per-call flag, because a guarantee that depends on every caller remembering a parameter is not one.
+
+The claim is binary and tested by fault injection (`apps/api/src/actions/effect-dispatcher.test.ts`): **ten retries across three crash points produce exactly one effect**, and replay reaches no provider at all. Remove the idempotency key from the wire and the first becomes `expected: 1, actual: 8`.
+
+Run it: [`examples/effect-gate-demo`](./examples/effect-gate-demo) — five ordinary commands, a four-rule policy naming none of them, two allowed, two held for a human, one denied.
+
 The governed runtime:
 
 - **Agent runtime** — generic loop on the API (`apps/api/src/agent-runtime/`) that takes a `Job` config (system prompt + tool list + initial-message builder) and a context, calls Claude via the Anthropic SDK with adaptive thinking and `xhigh` effort, dispatches every tool call through the same `ActionsService.execute` path an external agent would use, and returns a transcript. Pauses cleanly on `awaiting_approval`; resumes when the approval lands. Single tool per turn via `disable_parallel_tool_use` so pause state stays simple.
