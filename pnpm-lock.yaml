@@ -50,6 +50,9 @@ importers:
       '@agentbase/connector-salesforce':
         specifier: workspace:*
         version: link:../../connectors/salesforce
+      '@agentbase/connector-shell':
+        specifier: workspace:*
+        version: link:../../connectors/shell
       '@agentbase/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -463,6 +466,9 @@ importers:
       '@agentbase/connector-salesforce':
         specifier: workspace:*
         version: link:../../connectors/salesforce
+      '@agentbase/connector-shell':
+        specifier: workspace:*
+        version: link:../../connectors/shell
       '@agentbase/sdk':
         specifier: workspace:*
         version: link:../sdk
