@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import { createWebhookAction, type CreateState } from './actions';
-import { KNOWN_EVENTS } from './events';
+import { KNOWN_EVENTS, DEFAULT_WEBHOOK_EVENTS } from './events';
 
 const initialState: CreateState = { status: 'idle' };
 
@@ -118,9 +118,9 @@ export function CreateWebhookForm() {
                     type="checkbox"
                     name="events"
                     value={ev}
-                    defaultChecked={
-                      ev === 'action.failed' || ev === 'approval.expired'
-                    }
+                    defaultChecked={(
+                      DEFAULT_WEBHOOK_EVENTS as readonly string[]
+                    ).includes(ev)}
                   />
                   <code className="mono text-xs">{ev}</code>
                 </label>

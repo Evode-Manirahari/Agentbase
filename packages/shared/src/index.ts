@@ -123,6 +123,50 @@ export const EffectAssessmentView = z.object({
 });
 export type EffectAssessmentView = z.infer<typeof EffectAssessmentView>;
 
+/**
+ * Every audit event the API emits, and therefore every event a webhook can
+ * subscribe to.
+ *
+ * Lives here rather than in the web app because it drifted when it did not:
+ * a hand-maintained list with a "keep in sync" comment fell five events
+ * behind, including `action.dispatch_unknown` — the one that tells an operator
+ * a dispatch needs a human. A quarantine nobody can be notified about is only
+ * marginally better than no quarantine. A test asserts this list covers every
+ * eventType literal in the API source, so the next omission fails CI instead
+ * of silently removing a notification.
+ */
+export const AUDIT_EVENT_TYPES = [
+  'action.executed',
+  'action.failed',
+  'action.denied',
+  'action.awaiting_approval',
+  'action.rate_limited',
+  'action.retried',
+  'action.retried_rate_limited',
+  'action.assessment_failed',
+  'action.dispatch_unknown',
+  'action.request_changed_after_approval',
+  'effect.resolved',
+  'approval.posted_to_slack',
+  'approval.approved',
+  'approval.denied',
+  'approval.expired',
+  'agent.revoked',
+  'agent.permission_profile.updated',
+] as const;
+export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
+
+/**
+ * Events worth waking someone for. Pre-checked in the webhook form because a
+ * default that omits the quarantine alert teaches operators the queue is
+ * something they will remember to check.
+ */
+export const DEFAULT_WEBHOOK_EVENTS: readonly AuditEventType[] = [
+  'action.dispatch_unknown',
+  'action.failed',
+  'approval.expired',
+];
+
 export const PolicyEffect = z.enum(['allow', 'require_approval', 'deny']);
 export type PolicyEffect = z.infer<typeof PolicyEffect>;
 
