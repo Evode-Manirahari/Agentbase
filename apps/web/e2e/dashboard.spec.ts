@@ -49,6 +49,15 @@ test.describe('dashboard renders every route', () => {
     await expect(page.getByText(/Nothing in quarantine/i)).toBeVisible();
   });
 
+  test('evidence trail renders for an action with no attempts', async ({ page }) => {
+    // The empty case is the one a fresh install hits, and it has to explain
+    // itself rather than look broken — an action can legitimately have no
+    // attempts because nothing ever left the machine.
+    await page.goto('/effects/00000000-0000-0000-0000-000000000000');
+    await expect(page.getByRole('heading', { name: 'Evidence trail' })).toBeVisible();
+    await expect(page.getByText(/No dispatch attempts recorded/i)).toBeVisible();
+  });
+
   test('effects is reachable from the nav', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Effects' }).click();

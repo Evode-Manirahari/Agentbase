@@ -194,6 +194,16 @@ export default async function ActionsPage({
                         >
                           resolve →
                         </a>
+                      ) : a.dispatch_state !== 'not_dispatched' ? (
+                        // Anything that was dispatched has a receipt trail, and
+                        // the trail is the evidence — reachable from the row it
+                        // belongs to rather than only by knowing the URL.
+                        <a
+                          href={`/effects/${a.id}`}
+                          className="text-xs text-[var(--color-muted)] hover:text-[var(--color-accent)] hover:underline"
+                        >
+                          evidence →
+                        </a>
                       ) : canRetry ? (
                         <form action={retryActionAction}>
                           <input type="hidden" name="action_id" value={a.id} />
