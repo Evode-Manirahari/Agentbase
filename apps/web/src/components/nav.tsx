@@ -9,6 +9,7 @@ const items = [
   { href: '/policies', label: 'Policies' },
   { href: '/approvals', label: 'Approvals' },
   { href: '/actions', label: 'Actions' },
+  { href: '/effects', label: 'Effects' },
   { href: '/connectors', label: 'Connectors' },
   { href: '/webhooks', label: 'Webhooks' },
   { href: '/audit', label: 'Audit' },
