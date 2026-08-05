@@ -4,6 +4,22 @@ import * as schema from './schema.js';
 
 export type Database = ReturnType<typeof drizzle<typeof schema>>;
 
+/**
+ * Close the connection pool a `createDb` call opened.
+ *
+ * `createDb` returns only the drizzle wrapper, so without this the underlying
+ * postgres-js pool has no reachable handle and stays open for the life of the
+ * process. That is invisible in a long-running server and fatal in a test
+ * runner: the event loop never drains, the process never exits, and the
+ * workaround for that (`--test-force-exit`) silently truncates the run.
+ */
+export async function closeDb(db: Database): Promise<void> {
+  const client = (db as Database & {
+    $client?: { end?: (opts?: { timeout?: number }) => Promise<void> };
+  }).$client;
+  await client?.end?.({ timeout: 5 });
+}
+
 export function createDb(url: string, opts: { prepare?: boolean } = {}): Database {
   const prepare = opts.prepare ?? !isTransactionPooler(url);
   const client = postgres(url, { max: 10, prepare });
