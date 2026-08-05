@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import { ZodValidationPipe } from 'nestjs-zod';
 import {
   ApprovalDecisionRequest,
@@ -14,6 +15,9 @@ import { ApprovalsService } from './approvals.service.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { clampQueryInt } from '../common/query-int.js';
+import { resolveActor } from '../auth/actor.js';
+import { DB } from '../db/db.module.js';
+import type { Database } from '@agentbase/db';
 
 @Controller('v1/approvals')
 @UseGuards(ClerkAuthGuard)
@@ -21,6 +25,7 @@ export class ApprovalsController {
   constructor(
     private readonly approvals: ApprovalsService,
     private readonly agents: AgentsService,
+    @Inject(DB) private readonly db: Database,
   ) {}
 
   @Get()
@@ -43,13 +48,15 @@ export class ApprovalsController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body(new ZodValidationPipe(ApprovalDecisionRequest))
     body: ApprovalDecisionRequestT,
+    @Req() req: FastifyRequest,
   ): Promise<ApprovalDecisionResponse> {
     const orgId = await this.agents.ensureDefaultOrg();
+    const actor = await resolveActor(this.db, req, orgId);
     return this.approvals.decide({
       approvalId: id,
       orgId,
       decision: body.decision,
-      decidedByEmail: body.decided_by_email,
+      actor,
       notes: body.notes,
     });
   }
@@ -61,13 +68,15 @@ export class ApprovalsController {
   async bulkDecide(
     @Body(new ZodValidationPipe(BulkApprovalDecisionRequest))
     body: BulkApprovalDecisionRequestT,
+    @Req() req: FastifyRequest,
   ): Promise<BulkApprovalDecisionResponse> {
     const orgId = await this.agents.ensureDefaultOrg();
+    const actor = await resolveActor(this.db, req, orgId);
     return this.approvals.bulkDecide({
       orgId,
       approvalIds: body.approval_ids,
       decision: body.decision,
-      decidedByEmail: body.decided_by_email,
+      actor,
       notes: body.notes,
     });
   }

@@ -516,7 +516,9 @@ export type ApprovalDecisionAction = z.infer<typeof ApprovalDecisionAction>;
 
 export const ApprovalDecisionRequest = z.object({
   decision: ApprovalDecisionAction,
-  decided_by_email: z.string().email().optional(),
+  // Deliberately absent: the decider is derived from the verified session,
+  // never from the request body. Accepting it here let any authenticated
+  // caller write someone else's name into the audit trail.
   notes: z.string().max(1000).optional(),
 });
 export type ApprovalDecisionRequest = z.infer<typeof ApprovalDecisionRequest>;
@@ -526,7 +528,9 @@ export const APPROVAL_BULK_DECIDE_MAX = 50;
 export const BulkApprovalDecisionRequest = z.object({
   approval_ids: z.array(z.string().uuid()).min(1).max(APPROVAL_BULK_DECIDE_MAX),
   decision: ApprovalDecisionAction,
-  decided_by_email: z.string().email().optional(),
+  // Deliberately absent: the decider is derived from the verified session,
+  // never from the request body. Accepting it here let any authenticated
+  // caller write someone else's name into the audit trail.
   notes: z.string().max(1000).optional(),
 });
 export type BulkApprovalDecisionRequest = z.infer<

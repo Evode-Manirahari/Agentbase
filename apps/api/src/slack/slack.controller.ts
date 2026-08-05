@@ -1,5 +1,6 @@
 import {
   Body,
+  Inject,
   Controller,
   HttpCode,
   Logger,
@@ -12,6 +13,9 @@ import { ConfigService } from '@nestjs/config';
 import { SlackSignatureGuard } from './slack-signature.guard.js';
 import { SlackService } from './slack.service.js';
 import { ApprovalsService } from '../approvals/approvals.service.js';
+import { resolveSlackActor } from '../auth/actor.js';
+import { DB } from '../db/db.module.js';
+import type { Database } from '@agentbase/db';
 import { AgentsService } from '../agents/agents.service.js';
 
 interface SlackInteractivePayloadAction {
@@ -37,6 +41,7 @@ export class SlackController {
     private readonly slack: SlackService,
     private readonly approvals: ApprovalsService,
     private readonly agents: AgentsService,
+    @Inject(DB) private readonly db: Database,
     config: ConfigService,
   ) {
     const token = config.get<string>('SLACK_BOT_TOKEN');
@@ -90,11 +95,17 @@ export class SlackController {
     }
 
     try {
+      // The Slack signature proves the request came from Slack, not that the
+      // clicking Slack user is permitted to decide this approval. Map them to
+      // an Agentbase user in the org and run the same role check the web path
+      // runs — otherwise the button is a way around the authorization
+      // boundary rather than a surface on top of it.
+      const actor = await resolveSlackActor(this.db, orgId, email);
       const result = await this.approvals.decide({
         approvalId,
         orgId,
         decision: decisionWord,
-        ...(email ? { decidedByEmail: email } : {}),
+        actor,
         notes: `via Slack: ${decidedByDisplay} (${payload.user.id})`,
       });
       const r = result.result as { error?: { code?: string } } | null;

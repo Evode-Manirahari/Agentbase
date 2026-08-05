@@ -5,6 +5,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { ApprovalsController } from './approvals.controller.js';
+import type { Database } from '@agentbase/db';
 import type { ApprovalsService } from './approvals.service.js';
 import type { AgentsService } from '../agents/agents.service.js';
 
@@ -61,6 +62,9 @@ describe('ApprovalsController', () => {
     controller = new ApprovalsController(
       stub as unknown as ApprovalsService,
       new StubAgents() as unknown as AgentsService,
+      // Unused in these tests: without a verified session resolveActor()
+      // returns the dev-passthrough actor before it ever touches the database.
+      null as unknown as Database,
     );
   });
 
@@ -89,31 +93,36 @@ describe('ApprovalsController', () => {
   });
 
   it('decide: passes decision, email, and notes through to the service', async () => {
-    const out = await controller.decide(APPROVAL_UUID, {
-      decision: 'deny',
-      decided_by_email: 'rev@agentbase.test',
-      notes: 'looks risky',
-    });
+    const out = await controller.decide(
+      APPROVAL_UUID,
+      { decision: 'deny', notes: 'looks risky' },
+      {} as never,
+    );
 
-    assert.deepEqual(stub.decideCalls, [
-      {
-        approvalId: APPROVAL_UUID,
-        orgId: 'org-default',
-        decision: 'deny',
-        decidedByEmail: 'rev@agentbase.test',
-        notes: 'looks risky',
-      },
-    ]);
+    // The decider is no longer anything the caller sent. Without a verified
+    // session this is the dev-passthrough actor; in enforced mode it is the
+    // Clerk user resolved to a row in this org.
+    assert.equal(stub.decideCalls.length, 1);
+    const call = stub.decideCalls[0]!;
+    assert.equal(call.approvalId, APPROVAL_UUID);
+    assert.equal(call.orgId, 'org-default');
+    assert.equal(call.decision, 'deny');
+    assert.equal(call.notes, 'looks risky');
+    assert.equal((call.actor as { devPassthrough: boolean }).devPassthrough, true);
+    assert.equal(
+      (call as unknown as { decidedByEmail?: string }).decidedByEmail,
+      undefined,
+      'a caller-supplied decider must not survive anywhere in the call',
+    );
     assert.equal(out.approval_id, APPROVAL_UUID);
   });
 
   it('bulkDecide: passes the id list and decision through to the service', async () => {
     const ids = [APPROVAL_UUID, '1a2b3c4d-5e6f-7081-92a3-b4c5d6e7f809'];
-    await controller.bulkDecide({
-      approval_ids: ids,
-      decision: 'approve',
-      decided_by_email: 'rev@agentbase.test',
-    });
+    await controller.bulkDecide(
+      { approval_ids: ids, decision: 'approve' },
+      {} as never,
+    );
 
     assert.equal(stub.bulkCalls.length, 1);
     assert.deepEqual(stub.bulkCalls[0]!.approvalIds, ids);

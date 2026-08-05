@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Inject,
   Get,
   Param,
   Post,
@@ -14,6 +15,9 @@ import { z } from 'zod';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { EffectReceiptsService } from './effect-receipts.service.js';
 import { AgentsService } from '../agents/agents.service.js';
+import { requireRole, resolveActor } from '../auth/actor.js';
+import { DB } from '../db/db.module.js';
+import type { Database } from '@agentbase/db';
 import { clampQueryInt } from '../common/query-int.js';
 
 const ResolveEffectRequest = z.object({
@@ -41,6 +45,7 @@ export class EffectsController {
   constructor(
     private readonly receipts: EffectReceiptsService,
     private readonly agents: AgentsService,
+    @Inject(DB) private readonly db: Database,
   ) {}
 
   /** The queue. Everything the system attempted and never learned the fate of. */
@@ -77,18 +82,22 @@ export class EffectsController {
     @Req() req: FastifyRequest,
   ) {
     const orgId = await this.agents.ensureDefaultOrg();
-    const operatorId =
-      (req as FastifyRequest & { auth?: { userId?: string; email?: string } }).auth
-        ?.email ??
-      (req as FastifyRequest & { auth?: { userId?: string } }).auth?.userId ??
-      'operator';
+    // This read `req.auth`, which the guard never sets — it attaches
+    // `req.clerkUser`. So every resolution in enforced mode was attributed to
+    // the literal string "operator": a user who does not exist, recorded
+    // against the finding that ends a quarantine.
+    //
+    // Declaring an unknown effect committed or failed is an approver-grade
+    // decision, not a read, so it is authorized as one.
+    const actor = await resolveActor(this.db, req, orgId);
+    requireRole(actor, 'approver', 'resolving an effect');
 
     const resolved = await this.receipts.resolve({
       orgId,
       receiptId,
       outcome: body.outcome,
       providerRef: body.provider_ref,
-      operatorId,
+      operatorId: actor.email,
       note: body.note,
     });
     return {
