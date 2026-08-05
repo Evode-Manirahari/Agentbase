@@ -65,6 +65,46 @@ export AGENTBASE_API_KEY=agb_…
 pnpm --filter '@agentbase/effect-gate-demo' start
 ```
 
+## The other half: an interrupted dispatch
+
+`pnpm start` shows the gate deciding. That is the part a permissions gateway
+also does. This shows the part it does not:
+
+```bash
+# a dispatch timeout shorter than the command needs
+AGENTBASE_DISPATCH_TIMEOUT_MS=400 AGENTBASE_SHELL_ENABLED=1 \
+  AGENTBASE_ALLOW_UNAUTHENTICATED=1 pnpm --filter @agentbase/api dev
+
+pnpm --filter '@agentbase/effect-gate-demo' quarantine
+```
+
+```text
+1. Dispatching a command that will outlast the timeout…
+   find / -maxdepth 4 -name "*.agentbase-nope"
+
+   the request failed — and that is correct. The dispatcher stopped
+   waiting, but it does NOT know whether the command ran.
+
+2. Reading the quarantine queue…
+
+   outcome unknown  shell.run
+   attempt          1 via shell
+   retry safety     natural
+   receipt          fb47fec3-…
+
+3. Resolving it the only way it can be resolved — a human looked…
+
+   ✔ resolved — the verdict is recorded, the action is settled,
+     and the audit log names who decided.
+```
+
+No process is killed to produce this. Giving the dispatch less time than the
+command needs is the same condition as a crash from the protocol's point of
+view: the request went out and the answer never came back.
+
+The failed HTTP response is the honest one. Reporting success or failure would
+both be guesses, and the whole design is built on refusing to make that guess.
+
 ## What the held actions demonstrate
 
 Approving one dispatches it through the commit protocol:
