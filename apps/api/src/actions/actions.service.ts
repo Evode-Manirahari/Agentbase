@@ -681,6 +681,12 @@ export class ActionsService {
         tool: actions.tool,
         params: actions.params,
         status: actions.status,
+        // `status` alone is misleading for the case that matters most. The
+        // sweeper marks a never-settled dispatch `failed`, and on a review
+        // screen "failed" reads as "it did not happen" — when the truth is
+        // that nobody knows. dispatch_state is what distinguishes them.
+        dispatchState: actions.dispatchState,
+        effectAssessment: actions.effectAssessment,
         policyDecision: actions.policyDecision,
         result: actions.result,
         createdAt: actions.createdAt,
@@ -699,6 +705,8 @@ export class ActionsService {
         tool: r.tool,
         params: r.params,
         status: r.status,
+        dispatch_state: r.dispatchState,
+        effect_assessment: r.effectAssessment,
         policy_decision: r.policyDecision,
         result: r.result,
         created_at: r.createdAt.toISOString(),

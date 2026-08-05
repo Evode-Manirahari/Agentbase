@@ -147,10 +147,17 @@ export default async function ActionsPage({
                 const reason = decision?.reason ?? null;
                 const errCode =
                   (a.result as { error?: { code?: string } } | null)?.error?.code ?? null;
+                // An unknown dispatch is NOT a failure. The sweeper marks it
+                // `failed` because the action did not complete, but the
+                // external effect may well exist — so this row must not read
+                // as "it did not happen", and Retry must not be offered as if
+                // it were safe. Resolving it lives on /effects.
+                const outcomeUnknown = a.dispatch_state === 'unknown';
                 // Retry is only meaningful for failed actions whose original
                 // policy decision was 'allow' — anything else needs operator
                 // intervention upstream (policy change, approval, etc.).
-                const canRetry = a.status === 'failed' && effect === 'allow';
+                const canRetry =
+                  a.status === 'failed' && effect === 'allow' && !outcomeUnknown;
                 return (
                   <tr key={a.id} className="border-t border-[var(--color-border)] align-top">
                     <td className="px-4 py-2 mono text-xs text-[var(--color-muted)] whitespace-nowrap">
@@ -158,15 +165,36 @@ export default async function ActionsPage({
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">{a.agent_name}</td>
                     <td className="px-4 py-2 mono text-xs">{a.tool}</td>
-                    <td className="px-4 py-2">
-                      <StatusPill status={a.status} />
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      {outcomeUnknown ? (
+                        <span
+                          className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300"
+                          title="The request went out and the answer never came back. The effect may or may not exist."
+                        >
+                          outcome unknown
+                        </span>
+                      ) : (
+                        <StatusPill status={a.status} />
+                      )}
+                      {a.effect_assessment && !a.effect_assessment.reversible ? (
+                        <div className="mt-1 text-[10px] text-rose-300">
+                          {a.effect_assessment.effectClass} · irreversible
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-2 mono text-xs text-[var(--color-muted)]">{effect}</td>
                     <td className="px-4 py-2 text-xs text-[var(--color-muted)]">
                       {errCode ? <span className="text-rose-400">{errCode}</span> : reason ?? '—'}
                     </td>
                     <td className="px-4 py-2">
-                      {canRetry ? (
+                      {outcomeUnknown ? (
+                        <a
+                          href="/effects"
+                          className="text-xs text-amber-300 hover:underline"
+                        >
+                          resolve →
+                        </a>
+                      ) : canRetry ? (
                         <form action={retryActionAction}>
                           <input type="hidden" name="action_id" value={a.id} />
                           <button
