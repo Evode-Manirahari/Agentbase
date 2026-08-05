@@ -119,6 +119,22 @@ export interface IndeterminateEffectRow {
   params: Record<string, unknown>;
 }
 
+// One dispatch attempt, as recorded. Serialised straight from the row, so the
+// field names are the DB's rather than the API's snake_case convention.
+export interface EffectReceiptRow {
+  id: string;
+  actionId: string;
+  attempt: number;
+  connectorName: string;
+  idempotencyKeySent: string | null;
+  idempotencyMode: 'key' | 'natural' | 'none';
+  outcome: 'committed' | 'failed' | 'indeterminate';
+  providerRef: string | null;
+  receipt: Record<string, unknown> | null;
+  startedAt: string;
+  settledAt: string | null;
+}
+
 export interface AuditRow {
   id: string;
   orgId: string;
@@ -389,6 +405,10 @@ export const api = {
     indeterminate: (limit = 100) =>
       req<{ items: IndeterminateEffectRow[]; count: number }>(
         `/v1/effects/indeterminate?limit=${limit}`,
+      ),
+    forAction: (actionId: string) =>
+      req<{ items: EffectReceiptRow[]; count: number }>(
+        `/v1/effects/actions/${actionId}`,
       ),
     resolve: (
       receiptId: string,
