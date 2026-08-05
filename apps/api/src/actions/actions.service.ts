@@ -8,7 +8,8 @@ import {
 import { and, desc, eq, lt, ne } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Action, Database } from '@agentbase/db';
-import { actions, agents, approvals } from '@agentbase/db';
+import { actions, agents, approvals, effectReceipts } from '@agentbase/db';
+import type { EffectReceipt } from '@agentbase/db';
 import { AuditService } from '../audit/audit.service.js';
 import { PolicyService } from '../policy/policy.service.js';
 import { ConnectorRegistry } from '../connectors/connector-registry.js';
@@ -823,51 +824,91 @@ export class ActionsService {
     }
   }
 
-  // A dispatch that never settled means the process died between "we called
-  // the connector" and "we recorded what it said". The external effect may
-  // have landed or may not have. We mark it `unknown` and stop — we do not
-  // retry, because retrying an unknown send is how a customer gets two emails.
-  // Resolving it requires either a provider-side lookup or a human.
+  /**
+   * Reconcile actions whose dispatch never settled, FROM THE RECEIPT LEDGER.
+   *
+   * This used to rewrite every stale `in_flight` row to `failed` / `unknown`
+   * without looking at the attempt. That made the system contradict its own
+   * evidence: settling the receipt and settling the action are two writes, so
+   * a crash between them left `receipt = committed` while the reconciler
+   * later stamped the action `unknown`. The layer whose entire job is to say
+   * what happened was reporting two different answers about the same effect.
+   *
+   * `effect_receipts` is authoritative; `actions` is a summary derived from
+   * it. The summary is now recomputed rather than assumed:
+   *
+   *   committed     → executed / settled
+   *   failed        → failed / settled
+   *   indeterminate → failed / unknown   (the genuinely unknown case)
+   *   no receipt    → failed / settled, dispatch_not_started
+   *
+   * The last row matters. The receipt is inserted BEFORE the connector call,
+   * so an action reserved with no receipt means the provider request never
+   * began. Calling that `unknown` manufactures uncertainty about an effect
+   * that provably never happened, and manufactured uncertainty costs a human
+   * an investigation.
+   */
   async reconcileStaleDispatches(olderThanMs = 5 * 60 * 1000): Promise<number> {
     const cutoff = new Date(Date.now() - olderThanMs);
     const stale = await this.db
-      .update(actions)
-      .set({
-        status: 'failed',
-        dispatchState: 'unknown',
-        result: {
-          ok: false,
-          error: {
-            code: 'dispatch_unknown',
-            message:
-              'dispatch started but never settled; the external effect may or may not have occurred. Not retried automatically.',
-          },
-        },
-        completedAt: new Date(),
-      })
+      .select({ id: actions.id, orgId: actions.orgId, tool: actions.tool })
+      .from(actions)
       .where(
         and(
           eq(actions.dispatchState, 'in_flight'),
           lt(actions.dispatchedAt, cutoff),
         ),
-      )
-      .returning({ id: actions.id, orgId: actions.orgId, tool: actions.tool });
+      );
 
+    let reconciled = 0;
     for (const row of stale) {
+      const [latest] = await this.db
+        .select()
+        .from(effectReceipts)
+        .where(eq(effectReceipts.actionId, row.id))
+        .orderBy(desc(effectReceipts.attempt))
+        .limit(1);
+
+      const summary = summaryForReceipt(latest ?? null);
+
+      // Conditional on the row still being in_flight: a dispatch that settled
+      // normally between the select and here must not be overwritten by a
+      // sweeper working from a stale read.
+      const claimed = await this.db
+        .update(actions)
+        .set({
+          status: summary.status,
+          dispatchState: summary.dispatchState,
+          result: summary.result,
+          completedAt: new Date(),
+        })
+        .where(
+          and(eq(actions.id, row.id), eq(actions.dispatchState, 'in_flight')),
+        )
+        .returning({ id: actions.id });
+      if (claimed.length === 0) continue;
+
+      reconciled += 1;
       await this.audit.record({
         orgId: row.orgId,
         actorType: 'system',
         actorId: 'dispatch_reconciler',
-        eventType: 'action.dispatch_unknown',
-        payload: { actionId: row.id, tool: row.tool },
+        eventType: summary.eventType,
+        payload: {
+          actionId: row.id,
+          tool: row.tool,
+          derived_from_receipt: latest?.id ?? null,
+          receipt_outcome: latest?.outcome ?? null,
+        },
       });
     }
-    if (stale.length > 0) {
+
+    if (reconciled > 0) {
       this.log.warn(
-        `${stale.length} action(s) marked dispatch_state=unknown — external effect indeterminate`,
+        `${reconciled} stale dispatch(es) reconciled from the receipt ledger`,
       );
     }
-    return stale.length;
+    return reconciled;
   }
 
   // The non-dispatching counterpart to reserveAction(): used by the deny,
@@ -982,4 +1023,61 @@ function isUniqueViolation(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;
   const code = (err as { code?: unknown }).code;
   return code === '23505';
+}
+
+/**
+ * The action summary implied by an attempt. Only `indeterminate` is genuinely
+ * unknown — the other three are established facts, and reporting them as
+ * uncertain would send a human to investigate something already settled.
+ */
+function summaryForReceipt(receipt: EffectReceipt | null): {
+  status: ActionStatus;
+  dispatchState: 'settled' | 'unknown';
+  result: Record<string, unknown>;
+  eventType: string;
+} {
+  if (!receipt) {
+    return {
+      status: 'failed',
+      dispatchState: 'settled',
+      result: {
+        ok: false,
+        error: {
+          code: 'dispatch_not_started',
+          message:
+            'the action was reserved but no provider attempt was ever opened, so no external effect occurred',
+        },
+      },
+      eventType: 'action.dispatch_not_started',
+    };
+  }
+  if (receipt.outcome === 'committed') {
+    return {
+      status: 'executed',
+      dispatchState: 'settled',
+      result: (receipt.receipt ?? { ok: true }) as Record<string, unknown>,
+      eventType: 'action.reconciled_committed',
+    };
+  }
+  if (receipt.outcome === 'failed') {
+    return {
+      status: 'failed',
+      dispatchState: 'settled',
+      result: (receipt.receipt ?? { ok: false }) as Record<string, unknown>,
+      eventType: 'action.reconciled_failed',
+    };
+  }
+  return {
+    status: 'failed',
+    dispatchState: 'unknown',
+    result: {
+      ok: false,
+      error: {
+        code: 'dispatch_unknown',
+        message:
+          'a provider request was opened and never answered; the external effect may or may not have occurred. Not retried automatically.',
+      },
+    },
+    eventType: 'action.dispatch_unknown',
+  };
 }

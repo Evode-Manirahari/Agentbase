@@ -243,43 +243,51 @@ export class EffectReceiptsService {
       .limit(1);
     if (!owned) throw new NotFoundException('effect receipt not found');
 
-    const claimed = await this.db
-      .update(effectReceipts)
-      .set({
-        outcome: input.outcome,
-        providerRef: input.providerRef ?? null,
-        settledAt: new Date(),
-        receipt: {
-          ok: input.outcome === 'committed',
-          resolved_by_operator: input.operatorId,
-          note: input.note ?? null,
-        },
-      })
-      .where(
-        and(
-          eq(effectReceipts.id, input.receiptId),
-          eq(effectReceipts.outcome, 'indeterminate'),
-        ),
-      )
-      .returning({
-        actionId: effectReceipts.actionId,
-        attempt: effectReceipts.attempt,
-      });
-    const row = claimed[0];
-    if (!row) {
-      throw new ConflictException('effect attempt is no longer indeterminate');
-    }
+    // Receipt and action settle in ONE transaction. They were two statements,
+    // so a crash between them left the human's verdict recorded against the
+    // attempt while the action still read `in_flight` — and the reconciler
+    // would then contradict the person who actually went and looked.
+    const row = await this.db.transaction(async (tx) => {
+      const claimed = await tx
+        .update(effectReceipts)
+        .set({
+          outcome: input.outcome,
+          providerRef: input.providerRef ?? null,
+          settledAt: new Date(),
+          receipt: {
+            ok: input.outcome === 'committed',
+            resolved_by_operator: input.operatorId,
+            note: input.note ?? null,
+          },
+        })
+        .where(
+          and(
+            eq(effectReceipts.id, input.receiptId),
+            eq(effectReceipts.outcome, 'indeterminate'),
+          ),
+        )
+        .returning({
+          actionId: effectReceipts.actionId,
+          attempt: effectReceipts.attempt,
+        });
+      const claimedRow = claimed[0];
+      if (!claimedRow) {
+        throw new ConflictException('effect attempt is no longer indeterminate');
+      }
 
-    // The action follows the verdict. `settled` is now truthful: a human
-    // established what happened, which is exactly what the state means.
-    await this.db
-      .update(actions)
-      .set({
-        status: input.outcome === 'committed' ? 'executed' : 'failed',
-        dispatchState: 'settled',
-        completedAt: new Date(),
-      })
-      .where(eq(actions.id, row.actionId));
+      // The summary follows the verdict inside the same transaction, so the
+      // ledger and the summary cannot disagree.
+      await tx
+        .update(actions)
+        .set({
+          status: input.outcome === 'committed' ? 'executed' : 'failed',
+          dispatchState: 'settled',
+          completedAt: new Date(),
+        })
+        .where(eq(actions.id, claimedRow.actionId));
+
+      return claimedRow;
+    });
 
     await this.audit.record({
       orgId: input.orgId,
