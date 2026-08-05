@@ -558,6 +558,7 @@ export const ApprovalDecisionResponse = z.object({
 export type ApprovalDecisionResponse = z.infer<typeof ApprovalDecisionResponse>;
 
 export type PolicyTemplateKey =
+  | 'approval-before-irreversible-effects'
   | 'approval-before-external-email'
   | 'approval-before-high-value-crm-write'
   | 'deny-destructive-and-bulk';
@@ -570,6 +571,47 @@ export interface PolicyTemplate {
 }
 
 export const POLICY_TEMPLATES: readonly PolicyTemplate[] = [
+  {
+    // First in the list because it is the one that does not go stale. The
+    // other templates enumerate tools, and an enumeration is out of date the
+    // moment an agent learns a command nobody listed.
+    key: 'approval-before-irreversible-effects',
+    label: 'Require approval for anything that cannot be undone',
+    description:
+      'Asks what a command DOES rather than what it is called. Reads run unattended, recoverable edits run unattended, and anything irreversible — publishing, deploying, destroying infrastructure, pushing code — stops for a human. Covers commands nobody has thought of yet.',
+    rules: [
+      {
+        // MUST be first. An `unknown` effect carries `reversible: false`, so
+        // without this rule it matches the irreversible rule below and queues
+        // for approval — and that is the wrong destination. A command the
+        // classifier could not read is not one a human reviewer can read
+        // either: `curl … | sh` shows an approver a URL, not the script it is
+        // about to execute. Sending it to a person manufactures the appearance
+        // of review. Refuse it and make the agent submit something legible.
+        match: { tool: '*', effect_class: 'unknown' },
+        effect: 'deny',
+        reason:
+          'the gate could not determine what this command does — approval would be theatre, not review',
+      },
+      {
+        match: { tool: '*', effect_class: 'read' },
+        effect: 'allow',
+        reason: 'reads change nothing',
+      },
+      {
+        match: { tool: '*', reversible: false },
+        effect: 'require_approval',
+        approver_role: 'approver',
+        reason: 'this cannot be undone — a human decides',
+        slack_channel: '#agent-approvals',
+      },
+      {
+        match: { tool: '*', effect_class: 'workspace_write', reversible: true },
+        effect: 'allow',
+        reason: 'recoverable from the working tree',
+      },
+    ],
+  },
   {
     key: 'approval-before-external-email',
     label: 'Require approval before external email',
@@ -715,6 +757,31 @@ export function policyTemplateRulesYaml(template: PolicyTemplate): string {
   for (const rule of template.rules) {
     lines.push('  - match:');
     lines.push(`      tool: ${quoteYaml(rule.match.tool)}`);
+    // Every match predicate has to be emitted, not just the ones the first
+    // three templates happened to use. A dropped predicate does not fail — it
+    // widens the rule, silently. `{tool:'*', effect_class:'unknown'} → deny`
+    // serialised as `{tool:'*'} → deny` is a policy that denies everything,
+    // and it looks plausible in the editor.
+    if (rule.match.agent_id) {
+      lines.push(`      agent_id: ${quoteYaml(rule.match.agent_id)}`);
+    }
+    if (rule.match.agent_name) {
+      lines.push(`      agent_name: ${quoteYaml(rule.match.agent_name)}`);
+    }
+    if (rule.match.agent_profile) {
+      lines.push(`      agent_profile: ${rule.match.agent_profile}`);
+    }
+    if (rule.match.effect_class !== undefined) {
+      const ec = rule.match.effect_class;
+      lines.push(
+        `      effect_class: ${
+          Array.isArray(ec) ? `[${ec.join(', ')}]` : ec
+        }`,
+      );
+    }
+    if (rule.match.reversible !== undefined) {
+      lines.push(`      reversible: ${rule.match.reversible}`);
+    }
     if (rule.match.when) {
       lines.push('      when:');
       for (const [path, cond] of Object.entries(rule.match.when)) {
