@@ -113,6 +113,16 @@ export const Condition = z.union([
 ]);
 export type Condition = z.infer<typeof Condition>;
 
+// What the gate believed an action would do, as recorded when it decided.
+// Surfaced on approval views so a reviewer in the web inbox sees the same
+// consequence the Slack card shows.
+export const EffectAssessmentView = z.object({
+  effectClass: z.string(),
+  reversible: z.boolean(),
+  summary: z.string(),
+});
+export type EffectAssessmentView = z.infer<typeof EffectAssessmentView>;
+
 export const PolicyEffect = z.enum(['allow', 'require_approval', 'deny']);
 export type PolicyEffect = z.infer<typeof PolicyEffect>;
 
@@ -519,6 +529,9 @@ export const ApprovalView = z.object({
   tool: z.string(),
   params: z.record(z.unknown()),
   policy_decision: PolicyDecision.nullable(),
+  // Null for connectors that cannot classify — most of them. A reviewer seeing
+  // no assessment is correct; a reviewer seeing a default would be misled.
+  effect_assessment: EffectAssessmentView.nullable(),
   required_role: UserRole,
   decision: ApprovalDecision,
   expires_at: z.string().datetime().nullable(),

@@ -90,6 +90,7 @@ export class ApprovalsService {
         tool: actions.tool,
         params: actions.params,
         policy_decision: actions.policyDecision,
+        effect_assessment: actions.effectAssessment,
         agent_id: agents.id,
         agent_name: agents.name,
         decided_by_email: users.email,
@@ -120,6 +121,7 @@ export class ApprovalsService {
         tool: actions.tool,
         params: actions.params,
         policy_decision: actions.policyDecision,
+        effect_assessment: actions.effectAssessment,
         agent_id: agents.id,
         agent_name: agents.name,
         decided_by_email: users.email,
@@ -547,6 +549,11 @@ function toView(row: {
   tool: string;
   params: Record<string, unknown>;
   policy_decision: Record<string, unknown> | null;
+  effect_assessment: {
+    effectClass: string;
+    reversible: boolean;
+    summary: string;
+  } | null;
   agent_id: string;
   agent_name: string;
   decided_by_email: string | null;
@@ -559,6 +566,7 @@ function toView(row: {
     tool: row.tool,
     params: row.params,
     policy_decision: (row.policy_decision as PolicyDecision | null) ?? null,
+    effect_assessment: row.effect_assessment,
     required_role: row.required_role,
     decision: row.decision,
     expires_at: row.expires_at?.toISOString() ?? null,
