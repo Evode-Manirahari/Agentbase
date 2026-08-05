@@ -186,6 +186,18 @@ export const actions = pgTable(
     // commit is refused, so an approved action cannot be dispatched with
     // params other than the ones a human actually read.
     requestHash: text('request_hash'),
+    // What the gate BELIEVED this action would do, recorded at decision time.
+    //
+    // Evidence, not decoration: an incident asks "why was this allowed?", and
+    // the honest answer depends on what the classifier said when the policy
+    // ran — not on what it would say today, after a rule change or a connector
+    // update. Recomputing at read time would quietly rewrite history.
+    // Null for connectors that cannot classify.
+    effectAssessment: jsonb('effect_assessment').$type<{
+      effectClass: string;
+      reversible: boolean;
+      summary: string;
+    }>(),
     // NOTE: there is deliberately no `provider_idempotency_key` column here.
     // The key is a pure function of the action id, and what was ACTUALLY put on
     // the wire is recorded per attempt in `effect_receipts.idempotency_key_sent`.

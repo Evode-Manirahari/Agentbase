@@ -84,6 +84,12 @@ class StubRegistry {
   idempotencyMode: 'key' | 'natural' | 'none' = 'none';
   // Simulates a classifier that blows up mid-assessment.
   assessThrows = false;
+  // What assess() reports when it does not throw.
+  assessResult: {
+    effectClass: string;
+    reversible: boolean;
+    summary: string;
+  } | null = null;
   result: ConnectorResult = { ok: true, data: { stub: true } };
   resolveAlways = true;
   // Widens the window between "connector called" and "outcome recorded" so
@@ -98,7 +104,7 @@ class StubRegistry {
       idempotency: () => this.idempotencyMode,
       assess: () => {
         if (this.assessThrows) throw new Error('classifier exploded');
-        return null;
+        return this.assessResult;
       },
       invoke: async (tool, params) => {
         this.invocations.push({ tool, params });
@@ -874,6 +880,60 @@ describe('ActionsService.execute', () => {
       /does not support idempotent retry/,
     );
     assert.equal(registry.invocations.length, 0);
+  });
+
+  it('records what the gate believed the action would do, as evidence', async () => {
+    // An incident asks "why was this allowed?". The honest answer depends on
+    // what the classifier said WHEN THE POLICY RAN — not on what it would say
+    // today after a rule change. Recomputing at read time rewrites history.
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.assessResult = {
+      effectClass: 'publish',
+      reversible: false,
+      summary: 'Publishes a package to a public registry',
+    };
+    const out = await execute('t.t', {});
+
+    const [row] = await db
+      .select()
+      .from(actions)
+      .where(eq(actions.id, out.action_id));
+    assert.deepEqual(row!.effectAssessment, {
+      effectClass: 'publish',
+      reversible: false,
+      summary: 'Publishes a package to a public registry',
+    });
+  });
+
+  it('records the assessment on denied and awaiting_approval too', async () => {
+    registry.assessResult = {
+      effectClass: 'infra_write',
+      reversible: false,
+      summary: 'Destroys provisioned infrastructure',
+    };
+    policy.decision = makeDecision({ effect: 'deny', reason: 'no' });
+    const denied = await execute('t.t', {});
+    const [d] = await db.select().from(actions).where(eq(actions.id, denied.action_id));
+    assert.equal(
+      (d!.effectAssessment as { effectClass: string } | null)?.effectClass,
+      'infra_write',
+    );
+
+    policy.decision = makeDecision({ effect: 'require_approval' });
+    const held = await execute('t.t', {});
+    const [h] = await db.select().from(actions).where(eq(actions.id, held.action_id));
+    assert.equal(
+      (h!.effectAssessment as { reversible: boolean } | null)?.reversible,
+      false,
+    );
+  });
+
+  it('leaves the assessment null when the connector cannot classify', async () => {
+    registry.assessResult = null;
+    policy.decision = makeDecision({ effect: 'allow' });
+    const out = await execute('t.t', {});
+    const [row] = await db.select().from(actions).where(eq(actions.id, out.action_id));
+    assert.equal(row!.effectAssessment, null, 'no invented default');
   });
 
   it('an assessment that throws denies, even when the policy default is allow', async () => {

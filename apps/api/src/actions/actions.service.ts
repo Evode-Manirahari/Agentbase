@@ -170,7 +170,13 @@ export class ActionsService {
         policy_id: null,
         fallback: true,
       };
-      const recorded = await this.recordAction(input, 'denied', decision, null);
+      const recorded = await this.recordAction(
+        input,
+        'denied',
+        decision,
+        null,
+        graded.effect,
+      );
       if (recorded.conflict) return recorded.conflict;
       await this.audit.record({
         orgId: input.orgId,
@@ -194,7 +200,13 @@ export class ActionsService {
     });
 
     if (decision.effect === 'deny') {
-      const recorded = await this.recordAction(input, 'denied', decision, null);
+      const recorded = await this.recordAction(
+        input,
+        'denied',
+        decision,
+        null,
+        graded.effect,
+      );
       if (recorded.conflict) return recorded.conflict;
       const action = recorded.action;
       await this.audit.record({
@@ -202,7 +214,12 @@ export class ActionsService {
         actorType: 'agent',
         actorId: input.agentId,
         eventType: 'action.denied',
-        payload: { actionId: action.id, tool: input.tool, decision },
+        payload: {
+          actionId: action.id,
+          tool: input.tool,
+          decision,
+          effect: graded.effect,
+        },
       });
       return { action_id: action.id, status: 'denied', policy_decision: decision };
     }
@@ -213,6 +230,7 @@ export class ActionsService {
         'awaiting_approval',
         decision,
         null,
+        graded.effect,
       );
       // Losing the key race here is the case that used to double-post: the
       // winner already has an approval row and a Slack card for this action.
@@ -233,7 +251,12 @@ export class ActionsService {
         actorType: 'agent',
         actorId: input.agentId,
         eventType: 'action.awaiting_approval',
-        payload: { actionId: action.id, tool: input.tool, decision },
+        payload: {
+          actionId: action.id,
+          tool: input.tool,
+          decision,
+          effect: graded.effect,
+        },
       });
 
       if (approval && this.slack.isConfigured()) {
@@ -292,7 +315,7 @@ export class ActionsService {
     // request carrying the same key loses the race at the database and never
     // reaches the connector. Claiming it afterwards — which is what this code
     // used to do — deduplicates the record of the send but not the send.
-    const reservation = await this.reserveAction(input, decision);
+    const reservation = await this.reserveAction(input, decision, graded.effect);
     if (reservation.conflict) {
       this.log.debug(
         `idempotency reservation lost org=${input.orgId} agent=${input.agentId} key=${input.idempotencyKey} — no connector call made`,
@@ -690,6 +713,7 @@ export class ActionsService {
   private async reserveAction(
     input: ExecuteInput,
     decision: PolicyDecision,
+    effect: EffectAssessmentOutcome['effect'] = null,
   ): Promise<
     | { action: Action; conflict: null }
     | { action: null; conflict: ExecuteOutput }
@@ -707,6 +731,7 @@ export class ActionsService {
           result: null,
           idempotencyKey: input.idempotencyKey ?? null,
           requestHash: requestHash(input.tool, input.params),
+          effectAssessment: effect,
           // `in_flight` is claimed in the same insert as the key, not in a
           // follow-up update. Two statements would leave a window where a crash
           // strands the row at `not_dispatched`: the sweeper only looks at
@@ -795,6 +820,7 @@ export class ActionsService {
     status: ActionStatus,
     decision: PolicyDecision,
     result: Record<string, unknown> | null,
+    effect: EffectAssessmentOutcome['effect'] = null,
   ): Promise<
     { action: Action; conflict: null } | { action: null; conflict: ExecuteOutput }
   > {
@@ -814,6 +840,7 @@ export class ActionsService {
           // branch runs through recordAction, and that is precisely the action
           // whose hash a human will later be bound to.
           requestHash: requestHash(input.tool, input.params),
+          effectAssessment: effect,
           completedAt:
             status === 'executed' || status === 'denied' || status === 'failed'
               ? new Date()

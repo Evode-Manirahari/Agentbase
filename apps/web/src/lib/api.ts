@@ -78,6 +78,13 @@ export interface ApprovalRow {
   tool: string;
   params: Record<string, unknown>;
   policy_decision: { reason?: string; approver_role?: string | null } | null;
+  // What the gate determined the action would do, recorded when it decided.
+  // Null for connectors that cannot classify — most of them.
+  effect_assessment: {
+    effectClass: string;
+    reversible: boolean;
+    summary: string;
+  } | null;
   required_role: string;
   decision: 'pending' | 'approved' | 'denied' | 'expired';
   expires_at: string | null;
