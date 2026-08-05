@@ -189,6 +189,24 @@ Replay never serves an `indeterminate` attempt as though it succeeded — that
 would manufacture evidence for something that may never have happened. It returns
 `no_receipt` and does not go and ask.
 
+To replay a specific action:
+
+```http
+POST /v1/actions/:actionId/replay
+```
+
+It **409s unless the process is in replay mode**. That is what makes it safe by
+construction rather than by discipline — no argument a caller can pass turns it
+into a live dispatch, because the dispatcher itself cannot reach a provider
+while the mode is on.
+
+This endpoint exists because replay previously had no reachable path. Every
+production caller of the dispatcher hands it an action with no committed
+receipt yet — a fresh execute, an approval, or a retry (which only accepts
+`failed` actions, while replay only serves `committed` receipts). The capability
+was real in the dispatcher and unreachable through the API, which made "replay
+returns the recorded receipt" true of the code and false of the product.
+
 ## The test that makes it binary
 
 The protocol is measured against a provider double that counts the effects
