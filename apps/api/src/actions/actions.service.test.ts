@@ -10,6 +10,7 @@ import {
   afterEach,
 } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
@@ -29,6 +30,8 @@ import { AuditService } from '../audit/audit.service.js';
 import type { PolicyService } from '../policy/policy.service.js';
 import type { ConnectorRegistry } from '../connectors/connector-registry.js';
 import type { SlackService } from '../slack/slack.service.js';
+import { EffectDispatcher } from './effect-dispatcher.service.js';
+import { EffectReceiptsService } from './effect-receipts.service.js';
 import type {
   RateLimitResult,
   RateLimitService,
@@ -75,6 +78,9 @@ class StubPolicy {
 
 class StubRegistry {
   invocations: { tool: string; params: Record<string, unknown> }[] = [];
+  // What the fake provider claims about retry safety. Defaults to the
+  // pessimistic reading, matching an undeclared connector.
+  idempotencyMode: 'key' | 'natural' | 'none' = 'none';
   result: ConnectorResult = { ok: true, data: { stub: true } };
   resolveAlways = true;
   // Widens the window between "connector called" and "outcome recorded" so
@@ -86,6 +92,7 @@ class StubRegistry {
     return {
       name: 'stub',
       supports: () => true,
+      idempotency: () => this.idempotencyMode,
       invoke: async (tool, params) => {
         this.invocations.push({ tool, params });
         if (this.delayMs > 0) {
@@ -149,6 +156,16 @@ after(async () => {
   await client.end();
 });
 
+// Builds the effect dispatcher the services now depend on. `replay` flips the
+// hard mode switch that makes it incapable of reaching a connector.
+function makeEffects(replay = false): EffectDispatcher {
+  const config = {
+    get: (k: string) =>
+      k === 'AGENTBASE_REPLAY' ? (replay ? '1' : undefined) : undefined,
+  } as unknown as ConfigService;
+  return new EffectDispatcher(new EffectReceiptsService(db, audit), config);
+}
+
 describe('ActionsService.execute', () => {
   let orgId: string;
   let agentId: string;
@@ -182,6 +199,7 @@ describe('ActionsService.execute', () => {
       registry as unknown as ConnectorRegistry,
       slack as unknown as SlackService,
       rateLimit as unknown as RateLimitService,
+      makeEffects(),
     );
   });
 
@@ -745,6 +763,47 @@ describe('ActionsService.execute', () => {
     );
   });
 
+  it('retry: refuses an unknown dispatch when the provider cannot dedupe', async () => {
+    // The sweeper marks a never-settled dispatch `failed` + `unknown`. "Failed"
+    // there means "we do not know", not "nothing happened" — so the Retry
+    // button was a way to turn one deployment into two.
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.result = { ok: false, error: { code: 'timeout', message: 'gone' } };
+    const out = await execute('t.t', {});
+    await db
+      .update(actions)
+      .set({ status: 'failed', dispatchState: 'unknown' })
+      .where(eq(actions.id, out.action_id));
+
+    registry.invocations.length = 0;
+    await assert.rejects(
+      svc.retry({ orgId, actionId: out.action_id, operatorId: 'op' }),
+      /dispatch outcome is unknown/,
+    );
+    assert.equal(registry.invocations.length, 0, 'the connector was not called');
+  });
+
+  it('retry: allows an unknown dispatch when the provider honours idempotency', async () => {
+    policy.decision = makeDecision({ effect: 'allow' });
+    registry.result = { ok: false, error: { code: 'timeout', message: 'gone' } };
+    const out = await execute('t.t', {});
+    await db
+      .update(actions)
+      .set({ status: 'failed', dispatchState: 'unknown' })
+      .where(eq(actions.id, out.action_id));
+
+    // A provider that collapses our retry into the original request makes the
+    // re-send safe, so the guard must not block it.
+    registry.idempotencyMode = 'key';
+    registry.result = { ok: true, data: {} };
+    const retried = await svc.retry({
+      orgId,
+      actionId: out.action_id,
+      operatorId: 'op',
+    });
+    assert.equal(retried.status, 'executed');
+  });
+
   it('retry: 409 when original decision was deny — operator must change policy', async () => {
     policy.decision = makeDecision({ effect: 'deny', reason: 'forbidden' });
     const out = await execute('t.t', {});
@@ -974,6 +1033,7 @@ describe('ActionsService.execute', () => {
       registry as unknown as ConnectorRegistry,
       slack as unknown as SlackService,
       rateLimit as unknown as RateLimitService,
+      makeEffects(),
     );
 
     await assert.rejects(
@@ -1108,6 +1168,7 @@ describe('ActionsService.listForOrg', () => {
       new StubRegistry() as unknown as ConnectorRegistry,
       new StubSlack() as unknown as SlackService,
       new StubRateLimit() as unknown as RateLimitService,
+      makeEffects(),
     );
   });
 

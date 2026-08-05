@@ -10,12 +10,57 @@ export interface ConnectorResult {
   ok: boolean;
   data?: unknown;
   error?: ConnectorError;
+  // The provider's own identifier for what happened — a Stripe charge id, a
+  // GitHub ref sha, a Terraform apply id. Optional because not every provider
+  // returns one, but when it exists it is what turns "we logged a success"
+  // into "here is their word for it", which is the difference between a claim
+  // and evidence.
+  providerRef?: string;
+}
+
+/**
+ * What makes a retry safe against a given provider operation. This is a
+ * property of THEIR API, not of our code, so it has to be declared per tool
+ * rather than assumed — and getting it wrong in the optimistic direction is
+ * how a retry duplicates a payment.
+ */
+export type IdempotencyMode =
+  // The provider honours a key we supply, so our retry is their same request.
+  // Stripe's `Idempotency-Key` is the canonical case.
+  | 'key'
+  // The operation is idempotent by construction: deleting a named resource,
+  // setting a field to a fixed value. Repeating it converges rather than
+  // duplicating.
+  | 'natural'
+  // Neither. A retry may produce a second effect, so an attempt we never
+  // learned the outcome of must NOT be re-sent without a human establishing
+  // what happened.
+  | 'none';
+
+export interface ConnectorInvokeContext {
+  // Deterministic key for THIS action, stable across retries. Connectors that
+  // can pass it to the provider (Stripe's `Idempotency-Key`, GitHub's, etc)
+  // should; a provider that honours it collapses our retries into one effect,
+  // which is the only thing that makes retrying safe when we cannot tell
+  // whether the first attempt landed.
+  idempotencyKey?: string;
 }
 
 export interface Connector {
   readonly name: string;
   supports(tool: string): boolean;
-  invoke(tool: string, params: Record<string, unknown>): Promise<ConnectorResult>;
+  invoke(
+    tool: string,
+    params: Record<string, unknown>,
+    ctx?: ConnectorInvokeContext,
+  ): Promise<ConnectorResult>;
+  /**
+   * Declares whether retrying this tool is safe. Optional, and a connector that
+   * does not implement it is treated as `'none'` — the pessimistic reading.
+   * Defaulting the other way would silently convert every unaudited connector
+   * into a duplicate-effect risk.
+   */
+  idempotency?(tool: string): IdempotencyMode;
 }
 
 const PropertyValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);

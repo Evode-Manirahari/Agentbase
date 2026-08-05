@@ -1,7 +1,10 @@
 import { Global, Module } from '@nestjs/common';
 import { ActionsController } from './actions.controller.js';
+import { EffectsController } from './effects.controller.js';
 import { ActionsService } from './actions.service.js';
 import { RateLimitService } from './rate-limit.service.js';
+import { EffectDispatcher } from './effect-dispatcher.service.js';
+import { EffectReceiptsService } from './effect-receipts.service.js';
 import { AuditModule } from '../audit/audit.module.js';
 import { PolicyModule } from '../policy/policy.module.js';
 import { AgentsModule } from '../agents/agents.module.js';
@@ -17,8 +20,14 @@ import { ApiKeyGuard } from '../auth/api-key.guard.js';
 @Global()
 @Module({
   imports: [AuditModule, PolicyModule, AgentsModule],
-  controllers: [ActionsController],
-  providers: [ActionsService, RateLimitService, ApiKeyGuard],
-  exports: [ActionsService],
+  controllers: [ActionsController, EffectsController],
+  providers: [
+    ActionsService,
+    RateLimitService,
+    ApiKeyGuard,
+    EffectDispatcher,
+    EffectReceiptsService,
+  ],
+  exports: [ActionsService, EffectDispatcher, EffectReceiptsService],
 })
 export class ActionsModule {}
