@@ -45,6 +45,18 @@ export class ActionsController {
     private readonly agents: AgentsService,
   ) {}
 
+  /**
+   * Offline incident replay. Serves the recorded receipt for an action and
+   * contacts nobody. 409s unless the process is in replay mode, so this
+   * endpoint cannot cause an effect under any input.
+   */
+  @Post(':actionId/replay')
+  @UseGuards(ClerkAuthGuard)
+  async replay(@Param('actionId') actionId: string) {
+    const orgId = await this.agents.ensureDefaultOrg();
+    return this.actions.replayForOrg(orgId, actionId);
+  }
+
   @Get()
   @UseGuards(ClerkAuthGuard)
   async list(@Query('limit') limit?: string) {

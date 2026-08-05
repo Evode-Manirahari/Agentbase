@@ -672,6 +672,59 @@ export class ActionsService {
     };
   }
 
+  /**
+   * Re-run an action through the dispatcher in REPLAY mode, serving the
+   * recorded receipt instead of contacting anyone.
+   *
+   * This exists because replay had no reachable path. Every production caller
+   * of dispatch() hands it an action with no committed receipt yet — a fresh
+   * execute, an approval, or a retry (which only accepts `failed` actions,
+   * while replay only serves `committed` receipts). The capability was real at
+   * the dispatcher and unreachable through the API, which made "replay returns
+   * the recorded receipt" true of the code and false of the product.
+   *
+   * Refuses outright unless the process is in replay mode. That is what makes
+   * it safe by construction rather than by discipline: there is no argument a
+   * caller can pass that turns this into a live dispatch, because the
+   * dispatcher itself is incapable of reaching a provider while the mode is on.
+   */
+  async replayForOrg(orgId: string, actionId: string) {
+    if (!this.effects.isReplay()) {
+      throw new ConflictException(
+        'replay is only available when the process is running with AGENTBASE_REPLAY=1 — ' +
+          'refusing, because outside replay mode this would be a live dispatch',
+      );
+    }
+
+    const [original] = await this.db
+      .select()
+      .from(actions)
+      .where(and(eq(actions.id, actionId), eq(actions.orgId, orgId)))
+      .limit(1);
+    if (!original) {
+      throw new NotFoundException(`action ${actionId} not found`);
+    }
+
+    const dispatched = await this.effects.dispatch({
+      actionId,
+      tool: original.tool,
+      params: original.params as Record<string, unknown>,
+      approvedRequestHash: original.requestHash,
+      // The connector is irrelevant in replay — the dispatcher never reaches
+      // it — but passing null makes that explicit rather than incidental.
+      connector: null,
+    });
+
+    return {
+      action_id: actionId,
+      tool: original.tool,
+      replayed: dispatched.replayed,
+      result: dispatched.result,
+      connector: dispatched.connectorName,
+      idempotency_mode: dispatched.idempotencyMode,
+    };
+  }
+
   async listForOrg(orgId: string, limit = 100) {
     const rows = await this.db
       .select({

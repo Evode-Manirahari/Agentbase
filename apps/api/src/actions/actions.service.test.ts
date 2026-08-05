@@ -11,6 +11,7 @@ import {
 } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { ConfigService } from '@nestjs/config';
+import { NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
@@ -1314,6 +1315,105 @@ describe('ActionsService.execute', () => {
     assert.equal(fulfilled.length, 1, 'exactly one retry should win');
     assert.equal(rejected.length, 1, 'the loser should be rejected, not queued');
     assert.equal(registry.invocations.length, 1, 'one connector call only');
+  });
+});
+
+// Replay had no reachable path before this: every production caller hands
+// dispatch() an action with no committed receipt yet, so replay mode always
+// answered `no_receipt`. The capability was real at the dispatcher and false
+// of the product.
+describe('ActionsService.replayForOrg', () => {
+  let orgId: string;
+  let agentId: string;
+  let registry: StubRegistry;
+
+  function svcWith(replay: boolean) {
+    return new ActionsService(
+      db,
+      audit,
+      new StubPolicy() as unknown as PolicyService,
+      registry as unknown as ConnectorRegistry,
+      new StubSlack() as unknown as SlackService,
+      new StubRateLimit() as unknown as RateLimitService,
+      makeEffects(replay),
+      new EffectReceiptsService(db, audit),
+    );
+  }
+
+  beforeEach(async () => {
+    const [org] = await db
+      .insert(orgs)
+      .values({ name: 'Test', slug: `rep-${randomUUID().slice(0, 8)}` })
+      .returning();
+    orgId = org!.id;
+    const [agent] = await db
+      .insert(agents)
+      .values({ orgId, name: 'replay-agent' })
+      .returning();
+    agentId = agent!.id;
+    registry = new StubRegistry();
+  });
+
+  afterEach(async () => {
+    if (orgId) await db.delete(orgs).where(eq(orgs.id, orgId));
+  });
+
+  it('refuses outside replay mode, so it can never cause a live dispatch', async () => {
+    const live = svcWith(false);
+    const out = await live.execute({ orgId, agentId, tool: 't.t', params: {} });
+    registry.invocations.length = 0;
+
+    await assert.rejects(
+      live.replayForOrg(orgId, out.action_id),
+      /only available when the process is running with AGENTBASE_REPLAY/,
+    );
+    assert.equal(registry.invocations.length, 0);
+  });
+
+  it('serves the recorded receipt and contacts nobody', async () => {
+    // Record a real dispatch first.
+    registry.result = { ok: true, data: { recorded: true } };
+    const live = svcWith(false);
+    const out = await live.execute({ orgId, agentId, tool: 't.t', params: {} });
+    const callsWhenRecorded = registry.invocations.length;
+    assert.ok(callsWhenRecorded > 0, 'the original dispatch really happened');
+
+    const replayed = await svcWith(true).replayForOrg(orgId, out.action_id);
+    assert.equal(replayed.replayed, true);
+    assert.equal(replayed.result.ok, true);
+    assert.deepEqual(replayed.result.data, { recorded: true });
+    assert.equal(
+      registry.invocations.length,
+      callsWhenRecorded,
+      'replay must not add a single provider call',
+    );
+  });
+
+  it('will not invent a receipt for an effect that never committed', async () => {
+    registry.result = { ok: false, error: { code: 'boom', message: 'no' } };
+    const live = svcWith(false);
+    const out = await live.execute({ orgId, agentId, tool: 't.t', params: {} });
+
+    const replayed = await svcWith(true).replayForOrg(orgId, out.action_id);
+    assert.equal(replayed.result.ok, false);
+    assert.equal(replayed.result.error?.code, 'no_receipt');
+  });
+
+  it('404s across tenants', async () => {
+    const live = svcWith(false);
+    const out = await live.execute({ orgId, agentId, tool: 't.t', params: {} });
+    const [other] = await db
+      .insert(orgs)
+      .values({ name: 'Other', slug: `oth-${randomUUID().slice(0, 8)}` })
+      .returning();
+    try {
+      await assert.rejects(
+        svcWith(true).replayForOrg(other!.id, out.action_id),
+        NotFoundException,
+      );
+    } finally {
+      await db.delete(orgs).where(eq(orgs.id, other!.id));
+    }
   });
 });
 
