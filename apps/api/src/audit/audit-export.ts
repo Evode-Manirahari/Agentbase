@@ -98,9 +98,27 @@ function jsonRow(row: AuditExportRow): Record<string, unknown> {
   };
 }
 
+/**
+ * The policy decision inside an audit payload, under either key it was ever
+ * written with.
+ *
+ * `action.assessment_failed` writes `policy_decision`. `action.denied`,
+ * `action.awaiting_approval`, `action.executed`, and `action.failed` write
+ * `decision`. The exporter only ever read the first, so the `effect` column
+ * has been blank since the export shipped — for every event a compliance
+ * reviewer actually opens this file to see.
+ *
+ * Both keys are read rather than normalising the emitters, because historical
+ * audit rows already carry `decision` and an export that cannot read the rows
+ * on disk is not an export. Normalising going forward would fix new rows and
+ * leave every existing one blank.
+ */
 function payloadDecision(payload: Record<string, unknown>): Record<string, unknown> {
-  const value = payload['policy_decision'];
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  for (const key of ['policy_decision', 'decision']) {
+    const value = payload[key];
+    if (value && typeof value === 'object') return value as Record<string, unknown>;
+  }
+  return {};
 }
 
 function stringField(

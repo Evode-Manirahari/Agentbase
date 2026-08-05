@@ -145,3 +145,57 @@ describe('exportFilename', () => {
     assert.equal(exportFilename('json', now), 'agentbase-audit-2026-05-18T13-14-15Z.json');
   });
 });
+
+// The `effect` column was blank from the day the export shipped. The exporter
+// read `payload.policy_decision`; the events a reviewer actually opens this
+// file for — denied, awaiting_approval, executed, failed — write the key as
+// `decision`. Nobody noticed because an empty CSV cell looks like "no policy
+// applied" rather than like a bug.
+describe('audit export — the effect column', () => {
+  function effectColumn(payload: Record<string, unknown>): string {
+    const rows = [
+      {
+        createdAt: new Date('2026-08-05T18:00:00Z'),
+        actorType: 'agent',
+        actorId: 'a1',
+        eventType: 'action.denied',
+        payload,
+      },
+    ];
+    let out = '';
+    for (const chunk of auditCsvChunks(rows as never)) out += chunk;
+    const line = out.trim().split('\n')[1] ?? '';
+    return line.split(',')[6] ?? '';
+  }
+
+  it('reads the `decision` key the action events actually write', () => {
+    assert.equal(
+      effectColumn({ tool: 't.t', decision: { effect: 'require_approval' } }),
+      'require_approval',
+    );
+  });
+
+  it('still reads the `policy_decision` key', () => {
+    assert.equal(
+      effectColumn({ tool: 't.t', policy_decision: { effect: 'deny' } }),
+      'deny',
+    );
+  });
+
+  it('is not confused by the effect ASSESSMENT sharing the name', () => {
+    // payload.effect is an object (effectClass/reversible/summary), while this
+    // column wants the policy effect. They collide by name and not by meaning.
+    assert.equal(
+      effectColumn({
+        tool: 'shell.run',
+        decision: { effect: 'allow' },
+        effect: { effectClass: 'publish', reversible: false, summary: 'x' },
+      }),
+      'allow',
+    );
+  });
+
+  it('is empty when there genuinely was no decision', () => {
+    assert.equal(effectColumn({ tool: 't.t' }), '');
+  });
+});
