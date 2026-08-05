@@ -73,6 +73,32 @@ export function ApprovalsList({ items }: { items: ApprovalRow[] }) {
                       ? new Date(it.expires_at).toLocaleString()
                       : 'never'}
                   </div>
+                  {it.effect_assessment && (
+                    // The consequence, stated before the buttons. Someone about
+                    // to approve is deciding whether an EFFECT is acceptable,
+                    // and the params below state the command without stating
+                    // what it does. Rendered only when the gate actually
+                    // assessed it — a default here would be a claim nobody made.
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                      <span className="mono rounded border border-[var(--color-border)] px-2 py-0.5">
+                        {it.effect_assessment.effectClass}
+                      </span>
+                      <span
+                        className={
+                          it.effect_assessment.reversible
+                            ? 'rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-300'
+                            : 'rounded border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-rose-300'
+                        }
+                      >
+                        {it.effect_assessment.reversible
+                          ? 'reversible'
+                          : 'cannot be undone'}
+                      </span>
+                      <span className="text-[var(--color-muted)]">
+                        {it.effect_assessment.summary}
+                      </span>
+                    </div>
+                  )}
                   {it.policy_decision?.reason && (
                     <div className="text-xs text-amber-400 mt-1">
                       reason: {it.policy_decision.reason}
