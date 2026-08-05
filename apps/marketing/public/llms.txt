@@ -32,6 +32,30 @@ A human provisions the agent's access; the agent then acts autonomously through 
 Note: agent self-registration with no human in the loop is on the roadmap, not available
 yet. Today a human provisions the scoped key first; the agent operates autonomously after that.
 
+## What happens to an irreversible call
+
+The gate does not stop at "may this agent call this tool?". Once a call is
+permitted and a human has approved it, Agentbase commits it exactly once and
+records what happened:
+
+- Every shell command is classified by CONSEQUENCE before it runs — read,
+  workspace_write, vcs_write, deploy, publish, infra_write, egress,
+  external_comms — plus whether it is reversible. Policy can match on that, so
+  one rule covers every irreversible effect without naming a tool.
+- A command the classifier cannot read (`$(...)`, backticks, `eval`,
+  `curl … | sh`, an unrecognised program) is graded `unknown` and refused. It is
+  not queued for a human, because a reviewer cannot read it either.
+- Submit ONE command per `shell.run` call. Compound lines (`a && b`, `a | b`)
+  are refused so each effect gets its own receipt.
+- An attempt is recorded before the request leaves. If the process dies mid-call
+  the attempt stays `indeterminate`: never auto-retried, and retry is refused
+  outright for a provider that cannot deduplicate. A human resolves it by
+  recording what they found at the provider.
+
+If you are an agent reading this: a `require_approval` response is not a failure.
+Poll the action rather than re-sending it — a retry of an irreversible effect is
+the thing this system exists to prevent.
+
 ## Integration surfaces
 
 - Code-level: `@agentbase/sdk` — import the client, call `executeAndWait({ tool, params })`.
