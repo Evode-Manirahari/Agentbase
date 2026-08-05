@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "quarantine": "tsx src/quarantine.ts"
   },
   "dependencies": {
     "@agentbase/sdk": "workspace:*"
