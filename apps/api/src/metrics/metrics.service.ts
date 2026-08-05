@@ -28,6 +28,14 @@ export interface MetricsOverview {
     pending: number;
   };
   rate_limited_count: number;
+  /**
+   * Dispatches that started and never settled. Counted separately from
+   * failures because they are a different claim: a failure says nothing
+   * happened, this says nobody knows. The sweeper records them with
+   * status=failed, so without this they inflate failure_rate and disappear
+   * into it — and the number an operator most needs is the one that vanishes.
+   */
+  indeterminate_count: number;
   top_tools: { tool: string; count: number }[];
   top_agents: { agent_id: string; agent_name: string; count: number }[];
   /**
@@ -77,6 +85,7 @@ export class MetricsService {
       statusRows,
       toolRows,
       agentRows,
+      indeterminateRows,
       rateLimitedRows,
       approvalRows,
       policyRuleRows,
@@ -105,6 +114,12 @@ export class MetricsService {
         .groupBy(actions.agentId, agents.name)
         .orderBy(desc(sql`count(*)`), asc(agents.name))
         .limit(5),
+      // Dispatches whose outcome was never learned. Excluded from
+      // failure_rate below and surfaced on its own.
+      this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(actions)
+        .where(and(orgScope, eq(actions.dispatchState, 'unknown'))),
       // Rate-limited actions are status=failed with result.error.code=rate_limited.
       // We could detect via JSON path but a count of all rows where the result
       // payload has that code is simpler — small windows, small n, fine.
@@ -162,8 +177,16 @@ export class MetricsService {
       total += row.count;
     }
 
+    const indeterminate_count = indeterminateRows[0]?.count ?? 0;
+
     const deny_rate = total === 0 ? 0 : byStatus.denied / total;
-    const failure_rate = total === 0 ? 0 : byStatus.failed / total;
+    // Unknown dispatches are recorded status=failed, but counting them as
+    // failures asserts nothing happened — which is exactly what we do not
+    // know. Subtracted here and reported on their own. Clamped at zero because
+    // the two counts come from separate queries and a row can settle between
+    // them; a negative rate would be worse than a slightly stale one.
+    const nonIndeterminateFailures = Math.max(0, byStatus.failed - indeterminate_count);
+    const failure_rate = total === 0 ? 0 : nonIndeterminateFailures / total;
     const rate_limited_count = rateLimitedRows[0]?.count ?? 0;
 
     // Approval throughput.
@@ -206,6 +229,7 @@ export class MetricsService {
         pending: approvalPending,
       },
       rate_limited_count,
+      indeterminate_count,
       top_tools: toolRows.map((r) => ({ tool: r.tool, count: r.count })),
       top_agents: agentRows.map((r) => ({
         agent_id: r.agent_id,
