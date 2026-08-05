@@ -1,0 +1,47 @@
+version: 1
+default: deny
+
+# The whole point of this policy is how SHORT it is.
+#
+# It never names a tool that publishes, deploys, or destroys infrastructure —
+# because that list cannot be kept current by hand. An agent learns a new
+# command, someone adds a connector, a CLI gains a subcommand, and an
+# enumerated policy is silently out of date. This one asks what the action
+# WILL DO instead.
+rules:
+  # FIRST, and first for a reason.
+  #
+  # An `unknown` effect carries `reversible: false`, so without this rule it
+  # would match the irreversible rule below and queue for approval. That is the
+  # wrong destination: a command the classifier could not read is not one a
+  # human reviewer can read either — `curl … | sh` shows a URL, not the script
+  # it is about to execute. Sending it to a person manufactures the appearance
+  # of review. Refuse it and make the agent submit something legible.
+  - match: { tool: '*', effect_class: unknown }
+    effect: deny
+    reason: 'unreadable command — approval would be theatre, not review'
+
+  # Reads run unattended. `git status`, `ls`, a test run — nothing leaves the
+  # machine and nothing changes.
+  - match: { tool: '*', effect_class: read }
+    effect: allow
+    reason: 'reads change nothing'
+
+  # Everything a human cannot undo stops for a human.
+  #
+  # This one rule covers `npm publish`, `git push`, `terraform apply`,
+  # `terraform destroy`, `kubectl delete`, `docker push`, `gh release create`,
+  # `aws s3 rm`, and every irreversible command nobody has thought of yet.
+  - match: { tool: '*', reversible: false }
+    effect: require_approval
+    approver_role: approver
+    reason: 'irreversible — a human decides'
+
+  # Recoverable local edits are fine: editing files, installing dependencies,
+  # making directories. Recoverable from git or a fresh clone.
+  - match: { tool: '*', effect_class: workspace_write, reversible: true }
+    effect: allow
+    reason: 'recoverable from the working tree'
+
+  # Anything else — a tool with no classifier, an effect class not listed
+  # above — falls through to `default: deny`.
