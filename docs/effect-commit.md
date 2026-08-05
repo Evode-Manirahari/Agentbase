@@ -115,6 +115,51 @@ POST /v1/effects/:receiptId/resolve
 { "outcome": "committed", "provider_ref": "sha-1", "note": "confirmed in the GitHub UI" }
 ```
 
+## The policy that does not go stale
+
+Shipped as the first one-click template, **"Require approval for anything that
+cannot be undone"**:
+
+```yaml
+- match: { tool: '*', effect_class: unknown }   # deny
+- match: { tool: '*', effect_class: read }      # allow
+- match: { tool: '*', reversible: false }       # require_approval
+- match: { tool: '*', effect_class: workspace_write, reversible: true }  # allow
+```
+
+It names no tool. An enumerated policy is out of date the moment an agent
+learns a command nobody listed, and the list of things that publish is exactly
+the list nobody can keep current by hand.
+
+**The `unknown` rule must come first.** An `unknown` effect carries
+`reversible: false`, so behind the irreversible rule it would match *that* and
+queue for approval — and a person is the wrong destination. `curl … | sh` shows
+an approver a URL, not the script it is about to execute. They cannot read it
+either, so routing it to a human manufactures the appearance of review while
+providing none. Refuse it and make the agent submit something legible.
+
+## What the reviewer sees
+
+The assessment is recorded on the action at decision time
+(`actions.effect_assessment`) and carried into the audit payloads — then shown
+on **both** approval surfaces, so a reviewer gets the same picture wherever
+they happen to look:
+
+```text
+*Effect*  `publish` — *irreversible*
+⚠️ Publishes a package to a public registry. This cannot be undone.
+```
+
+Recorded rather than recomputed on read, deliberately. An incident asks "why
+was this allowed?", and the honest answer depends on what the classifier said
+**when the policy ran** — not on what it would say today after a rule change or
+a connector update. Recomputing would describe the current classifier's opinion
+of an old action and look authoritative doing it.
+
+Null stays null for connectors that cannot classify, which is most of them. A
+reviewer seeing no assessment is correct; a reviewer seeing an invented default
+is misled.
+
 ## Ending a quarantine
 
 An indeterminate state with no exit is a leak, not a safety property.

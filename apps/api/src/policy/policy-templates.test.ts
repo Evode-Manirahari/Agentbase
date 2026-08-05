@@ -24,17 +24,59 @@ function standaloneDoc(template: PolicyTemplate): PolicyDocument {
 }
 
 describe('POLICY_TEMPLATES catalog', () => {
-  it('exposes the three Week 1 templates with unique keys', () => {
+  it('exposes the shipped templates with unique keys', () => {
     const keys = POLICY_TEMPLATES.map((t) => t.key);
     assert.deepEqual(
       [...keys].sort(),
       [
+        'approval-before-irreversible-effects',
         'approval-before-external-email',
         'approval-before-high-value-crm-write',
         'deny-destructive-and-bulk',
       ].sort(),
     );
     assert.equal(new Set(keys).size, keys.length, 'template keys must be unique');
+  });
+
+  it('the effect template is offered first', () => {
+    // The tool-enumerating templates go stale the moment an agent learns a
+    // command nobody listed. The effect one does not, so it is the default a
+    // reader sees.
+    assert.equal(POLICY_TEMPLATES[0]?.key, 'approval-before-irreversible-effects');
+  });
+
+  it('the effect template denies unknown BEFORE the irreversible rule', () => {
+    // Load-bearing ordering, and the reason is not obvious: `unknown` carries
+    // reversible:false, so if the irreversible rule came first, an unreadable
+    // command like `curl … | sh` would be queued for human approval instead of
+    // refused — routing a command nobody can read to a person who also cannot
+    // read it.
+    const t = POLICY_TEMPLATES.find(
+      (x) => x.key === 'approval-before-irreversible-effects',
+    );
+    assert.ok(t);
+    const unknownIdx = t!.rules.findIndex(
+      (r) => r.match.effect_class === 'unknown',
+    );
+    const irreversibleIdx = t!.rules.findIndex(
+      (r) => r.match.reversible === false && r.match.effect_class === undefined,
+    );
+    assert.ok(unknownIdx >= 0, 'has an unknown rule');
+    assert.ok(irreversibleIdx >= 0, 'has an irreversible rule');
+    assert.ok(
+      unknownIdx < irreversibleIdx,
+      'unknown must be denied before the irreversible rule can match it',
+    );
+    assert.equal(t!.rules[unknownIdx]!.effect, 'deny');
+  });
+
+  it('the effect template names no tool, so it cannot go stale', () => {
+    const t = POLICY_TEMPLATES.find(
+      (x) => x.key === 'approval-before-irreversible-effects',
+    );
+    for (const r of t!.rules) {
+      assert.equal(r.match.tool, '*', 'every rule matches on effect, not tool name');
+    }
   });
 
   it('every template has a non-empty label, description, and at least one rule', () => {
@@ -244,5 +286,103 @@ describe('deny-destructive-and-bulk template', () => {
     });
     assert.equal(decision.effect, 'deny', 'falls through to default deny');
     assert.equal(decision.rule_index, null);
+  });
+});
+
+// The ordering assertions above compare rule indices. These evaluate the
+// template as a policy document, which is what actually decides — an index
+// check would still pass if the engine ignored effect predicates entirely.
+describe('approval-before-irreversible-effects — behaviour', () => {
+  const doc = standaloneDoc(findTemplate('approval-before-irreversible-effects'));
+
+  function decide(
+    effectClass: string,
+    reversible: boolean,
+    tool = 'shell.run',
+  ) {
+    return evaluatePolicy(doc, {
+      tool,
+      params: {},
+      effect: { effectClass: effectClass as never, reversible },
+    }).effect;
+  }
+
+  it('an unreadable command is DENIED, not queued for a human', () => {
+    assert.equal(decide('unknown', false), 'deny');
+  });
+
+  it('every irreversible effect stops for a human', () => {
+    for (const c of [
+      'publish',
+      'deploy',
+      'infra_write',
+      'vcs_write',
+      'egress',
+      'external_comms',
+    ]) {
+      assert.equal(decide(c, false), 'require_approval', c);
+    }
+  });
+
+  it('reads and recoverable edits run unattended', () => {
+    assert.equal(decide('read', true), 'allow');
+    assert.equal(decide('workspace_write', true), 'allow');
+  });
+
+  it('an irreversible workspace write still stops — rm is not recoverable', () => {
+    assert.equal(decide('workspace_write', false), 'require_approval');
+  });
+
+  it('an unclassified action falls through to the document default', () => {
+    // No effect predicate matches without an assessment, so this lands on
+    // `default: deny` rather than being quietly permitted.
+    assert.equal(
+      evaluatePolicy(doc, { tool: 'hubspot.deals.update', params: {} }).effect,
+      'deny',
+    );
+  });
+
+  it('the template works for any tool, not just shell', () => {
+    assert.equal(decide('publish', false, 'some.future.tool'), 'require_approval');
+  });
+});
+
+// Regression guard for the serializer. It emitted only `tool` and `when`, so
+// any other match predicate was dropped on the way to YAML. That does not
+// fail loudly — it WIDENS the rule. `{tool:'*', effect_class:'unknown'} → deny`
+// became `{tool:'*'} → deny`, a policy that denies everything and looks
+// plausible in the editor.
+describe('template YAML preserves every match predicate', () => {
+  it('round-trips effect_class and reversible', () => {
+    const t = findTemplate('approval-before-irreversible-effects');
+    const yaml = policyTemplateStandaloneYaml(t);
+    assert.match(yaml, /effect_class: unknown/);
+    assert.match(yaml, /effect_class: read/);
+    assert.match(yaml, /reversible: false/);
+    assert.match(yaml, /reversible: true/);
+
+    const parsed = PolicyDocument.safeParse(parseYaml(yaml));
+    assert.ok(parsed.success);
+    const rules = parsed.data.rules;
+    assert.equal(rules[0]?.match.effect_class, 'unknown');
+    assert.equal(rules[2]?.match.reversible, false);
+  });
+
+  it('no rule loses a predicate between the object and the YAML', () => {
+    for (const t of POLICY_TEMPLATES) {
+      const parsed = PolicyDocument.safeParse(
+        parseYaml(policyTemplateStandaloneYaml(t)),
+      );
+      assert.ok(parsed.success, `${t.key} parses`);
+      assert.equal(parsed.data.rules.length, t.rules.length, `${t.key} rule count`);
+      t.rules.forEach((src, i) => {
+        const out = parsed.data.rules[i]!;
+        assert.deepEqual(
+          Object.keys(src.match).sort(),
+          Object.keys(out.match).sort(),
+          `${t.key} rule[${i}] match keys survive serialisation`,
+        );
+      });
+    }
   });
 });
