@@ -145,6 +145,11 @@ export const AUDIT_EVENT_TYPES = [
   'action.retried_rate_limited',
   'action.assessment_failed',
   'action.dispatch_unknown',
+  // Emitted by the reconciler when it derives an action summary from the
+  // receipt ledger rather than assuming one.
+  'action.dispatch_not_started',
+  'action.reconciled_committed',
+  'action.reconciled_failed',
   'action.request_changed_after_approval',
   'effect.resolved',
   'approval.posted_to_slack',
@@ -163,6 +168,11 @@ export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
  */
 export const DEFAULT_WEBHOOK_EVENTS: readonly AuditEventType[] = [
   'action.dispatch_unknown',
+  // Emitted by the reconciler when it derives an action summary from the
+  // receipt ledger rather than assuming one.
+  'action.dispatch_not_started',
+  'action.reconciled_committed',
+  'action.reconciled_failed',
   'action.failed',
   'approval.expired',
 ];

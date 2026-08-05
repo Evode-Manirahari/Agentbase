@@ -1130,7 +1130,7 @@ describe('ActionsService.execute', () => {
     assert.equal(stateDuringInvoke, 'in_flight');
   });
 
-  it('marks a dispatch that never settled as unknown and does not retry it', async () => {
+  it('an in-flight action with NO receipt never started, so it is not "unknown"', async () => {
     const key = `idem-${randomUUID()}`;
     const [stuck] = await db
       .insert(actions)
@@ -1154,10 +1154,14 @@ describe('ActionsService.execute', () => {
       .select()
       .from(actions)
       .where(eq(actions.id, stuck!.id));
-    assert.equal(row!.dispatchState, 'unknown');
+    // The receipt is inserted BEFORE the connector call, so an action with no
+    // receipt provably never reached a provider. Calling that `unknown` invents
+    // uncertainty about an effect that did not happen — and every invented
+    // unknown costs a human an investigation.
+    assert.equal(row!.dispatchState, 'settled');
     assert.equal(row!.status, 'failed');
     const res = row!.result as { error: { code: string } };
-    assert.equal(res.error.code, 'dispatch_unknown');
+    assert.equal(res.error.code, 'dispatch_not_started');
     // Critically: the sweeper resolved state without calling the connector.
     assert.equal(registry.invocations.length, 0);
   });
@@ -1176,7 +1180,7 @@ describe('ActionsService.execute', () => {
     assert.equal(await svc.reconcileStaleDispatches(5 * 60 * 1000), 0);
   });
 
-  it('a reservation that never reaches its next update is still sweepable', async () => {
+  it('a crash after the receipt settles does not contradict the receipt', async () => {
     // The reservation persists `in_flight` in the same insert that claims the
     // key, rather than inserting `not_dispatched` and transitioning in a second
     // statement. This kills the first `update` the service issues, standing in
@@ -1235,8 +1239,82 @@ describe('ActionsService.execute', () => {
       .select()
       .from(actions)
       .where(eq(actions.id, stranded!.id));
-    assert.equal(swept!.dispatchState, 'unknown');
-    assert.equal(swept!.status, 'failed');
+    // THE DIVERGENCE CASE. The receipt settled `committed` on the real
+    // connection; only the action summary was lost to the crash. The
+    // reconciler used to stamp `unknown` here without reading the ledger, so
+    // the evidence layer reported committed and unknown for the same effect.
+    // The summary is now derived from the receipt.
+    const [receipt] = await db
+      .select()
+      .from(effectReceipts)
+      .where(eq(effectReceipts.actionId, stranded!.id));
+    assert.equal(receipt!.outcome, 'committed', 'the attempt really did settle');
+    assert.equal(swept!.dispatchState, 'settled');
+    assert.equal(swept!.status, 'executed');
+  });
+
+  it('an indeterminate receipt still yields a genuinely unknown action', async () => {
+    // The corrected reconciler must not over-correct: an attempt that was
+    // opened and never answered is the one case where `unknown` is the truth.
+    const [action] = await db
+      .insert(actions)
+      .values({
+        orgId,
+        agentId,
+        tool: 't.t',
+        params: {},
+        status: 'pending',
+        policyDecision: makeDecision() as unknown as Record<string, unknown>,
+        dispatchState: 'in_flight',
+        dispatchedAt: new Date(Date.now() - 60 * 60 * 1000),
+      })
+      .returning();
+    await db.insert(effectReceipts).values({
+      actionId: action!.id,
+      attempt: 1,
+      connectorName: 'stub',
+      idempotencyMode: 'none',
+      outcome: 'indeterminate',
+    });
+
+    assert.ok((await svc.reconcileStaleDispatches(0)) >= 1);
+    const [row] = await db.select().from(actions).where(eq(actions.id, action!.id));
+    assert.equal(row!.dispatchState, 'unknown');
+    assert.equal(row!.status, 'failed');
+    assert.equal(
+      (row!.result as { error: { code: string } }).error.code,
+      'dispatch_unknown',
+    );
+  });
+
+  it('a failed receipt settles the action rather than leaving it unknown', async () => {
+    const [action] = await db
+      .insert(actions)
+      .values({
+        orgId,
+        agentId,
+        tool: 't.t',
+        params: {},
+        status: 'pending',
+        policyDecision: makeDecision() as unknown as Record<string, unknown>,
+        dispatchState: 'in_flight',
+        dispatchedAt: new Date(Date.now() - 60 * 60 * 1000),
+      })
+      .returning();
+    await db.insert(effectReceipts).values({
+      actionId: action!.id,
+      attempt: 1,
+      connectorName: 'stub',
+      idempotencyMode: 'none',
+      outcome: 'failed',
+      receipt: { ok: false, error: { code: 'http_500', message: 'upstream' } },
+      settledAt: new Date(),
+    });
+
+    assert.ok((await svc.reconcileStaleDispatches(0)) >= 1);
+    const [row] = await db.select().from(actions).where(eq(actions.id, action!.id));
+    assert.equal(row!.dispatchState, 'settled', 'the provider answered — nothing is unknown');
+    assert.equal(row!.status, 'failed');
   });
 
   it('concurrent require_approval sharing a key posts one card and one approval', async () => {
