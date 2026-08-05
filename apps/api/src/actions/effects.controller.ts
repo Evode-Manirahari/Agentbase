@@ -16,6 +16,17 @@ import { EffectReceiptsService } from './effect-receipts.service.js';
 import { AgentsService } from '../agents/agents.service.js';
 import { clampQueryInt } from '../common/query-int.js';
 
+const ResolveBulkRequest = z.object({
+  receipt_ids: z.array(z.string().uuid()).min(1).max(500),
+  outcome: z.enum(['committed', 'failed']),
+  // Required, unlike the single-resolve note. See resolveBulk(): a bulk
+  // assertion without a stated basis is the rubber-stamp the quarantine
+  // exists to prevent. There is deliberately no provider_ref — one reference
+  // cannot describe many effects.
+  note: z.string().trim().min(1).max(2000),
+});
+type ResolveBulkRequest = z.infer<typeof ResolveBulkRequest>;
+
 const ResolveEffectRequest = z.object({
   // What the operator established by looking at the provider. There is
   // deliberately no 'indeterminate' option: this endpoint exists to END a
@@ -69,6 +80,27 @@ export class EffectsController {
    * is true" — the effect is not re-attempted, because if it already landed,
    * attempting it again is the exact failure the protocol exists to prevent.
    */
+  /**
+   * Resolve many quarantined attempts with one stated basis — the outage
+   * case, where a person established the outcome for a window rather than
+   * for each row.
+   */
+  @Post('resolve-bulk')
+  @UseGuards(ClerkAuthGuard)
+  async resolveBulk(
+    @Body(new ZodValidationPipe(ResolveBulkRequest)) body: ResolveBulkRequest,
+    @Req() req: FastifyRequest,
+  ) {
+    const orgId = await this.agents.ensureDefaultOrg();
+    return this.receipts.resolveBulk({
+      orgId,
+      receiptIds: body.receipt_ids,
+      outcome: body.outcome,
+      operatorId: operatorFrom(req),
+      note: body.note,
+    });
+  }
+
   @Post(':receiptId/resolve')
   @UseGuards(ClerkAuthGuard)
   async resolve(
@@ -77,11 +109,7 @@ export class EffectsController {
     @Req() req: FastifyRequest,
   ) {
     const orgId = await this.agents.ensureDefaultOrg();
-    const operatorId =
-      (req as FastifyRequest & { auth?: { userId?: string; email?: string } }).auth
-        ?.email ??
-      (req as FastifyRequest & { auth?: { userId?: string } }).auth?.userId ??
-      'operator';
+    const operatorId = operatorFrom(req);
 
     const resolved = await this.receipts.resolve({
       orgId,
@@ -98,4 +126,11 @@ export class EffectsController {
       outcome: body.outcome,
     };
   }
+}
+
+function operatorFrom(req: FastifyRequest): string {
+  const auth = (req as FastifyRequest & {
+    auth?: { userId?: string; email?: string };
+  }).auth;
+  return auth?.email ?? auth?.userId ?? 'operator';
 }

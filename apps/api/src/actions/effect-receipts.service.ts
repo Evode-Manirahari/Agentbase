@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -301,6 +302,82 @@ export class EffectReceiptsService {
         `${input.outcome} by ${input.operatorId}`,
     );
     return row;
+  }
+
+  /**
+   * Resolve several quarantined attempts with one stated basis.
+   *
+   * Bulk-approving approvals is safe because each is an independent human
+   * decision. Bulk-RESOLVING is not the same thing, and copying that pattern
+   * without thinking would undo the point of the quarantine: resolving asserts
+   * "I established what happened", and asserting that for fifty effects
+   * nobody looked at is precisely the rubber-stamp this state exists to
+   * prevent.
+   *
+   * Two constraints make it honest rather than convenient:
+   *
+   * `note` is REQUIRED. A bulk assertion has to say what was established and
+   * how — "provider was down 14:02–14:20, none of these appear in their log"
+   * is a basis; silence is not. It is recorded against every receipt.
+   *
+   * There is deliberately no `providerRef` parameter. A provider reference
+   * identifies ONE effect. Applying a single reference to fifty receipts would
+   * fabricate evidence, and fabricated evidence in an audit trail is worse
+   * than no evidence. Anything needing a reference is resolved individually.
+   */
+  async resolveBulk(input: {
+    orgId: string;
+    receiptIds: string[];
+    outcome: 'committed' | 'failed';
+    operatorId: string;
+    note: string;
+  }): Promise<{
+    items: Array<{
+      receipt_id: string;
+      outcome: 'resolved' | 'skipped_already_resolved' | 'not_found';
+    }>;
+    summary: { resolved: number; skipped: number; not_found: number };
+  }> {
+    if (!input.note.trim()) {
+      throw new BadRequestException(
+        'a bulk resolve must state what was established — resolving many effects ' +
+          'without a basis is the rubber-stamp the quarantine exists to prevent',
+      );
+    }
+
+    const items: Array<{
+      receipt_id: string;
+      outcome: 'resolved' | 'skipped_already_resolved' | 'not_found';
+    }> = [];
+    const summary = { resolved: 0, skipped: 0, not_found: 0 };
+
+    for (const receiptId of input.receiptIds) {
+      try {
+        await this.resolve({
+          orgId: input.orgId,
+          receiptId,
+          outcome: input.outcome,
+          operatorId: input.operatorId,
+          note: input.note,
+        });
+        items.push({ receipt_id: receiptId, outcome: 'resolved' });
+        summary.resolved += 1;
+      } catch (err) {
+        if (err instanceof ConflictException) {
+          items.push({ receipt_id: receiptId, outcome: 'skipped_already_resolved' });
+          summary.skipped += 1;
+          continue;
+        }
+        if (err instanceof NotFoundException) {
+          items.push({ receipt_id: receiptId, outcome: 'not_found' });
+          summary.not_found += 1;
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    return { items, summary };
   }
 
   private async nextAttempt(actionId: string): Promise<number> {

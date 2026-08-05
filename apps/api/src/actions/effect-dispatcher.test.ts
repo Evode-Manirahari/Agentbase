@@ -587,6 +587,132 @@ describe('effect commit protocol', () => {
       assert.equal(stored.resolved_by_operator, 'alice@agentbase.test');
     });
 
+    describe('bulk resolve', () => {
+      async function threeQuarantined(): Promise<string[]> {
+        const ids: string[] = [];
+        for (let i = 0; i < 3; i++) {
+          const [a] = await db
+            .insert(actions)
+            .values({
+              orgId,
+              agentId,
+              tool: 'gmail.send',
+              params: { n: i },
+              status: 'failed',
+              dispatchState: 'unknown',
+              policyDecision: {} as Record<string, unknown>,
+            })
+            .returning();
+          const [r] = await db
+            .insert(effectReceipts)
+            .values({
+              actionId: a!.id,
+              attempt: 1,
+              connectorName: 'stub',
+              idempotencyMode: 'none',
+              outcome: 'indeterminate',
+            })
+            .returning();
+          ids.push(r!.id);
+        }
+        return ids;
+      }
+
+      it('resolves a window of attempts with one stated basis', async () => {
+        const ids = await threeQuarantined();
+        const out = await receipts.resolveBulk({
+          orgId,
+          receiptIds: ids,
+          outcome: 'failed',
+          operatorId: 'alice@agentbase.test',
+          note: 'provider was down 14:02-14:20; none appear in their log',
+        });
+        assert.equal(out.summary.resolved, 3);
+
+        const rows = await db
+          .select()
+          .from(effectReceipts)
+          .where(eq(effectReceipts.outcome, 'failed'));
+        const mine = rows.filter((r) => ids.includes(r.id));
+        assert.equal(mine.length, 3);
+        // The basis is recorded against EVERY receipt, not just the request.
+        for (const r of mine) {
+          const stored = r.receipt as { note?: string };
+          assert.match(stored.note ?? '', /provider was down/);
+        }
+      });
+
+      it('refuses a bulk resolve with no stated basis', async () => {
+        // Resolving asserts "I established what happened". Asserting that for
+        // many effects with nothing to show is the rubber-stamp this state
+        // exists to prevent.
+        const ids = await threeQuarantined();
+        await assert.rejects(
+          receipts.resolveBulk({
+            orgId,
+            receiptIds: ids,
+            outcome: 'committed',
+            operatorId: 'alice@agentbase.test',
+            note: '   ',
+          }),
+          /without a basis/,
+        );
+        const [still] = await db
+          .select()
+          .from(effectReceipts)
+          .where(eq(effectReceipts.id, ids[0]!));
+        assert.equal(still!.outcome, 'indeterminate', 'nothing was resolved');
+      });
+
+      it('reports per-item outcomes instead of failing the batch', async () => {
+        const ids = await threeQuarantined();
+        // Resolve one individually first, and include an id from nowhere.
+        await receipts.resolve({
+          orgId,
+          receiptId: ids[0]!,
+          outcome: 'committed',
+          operatorId: 'bob@agentbase.test',
+        });
+        const out = await receipts.resolveBulk({
+          orgId,
+          receiptIds: [...ids, '00000000-0000-0000-0000-000000000000'],
+          outcome: 'failed',
+          operatorId: 'alice@agentbase.test',
+          note: 'checked the provider for this window',
+        });
+        assert.equal(out.summary.resolved, 2);
+        assert.equal(out.summary.skipped, 1, 'the already-resolved one is skipped');
+        assert.equal(out.summary.not_found, 1);
+        // And the earlier verdict is untouched.
+        const [first] = await db
+          .select()
+          .from(effectReceipts)
+          .where(eq(effectReceipts.id, ids[0]!));
+        assert.equal(first!.outcome, 'committed');
+      });
+
+      it('cannot reach another tenant\'s receipts', async () => {
+        const ids = await threeQuarantined();
+        const [other] = await db
+          .insert(orgs)
+          .values({ name: 'Other', slug: `oth-${randomUUID().slice(0, 8)}` })
+          .returning();
+        try {
+          const out = await receipts.resolveBulk({
+            orgId: other!.id,
+            receiptIds: ids,
+            outcome: 'failed',
+            operatorId: 'mallory@evil.test',
+            note: 'trying',
+          });
+          assert.equal(out.summary.resolved, 0);
+          assert.equal(out.summary.not_found, 3);
+        } finally {
+          await db.delete(orgs).where(eq(orgs.id, other!.id));
+        }
+      });
+    });
+
     it('refuses to resolve an attempt that already settled itself', async () => {
       await dispatch(); // clean run — settles `committed` on its own
       const [r] = await db
