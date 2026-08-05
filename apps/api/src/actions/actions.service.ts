@@ -45,7 +45,13 @@ interface EffectAssessmentOutcome {
   // is `failed: false, effect: null` — not knowing is fine, being unable to
   // find out is not.
   failed: boolean;
-  effect: { effectClass: EffectClassName; reversible: boolean } | null;
+  // `summary` is carried for humans, not for policy: it is what the approval
+  // card shows a reviewer ("Publishes a package to a public registry").
+  effect: {
+    effectClass: EffectClassName;
+    reversible: boolean;
+    summary: string;
+  } | null;
 }
 
 export interface ExecuteOutput {
@@ -241,6 +247,15 @@ export class ActionsService {
           reason: decision.reason ?? null,
           expiresAt,
           channelOverride,
+          // The grade the gate already computed. Recomputing it here would
+          // risk the card describing something other than what was decided on.
+          effect: graded.effect
+            ? {
+                effectClass: graded.effect.effectClass,
+                reversible: graded.effect.reversible,
+                summary: graded.effect.summary,
+              }
+            : null,
         });
         if (card) {
           await this.db
@@ -570,6 +585,7 @@ export class ActionsService {
             assess?: (p: Record<string, unknown>) => {
               effectClass: EffectClassName;
               reversible: boolean;
+              summary?: string;
             } | null;
           })
         | null;
@@ -578,7 +594,13 @@ export class ActionsService {
       // and effect-scoped rules simply do not apply to them.
       return {
         failed: false,
-        effect: a ? { effectClass: a.effectClass, reversible: a.reversible } : null,
+        effect: a
+          ? {
+              effectClass: a.effectClass,
+              reversible: a.reversible,
+              summary: a.summary ?? a.effectClass,
+            }
+          : null,
       };
     } catch (err) {
       // A classifier that THREW is different: something that was supposed to
