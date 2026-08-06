@@ -15,6 +15,7 @@ import type { Connector } from '@agentbase/connector-hubspot';
 import { SlackService } from '../slack/slack.service.js';
 import { AgentRunsService } from '../agent-runtime/agent-runs.service.js';
 import { EffectDispatcher } from '../actions/effect-dispatcher.service.js';
+import { requireRole, type Actor } from '../auth/actor.js';
 import { RequestHashMismatchError } from '../actions/effect-commit.js';
 import type {
   ActionStatus,
@@ -28,7 +29,10 @@ interface DecideInput {
   approvalId: string;
   orgId: string;
   decision: 'approve' | 'deny';
-  decidedByEmail?: string | undefined;
+  // The verified actor. Was `decidedByEmail?: string` taken from the request
+  // body, which meant the audit trail recorded whoever the caller claimed to
+  // be and `approvals.required_role` was never checked against anyone.
+  actor: Actor;
   notes?: string | undefined;
 }
 
@@ -160,6 +164,15 @@ export class ApprovalsService {
         );
       }
 
+      // The role check happens HERE, inside the transaction that reads the
+      // approval, because required_role lives on the row. Checking it in the
+      // controller would mean guessing before the record is known.
+      requireRole(
+        input.actor,
+        approval.requiredRole,
+        `deciding approval ${approval.id}`,
+      );
+
       if (approval.expiresAt && approval.expiresAt.getTime() < Date.now()) {
         await tx
           .update(approvals)
@@ -175,10 +188,9 @@ export class ApprovalsService {
         return { branch: 'expired' as const, approval, action, userId: null };
       }
 
-      let userId: string | null = null;
-      if (input.decidedByEmail) {
-        userId = await upsertUser(tx, input.orgId, input.decidedByEmail);
-      }
+      // The actor is already resolved to a users row by resolveActor(); dev
+      // passthrough has no row and records null rather than inventing one.
+      const userId = input.actor.devPassthrough ? null : input.actor.userId;
 
       if (input.decision === 'deny') {
         // Same conditional claim as the approve branch. A deny racing an
@@ -263,7 +275,7 @@ export class ApprovalsService {
       await this.audit.record({
         orgId: input.orgId,
         actorType: 'user',
-        actorId: phase1.userId ?? input.decidedByEmail ?? 'unknown',
+        actorId: input.actor.email,
         eventType: 'approval.denied',
         payload: {
           approvalId: phase1.approval.id,
@@ -277,7 +289,7 @@ export class ApprovalsService {
         action: phase1.action,
         decision: 'denied',
         decidedByDisplay:
-          input.decidedByEmail ?? phase1.approval.decidedByUserId ?? 'web',
+          input.actor.email,
         actionStatus: 'denied',
         errorCode: null,
       });
@@ -357,7 +369,7 @@ export class ApprovalsService {
           action: phase1.action,
           decision: 'approved',
           decidedByDisplay:
-            input.decidedByEmail ?? phase1.approval.decidedByUserId ?? 'web',
+            input.actor.email,
           actionStatus: 'failed',
           errorCode: 'request_changed_after_approval',
         });
@@ -386,7 +398,7 @@ export class ApprovalsService {
     await this.audit.record({
       orgId: input.orgId,
       actorType: 'user',
-      actorId: phase1.userId ?? input.decidedByEmail ?? 'unknown',
+      actorId: input.actor.email,
       eventType: 'approval.approved',
       payload: {
         approvalId: phase1.approval.id,
@@ -416,7 +428,7 @@ export class ApprovalsService {
       action,
       decision: 'approved',
       decidedByDisplay:
-        input.decidedByEmail ?? phase1.userId ?? 'web',
+        input.actor.email ?? phase1.userId ?? 'web',
       actionStatus: finalStatus,
       errorCode: result.ok ? null : result.error?.code ?? null,
     });
@@ -447,7 +459,7 @@ export class ApprovalsService {
     orgId: string;
     approvalIds: string[];
     decision: 'approve' | 'deny';
-    decidedByEmail?: string | undefined;
+    actor: Actor;
     notes?: string | undefined;
   }): Promise<{
     items: BulkDecideItem[];
@@ -461,7 +473,7 @@ export class ApprovalsService {
           approvalId,
           orgId: input.orgId,
           decision: input.decision,
-          ...(input.decidedByEmail ? { decidedByEmail: input.decidedByEmail } : {}),
+          actor: input.actor,
           ...(input.notes ? { notes: input.notes } : {}),
         });
         items.push({
@@ -576,24 +588,4 @@ function toView(row: {
     slack_channel: row.slack_channel,
     slack_ts: row.slack_ts,
   };
-}
-
-async function upsertUser(
-  tx: Parameters<Parameters<Database['transaction']>[0]>[0],
-  orgId: string,
-  email: string,
-): Promise<string> {
-  const existing = await tx
-    .select()
-    .from(users)
-    .where(and(eq(users.orgId, orgId), eq(users.email, email)))
-    .limit(1);
-  const found = existing[0];
-  if (found) return found.id;
-  const [created] = await tx
-    .insert(users)
-    .values({ orgId, email, role: 'approver' })
-    .returning();
-  if (!created) throw new Error('failed to create user');
-  return created.id;
 }

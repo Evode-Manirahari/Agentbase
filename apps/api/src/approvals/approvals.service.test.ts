@@ -96,6 +96,19 @@ class StubSlack {
   }
 }
 
+// The decider is now a resolved actor rather than a caller-supplied email.
+// Tests use an admin unless they are specifically exercising a role denial.
+// A real users row, resolved the way resolveActor() resolves one in enforced
+// mode. Tests used to pass an email string that the service upserted into a
+// user — which is exactly the behaviour that let a caller name anyone as the
+// decider, so it is gone.
+let ADMIN: {
+  userId: string;
+  email: string;
+  role: 'admin' | 'approver' | 'viewer';
+  devPassthrough: boolean;
+};
+
 let client: ReturnType<typeof postgres>;
 let db: ReturnType<typeof drizzle<typeof schema>>;
 let audit: AuditService;
@@ -174,6 +187,22 @@ describe('ApprovalsService.decide', () => {
     if (!agent) throw new Error('seed agent failed');
     agentId = agent.id;
 
+    const [adminUser] = await db
+      .insert(users)
+      .values({
+        orgId,
+        email: 'alice@agentbase.test',
+        role: 'admin',
+        clerkId: `clerk-${randomUUID().slice(0, 8)}`,
+      })
+      .returning();
+    ADMIN = {
+      userId: adminUser!.id,
+      email: adminUser!.email,
+      role: 'admin',
+      devPassthrough: false,
+    };
+
     registry = new StubRegistry();
     svc = new ApprovalsService(
       db,
@@ -196,7 +225,7 @@ describe('ApprovalsService.decide', () => {
       approvalId,
       orgId,
       decision: 'deny',
-      decidedByEmail: 'alice@agentbase.test',
+      actor: ADMIN,
     });
 
     assert.equal(result.decision, 'denied');
@@ -228,7 +257,7 @@ describe('ApprovalsService.decide', () => {
       approvalId,
       orgId,
       decision: 'approve',
-      decidedByEmail: 'alice@agentbase.test',
+      actor: ADMIN,
     });
 
     assert.equal(result.decision, 'approved');
@@ -280,7 +309,7 @@ describe('ApprovalsService.decide', () => {
       approvalId,
       orgId,
       decision: 'approve',
-      decidedByEmail: 'alice@agentbase.test',
+      actor: ADMIN,
     });
 
     assert.equal(stateDuringInvoke, 'in_flight');
@@ -297,6 +326,7 @@ describe('ApprovalsService.decide', () => {
       approvalId,
       orgId,
       decision: 'approve',
+      actor: ADMIN,
     });
 
     assert.equal(result.action_status, 'failed');
@@ -317,10 +347,10 @@ describe('ApprovalsService.decide', () => {
   it('idempotency: re-decide on already-decided approval throws ConflictException', async () => {
     const { approvalId } = await seedAction();
     registry.result = { ok: true, data: {} };
-    await svc.decide({ approvalId, orgId, decision: 'approve' });
+    await svc.decide({ approvalId, orgId, decision: 'approve', actor: ADMIN });
 
     await assert.rejects(
-      () => svc.decide({ approvalId, orgId, decision: 'deny' }),
+      () => svc.decide({ approvalId, orgId, decision: 'deny', actor: ADMIN }),
       ConflictException,
     );
   });
@@ -329,7 +359,7 @@ describe('ApprovalsService.decide', () => {
     const { actionId, approvalId } = await seedAction({ expiresInMs: -3_600_000 });
 
     await assert.rejects(
-      () => svc.decide({ approvalId, orgId, decision: 'approve' }),
+      () => svc.decide({ approvalId, orgId, decision: 'approve', actor: ADMIN }),
       GoneException,
     );
 
@@ -346,7 +376,7 @@ describe('ApprovalsService.decide', () => {
     const { approvalId } = await seedAction({ expiresInMs: -3_600_000 });
 
     await assert.rejects(
-      () => svc.decide({ approvalId, orgId, decision: 'approve' }),
+      () => svc.decide({ approvalId, orgId, decision: 'approve', actor: ADMIN }),
       GoneException,
     );
 
@@ -379,7 +409,7 @@ describe('ApprovalsService.decide', () => {
       approvalId,
       orgId,
       decision: 'approve',
-      decidedByEmail: 'alice@agentbase.test',
+      actor: ADMIN,
     });
 
     // The human approval is still recorded — only the dispatch failed.
@@ -401,58 +431,62 @@ describe('ApprovalsService.decide', () => {
     assert.equal((failed!.payload as { connector: string | null }).connector, null);
   });
 
-  it('decider upsert: the same email across two decisions maps to one users row', async () => {
-    const first = await seedAction();
-    const second = await seedAction();
+  it('records the VERIFIED actor as decider, not anything a caller sent', async () => {
+    // The decider used to come from `decided_by_email` in the request body, so
+    // any authenticated caller could write someone else's name into the audit
+    // trail. It now comes from the resolved session user and nowhere else.
+    const { approvalId } = await seedAction();
     registry.result = { ok: true, data: {} };
 
-    await svc.decide({
-      approvalId: first.approvalId,
-      orgId,
-      decision: 'approve',
-      decidedByEmail: 'repeat@agentbase.test',
-    });
-    await svc.decide({
-      approvalId: second.approvalId,
-      orgId,
-      decision: 'deny',
-      decidedByEmail: 'repeat@agentbase.test',
-    });
+    await svc.decide({ approvalId, orgId, decision: 'approve', actor: ADMIN });
 
-    const rows = await db
-      .select()
-      .from(users)
-      .where(eq(users.orgId, orgId));
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0]!.email, 'repeat@agentbase.test');
-    assert.equal(rows[0]!.role, 'approver');
-
-    const [a1] = await db
+    const [ap] = await db
       .select()
       .from(approvals)
-      .where(eq(approvals.id, first.approvalId));
-    const [a2] = await db
-      .select()
-      .from(approvals)
-      .where(eq(approvals.id, second.approvalId));
-    assert.equal(a1!.decidedByUserId, rows[0]!.id);
-    assert.equal(a2!.decidedByUserId, rows[0]!.id);
+      .where(eq(approvals.id, approvalId));
+    assert.equal(ap!.decidedByUserId, ADMIN.userId);
+
+    const events = await db.select().from(auditLog).where(eq(auditLog.orgId, orgId));
+    const approved = events.find((e) => e.eventType === 'approval.approved');
+    assert.equal(approved!.actorId, ADMIN.email);
   });
 
-  it('decide without an email leaves decidedByUserId null and audits actor as unknown', async () => {
+  it('refuses a decider whose role is below the approval\'s required_role', async () => {
+    // required_role was stored, selected, and never compared to anyone, which
+    // made approval a workflow step rather than an authorization boundary.
     const { approvalId } = await seedAction();
+    const [viewer] = await db
+      .insert(users)
+      .values({
+        orgId,
+        email: 'viewer@agentbase.test',
+        role: 'viewer',
+        clerkId: `clerk-v-${randomUUID().slice(0, 8)}`,
+      })
+      .returning();
 
-    await svc.decide({ approvalId, orgId, decision: 'deny' });
+    registry.invocations.length = 0;
+    await assert.rejects(
+      svc.decide({
+        approvalId,
+        orgId,
+        decision: 'approve',
+        actor: {
+          userId: viewer!.id,
+          email: viewer!.email,
+          role: 'viewer',
+          devPassthrough: false,
+        },
+      }),
+      /requires role 'approver'/,
+    );
 
-    const [a] = await db.select().from(approvals).where(eq(approvals.id, approvalId));
-    assert.equal(a!.decidedByUserId, null);
-
-    const events = await db
+    assert.equal(registry.invocations.length, 0, 'nothing was dispatched');
+    const [ap] = await db
       .select()
-      .from(auditLog)
-      .where(eq(auditLog.orgId, orgId));
-    const ev = events.find((e) => e.eventType === 'approval.denied');
-    assert.equal(ev!.actorId, 'unknown');
+      .from(approvals)
+      .where(eq(approvals.id, approvalId));
+    assert.equal(ap!.decision, 'pending', 'the approval is untouched');
   });
 
   it('bulkDecide surfaces an expired approval as a failed item with code expired', async () => {
@@ -464,7 +498,7 @@ describe('ApprovalsService.decide', () => {
       orgId,
       approvalIds: [live.approvalId, expired.approvalId],
       decision: 'approve',
-      decidedByEmail: 'rev@agentbase.test',
+      actor: ADMIN,
     });
 
     assert.equal(out.summary.decided, 1);
@@ -482,6 +516,7 @@ describe('ApprovalsService.decide', () => {
           approvalId: randomUUID(),
           orgId,
           decision: 'approve',
+          actor: ADMIN,
         }),
       NotFoundException,
     );
@@ -509,7 +544,7 @@ describe('ApprovalsService.decide', () => {
       approvalId,
       orgId,
       decision: 'approve',
-      decidedByEmail: 'alice@agentbase.test',
+      actor: ADMIN,
     });
     assert.equal(result.action_status, 'executed');
 
@@ -533,7 +568,7 @@ describe('ApprovalsService.decide', () => {
       noopAgentRuns,
       makeEffects(),
     );
-    await svcWithSlack.decide({ approvalId, orgId, decision: 'deny' });
+    await svcWithSlack.decide({ approvalId, orgId, decision: 'deny', actor: ADMIN });
     assert.equal(slackStub.updates.length, 0);
   });
 
@@ -553,6 +588,7 @@ describe('ApprovalsService.decide', () => {
             approvalId,
             orgId: otherOrg!.id,
             decision: 'approve',
+            actor: ADMIN,
           }),
         NotFoundException,
       );
@@ -570,7 +606,7 @@ describe('ApprovalsService.decide', () => {
       orgId,
       approvalIds: ids,
       decision: 'approve',
-      decidedByEmail: 'rev@agentbase.test',
+      actor: ADMIN,
     });
 
     assert.equal(out.summary.decided, 3);
@@ -594,14 +630,14 @@ describe('ApprovalsService.decide', () => {
       approvalId: seeds[0]!.approvalId,
       orgId,
       decision: 'approve',
-      decidedByEmail: 'rev@agentbase.test',
+      actor: ADMIN,
     });
 
     const out = await svc.bulkDecide({
       orgId,
       approvalIds: [seeds[0]!.approvalId, seeds[1]!.approvalId],
       decision: 'approve',
-      decidedByEmail: 'rev@agentbase.test',
+      actor: ADMIN,
     });
 
     assert.equal(out.summary.decided, 1);
@@ -617,7 +653,7 @@ describe('ApprovalsService.decide', () => {
       orgId,
       approvalIds: [approvalId, randomUUID()],
       decision: 'approve',
-      decidedByEmail: 'rev@agentbase.test',
+      actor: ADMIN,
     });
 
     assert.equal(out.summary.decided, 1);
@@ -642,13 +678,13 @@ describe('ApprovalsService.decide', () => {
         approvalId,
         orgId,
         decision: 'approve',
-        decidedByEmail: 'alice@agentbase.test',
+        actor: ADMIN,
       }),
       svc.decide({
         approvalId,
         orgId,
         decision: 'approve',
-        decidedByEmail: 'bob@agentbase.test',
+        actor: ADMIN,
       }),
     ]);
 
@@ -671,13 +707,13 @@ describe('ApprovalsService.decide', () => {
         approvalId,
         orgId,
         decision: 'approve',
-        decidedByEmail: 'alice@agentbase.test',
+        actor: ADMIN,
       }),
       svc.decide({
         approvalId,
         orgId,
         decision: 'deny',
-        decidedByEmail: 'bob@agentbase.test',
+        actor: ADMIN,
       }),
     ]);
 
@@ -721,7 +757,7 @@ describe('ApprovalsService.decide', () => {
       approvalId,
       orgId,
       decision: 'approve',
-      decidedByEmail: 'alice@agentbase.test',
+      actor: ADMIN,
     });
 
     // The tenant's own credentials, not process env fallback.
@@ -745,6 +781,23 @@ describe('ApprovalsService.list / getOne', () => {
       .values({ orgId, name: 'list-agent' })
       .returning();
     agentId = agent!.id;
+    // ADMIN is module-scoped, so this block needs its own users row — the one
+    // from the previous describe belongs to an org that has been deleted.
+    const [adminUser] = await db
+      .insert(users)
+      .values({
+        orgId,
+        email: 'alice@agentbase.test',
+        role: 'admin',
+        clerkId: `clerk-l-${randomUUID().slice(0, 8)}`,
+      })
+      .returning();
+    ADMIN = {
+      userId: adminUser!.id,
+      email: adminUser!.email,
+      role: 'admin',
+      devPassthrough: false,
+    };
     svc = new ApprovalsService(
       db,
       audit,
@@ -896,12 +949,14 @@ describe('ApprovalsService.list / getOne', () => {
       approvalId: approval!.id,
       orgId,
       decision: 'deny',
-      decidedByEmail: 'who@agentbase.test',
+      actor: ADMIN,
     });
 
     const view = await svc.getOne(orgId, approval!.id);
     assert.equal(view.decision, 'denied');
-    assert.equal(view.decided_by_email, 'who@agentbase.test');
+    // The email shown is the verified actor's, resolved from their users row —
+    // not a string the caller supplied with the decision.
+    assert.equal(view.decided_by_email, ADMIN.email);
     assert.ok(view.decided_at);
   });
 });

@@ -11,6 +11,24 @@ import {
 } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { SlackController } from './slack.controller.js';
+import type { Database } from '@agentbase/db';
+
+// Resolves the Slack user's verified email to an approver in the org. The
+// Slack signature proves the request came from Slack; this is what proves the
+// human who clicked is allowed to decide.
+function stubDb(role: 'admin' | 'approver' | 'viewer' = 'approver') {
+  return {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => [
+            { id: 'u-1', email: 'slack-user@agentbase.test', role },
+          ],
+        }),
+      }),
+    }),
+  };
+}
 import type { SlackService } from './slack.service.js';
 import type { ApprovalsService } from '../approvals/approvals.service.js';
 import type { AgentsService } from '../agents/agents.service.js';
@@ -129,8 +147,15 @@ describe('SlackController.interactive — payload validation', () => {
       slack as unknown as SlackService,
       approvals as unknown as ApprovalsService,
       new StubAgents() as unknown as AgentsService,
+      stubDb() as unknown as Database,
       new FakeConfig() as unknown as ConfigService,
     );
+    // Slack's verified email is fetched from their API, which these tests do
+    // not reach. Override the lookup so the mapping-and-role path is exercised
+    // rather than short-circuited.
+    (controller as unknown as {
+      tryResolveEmail: (id: string) => Promise<string | null>;
+    }).tryResolveEmail = async () => 'slack-user@agentbase.test';
   });
 
   it('returns ok:false on empty body', async () => {
@@ -174,8 +199,15 @@ describe('SlackController.interactive — happy paths', () => {
       slack as unknown as SlackService,
       approvals as unknown as ApprovalsService,
       new StubAgents() as unknown as AgentsService,
+      stubDb() as unknown as Database,
       new FakeConfig() as unknown as ConfigService,
     );
+    // Slack's verified email is fetched from their API, which these tests do
+    // not reach. Override the lookup so the mapping-and-role path is exercised
+    // rather than short-circuited.
+    (controller as unknown as {
+      tryResolveEmail: (id: string) => Promise<string | null>;
+    }).tryResolveEmail = async () => 'slack-user@agentbase.test';
   });
 
   it('approve calls decide with the right args and posts resolved blocks', async () => {
@@ -234,8 +266,15 @@ describe('SlackController.interactive — error mapping', () => {
       slack as unknown as SlackService,
       approvals as unknown as ApprovalsService,
       new StubAgents() as unknown as AgentsService,
+      stubDb() as unknown as Database,
       new FakeConfig() as unknown as ConfigService,
     );
+    // Slack's verified email is fetched from their API, which these tests do
+    // not reach. Override the lookup so the mapping-and-role path is exercised
+    // rather than short-circuited.
+    (controller as unknown as {
+      tryResolveEmail: (id: string) => Promise<string | null>;
+    }).tryResolveEmail = async () => 'slack-user@agentbase.test';
   });
 
   it('ConflictException posts "no longer pending" via response_url', async () => {
