@@ -177,7 +177,19 @@ async function main(): Promise<void> {
   const mine = queue.items.filter((i) => i.tool === 'shell.run');
 
   if (mine.length === 0) {
-    console.log(c.rose('  Nothing in the queue — expected at least one attempt.\n'));
+    // A 5xx is what an interrupted dispatch looks like from out here, but it
+    // is not exclusively that — the API has no distinct status for "the
+    // dispatcher stopped waiting", so an ordinary internal error arrives
+    // looking identical. The difference is observable only here: a real
+    // interruption always leaves an attempt behind, because the attempt is
+    // written BEFORE the request goes out. Nothing in the queue means nothing
+    // was ever dispatched.
+    console.log(
+      c.rose('  The request failed, but nothing was quarantined.\n\n') +
+        c.dim('     An interrupted dispatch always leaves an attempt — it is recorded\n') +
+        c.dim('     before the request leaves. So this was an internal error on the\n') +
+        c.dim('     way to the dispatch, not an interrupted one. Check the API log.\n'),
+    );
     process.exit(1);
   }
 

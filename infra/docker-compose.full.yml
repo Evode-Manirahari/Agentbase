@@ -19,7 +19,7 @@ services:
       POSTGRES_PASSWORD: agentbase
       POSTGRES_DB: agentbase
     ports:
-      - "5433:5432"
+      - "${AGENTBASE_BIND_HOST:-127.0.0.1}:5433:5432"
     volumes:
       - agentbase-full-pg:/var/lib/postgresql/data
     healthcheck:
@@ -32,7 +32,7 @@ services:
     image: redis:7-alpine
     container_name: agentbase-full-redis
     ports:
-      - "6380:6379"
+      - "${AGENTBASE_BIND_HOST:-127.0.0.1}:6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -66,8 +66,12 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: agentbase-full-api
+    # Loopback by default. These services run unauthenticated (see below), and
+    # a bare "3002:3002" publishes on every host interface — which on any
+    # shared network means an open /v1 to anyone who can route to this
+    # machine. Override AGENTBASE_BIND_HOST=0.0.0.0 only with auth configured.
     ports:
-      - "3002:3002"
+      - "${AGENTBASE_BIND_HOST:-127.0.0.1}:3002:3002"
     environment:
       DATABASE_URL: postgresql://agentbase:agentbase@postgres:5432/agentbase
       REDIS_URL: redis://redis:6379
@@ -137,7 +141,7 @@ services:
       dockerfile: apps/web/Dockerfile
     container_name: agentbase-full-web
     ports:
-      - "3000:3000"
+      - "${AGENTBASE_BIND_HOST:-127.0.0.1}:3000:3000"
     environment:
       # Server-side fetches go through the docker network to the api service
       API_URL: http://api:3002
@@ -149,8 +153,14 @@ services:
       # only flips it to unhealthy about 40s later, well after `up` has
       # already reported success.
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
       AGENTBASE_ALLOW_UNAUTHENTICATED: ${AGENTBASE_ALLOW_UNAUTHENTICATED:-1}
+      #
+      # NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is deliberately NOT passed here.
+      # It is what flips the dashboard to enforced auth, but Next.js inlines
+      # NEXT_PUBLIC_* at build time — setting it as a runtime env on an
+      # already-built image would not reach the client bundle, so listing it
+      # would advertise a switch that does not work. Enabling dashboard auth
+      # means rebuilding the web image with the key present at build time.
     depends_on:
       api:
         condition: service_healthy
