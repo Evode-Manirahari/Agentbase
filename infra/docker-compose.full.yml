@@ -79,6 +79,20 @@ services:
       CONNECTOR_CREDENTIALS_KEY: ${CONNECTOR_CREDENTIALS_KEY:-hex:64656a617661732d6c6f63616c2d646f636b65722d6b65792d33326279746521}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3002}
       DASHBOARD_URL: ${DASHBOARD_URL:-http://localhost:3000}
+      # NODE_ENV=production above makes the API refuse to boot without auth
+      # rather than silently expose /v1 — correct, and it is why this file did
+      # not start at all until the opt-in below was added.
+      #
+      # This is the demo path: it has to come up on a fresh machine with no
+      # Clerk project and no secrets, so the opt-in is stated explicitly rather
+      # than left to be discovered as a crash. CLERK_SECRET_KEY is checked
+      # first by resolveAuthMode(), so passing a real key still enforces auth
+      # and this default becomes inert.
+      #
+      # NOT safe for anything an untrusted network can reach: every /v1
+      # endpoint is open. Set CLERK_SECRET_KEY before exposing this.
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      AGENTBASE_ALLOW_UNAUTHENTICATED: ${AGENTBASE_ALLOW_UNAUTHENTICATED:-1}
       # Optional credentials — uncomment / fill via .env, OR set them in
       # your shell before `docker compose up`. Without these, connector
       # invocations cleanly return connector_not_configured (per-connector
@@ -129,6 +143,14 @@ services:
       API_URL: http://api:3002
       PORT: 3000
       NODE_ENV: production
+      # The dashboard carries the same guard as the API (apps/web/src/lib/
+      # auth-mode.ts) but throws per-request instead of at boot. Without this
+      # the container starts fine and every page returns 500; the healthcheck
+      # only flips it to unhealthy about 40s later, well after `up` has
+      # already reported success.
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+      AGENTBASE_ALLOW_UNAUTHENTICATED: ${AGENTBASE_ALLOW_UNAUTHENTICATED:-1}
     depends_on:
       api:
         condition: service_healthy

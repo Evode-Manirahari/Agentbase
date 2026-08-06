@@ -63,7 +63,14 @@ async function main(): Promise<void> {
   console.log(c.dim('  1. Dispatching a command that will outlast the timeout…'));
   console.log(`     ${c.cyan(SLOW_COMMAND)}\n`);
 
+  // A failed HTTP request is the SUCCESS condition here: it means the
+  // dispatcher stopped waiting without an answer. Every other outcome needs
+  // telling apart, because they need opposite fixes and the response code
+  // alone cannot distinguish them — a denial and a completed command are both
+  // a perfectly ordinary 201.
   let requestFailed = false;
+  let status: string | null = null;
+  let denyReason: string | null = null;
   try {
     const res = await apiFetch('/v1/actions/execute', {
       method: 'POST',
@@ -72,9 +79,50 @@ async function main(): Promise<void> {
         params: { command: SLOW_COMMAND },
       }),
     });
-    if (!res.ok) requestFailed = true;
-  } catch {
-    requestFailed = true;
+    if (res.ok) {
+      const body = (await res.json()) as {
+        status?: string;
+        policy_decision?: { reason?: string };
+      };
+      status = body.status ?? null;
+      denyReason = body.policy_decision?.reason ?? null;
+    } else if (res.status >= 500) {
+      // The condition being demonstrated: the dispatcher gave up waiting.
+      requestFailed = true;
+    } else {
+      // A 4xx is this demo being held wrong, not an interrupted dispatch —
+      // most often a stale or unexported API key. Treating every failed
+      // request as the quarantine condition made a rejected key look like a
+      // successful demonstration, and the run then failed further down with
+      // "nothing in the queue".
+      console.log(
+        c.rose(`  The API rejected the request (HTTP ${res.status}).\n`) +
+          c.dim(`     ${(await res.text()).slice(0, 200)}\n\n`) +
+          c.dim(
+            res.status === 401 || res.status === 403
+              ? '     That is an auth failure, not an interrupted dispatch. Mint a\n' +
+                  '     fresh key and export it:\n\n'
+              : '     That is a request problem, not an interrupted dispatch. Re-run\n' +
+                  '     setup and export the key it prints:\n\n',
+          ) +
+          `       ${c.cyan('./examples/effect-gate-demo/setup.sh')}\n` +
+          `       ${c.cyan('export AGENTBASE_API_KEY=agb_…')}\n`,
+      );
+      process.exit(1);
+    }
+  } catch (err) {
+    // fetch throws when nothing answered at all. If the API is simply not
+    // running, that is a setup problem wearing the costume of the thing this
+    // demo exists to show, so it is checked before the dispatch rather than
+    // inferred from the failure.
+    console.log(
+      c.rose(`  Could not reach the API at ${BASE_URL}.\n`) +
+        c.dim(`     ${err instanceof Error ? err.message : String(err)}\n\n`) +
+        c.dim('     Start it with a dispatch timeout shorter than the command needs:\n\n') +
+        `       ${c.cyan('AGENTBASE_DISPATCH_TIMEOUT_MS=50 AGENTBASE_SHELL_ENABLED=1 \\')}\n` +
+        `       ${c.cyan('  AGENTBASE_ALLOW_UNAUTHENTICATED=1 pnpm --filter @agentbase/api dev')}\n`,
+    );
+    process.exit(1);
   }
 
   if (requestFailed) {
@@ -83,13 +131,41 @@ async function main(): Promise<void> {
         c.dim('     stopped waiting, but it does NOT know whether the command ran.\n') +
         c.dim('     Reporting success or failure here would both be guesses.\n'),
     );
+  } else if (status === 'denied') {
+    // The most likely cause by far, and the one that used to be reported as a
+    // timeout problem. The demo's policy is the org's ONE active policy, so
+    // anything that installs another — the dashboard editor, the e2e suite —
+    // silently replaces it, and this read-only command then matches no rule
+    // and falls through to `default: deny`. Lowering the timeout can never fix
+    // that, which is what the old message advised.
+    console.log(
+      c.rose('  The gate denied the command, so no dispatch was ever attempted.\n') +
+        c.dim(`     policy said: ${denyReason ?? 'no reason given'}\n\n`) +
+        c.dim('     This command is a read and the effect-gate policy allows reads,\n') +
+        c.dim('     so the active policy is almost certainly not that one — installing\n') +
+        c.dim('     any other policy replaces it. Reinstall it and run this again:\n\n') +
+        `       ${c.cyan('./examples/effect-gate-demo/setup.sh')}\n`,
+    );
+    process.exit(1);
+  } else if (status === 'awaiting_approval') {
+    console.log(
+      c.rose('  The gate held the command for approval, so no dispatch was attempted.\n') +
+        c.dim('     This demo needs a command that runs unattended. The active policy\n') +
+        c.dim('     is not the effect-gate one — reinstall it and run this again:\n\n') +
+        `       ${c.cyan('./examples/effect-gate-demo/setup.sh')}\n`,
+    );
+    process.exit(1);
   } else {
+    // The genuine timeout case: allowed, dispatched, and answered in time.
     console.log(
       c.rose(
-        '  The command finished inside the timeout, so nothing was quarantined.\n' +
-          '  Restart the API with a shorter AGENTBASE_DISPATCH_TIMEOUT_MS (e.g. 200)\n' +
-          '  and run this again.\n',
-      ),
+        `  The command completed inside the timeout (status: ${status ?? 'unknown'}),\n` +
+          '  so nothing was quarantined. The dispatch has to be given LESS time than\n' +
+          '  the command needs — on a fast machine this one can finish quickly.\n\n',
+      ) +
+        c.dim('     Restart the API with a shorter timeout and run this again:\n\n') +
+        `       ${c.cyan('AGENTBASE_DISPATCH_TIMEOUT_MS=25 AGENTBASE_SHELL_ENABLED=1 \\')}\n` +
+        `       ${c.cyan('  AGENTBASE_ALLOW_UNAUTHENTICATED=1 pnpm --filter @agentbase/api dev')}\n`,
     );
     process.exit(1);
   }
