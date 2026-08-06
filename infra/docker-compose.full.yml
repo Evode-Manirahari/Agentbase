@@ -19,7 +19,7 @@ services:
       POSTGRES_PASSWORD: agentbase
       POSTGRES_DB: agentbase
     ports:
-      - "5433:5432"
+      - "${AGENTBASE_BIND_HOST:-127.0.0.1}:5433:5432"
     volumes:
       - agentbase-full-pg:/var/lib/postgresql/data
     healthcheck:
@@ -32,7 +32,7 @@ services:
     image: redis:7-alpine
     container_name: agentbase-full-redis
     ports:
-      - "6380:6379"
+      - "${AGENTBASE_BIND_HOST:-127.0.0.1}:6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -66,8 +66,12 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: agentbase-full-api
+    # Loopback by default. These services run unauthenticated (see below), and
+    # a bare "3002:3002" publishes on every host interface — which on any
+    # shared network means an open /v1 to anyone who can route to this
+    # machine. Override AGENTBASE_BIND_HOST=0.0.0.0 only with auth configured.
     ports:
-      - "3002:3002"
+      - "${AGENTBASE_BIND_HOST:-127.0.0.1}:3002:3002"
     environment:
       DATABASE_URL: postgresql://agentbase:agentbase@postgres:5432/agentbase
       REDIS_URL: redis://redis:6379
@@ -79,6 +83,20 @@ services:
       CONNECTOR_CREDENTIALS_KEY: ${CONNECTOR_CREDENTIALS_KEY:-hex:64656a617661732d6c6f63616c2d646f636b65722d6b65792d33326279746521}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3002}
       DASHBOARD_URL: ${DASHBOARD_URL:-http://localhost:3000}
+      # NODE_ENV=production above makes the API refuse to boot without auth
+      # rather than silently expose /v1 — correct, and it is why this file did
+      # not start at all until the opt-in below was added.
+      #
+      # This is the demo path: it has to come up on a fresh machine with no
+      # Clerk project and no secrets, so the opt-in is stated explicitly rather
+      # than left to be discovered as a crash. CLERK_SECRET_KEY is checked
+      # first by resolveAuthMode(), so passing a real key still enforces auth
+      # and this default becomes inert.
+      #
+      # NOT safe for anything an untrusted network can reach: every /v1
+      # endpoint is open. Set CLERK_SECRET_KEY before exposing this.
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      AGENTBASE_ALLOW_UNAUTHENTICATED: ${AGENTBASE_ALLOW_UNAUTHENTICATED:-1}
       # Optional credentials — uncomment / fill via .env, OR set them in
       # your shell before `docker compose up`. Without these, connector
       # invocations cleanly return connector_not_configured (per-connector
@@ -123,12 +141,26 @@ services:
       dockerfile: apps/web/Dockerfile
     container_name: agentbase-full-web
     ports:
-      - "3000:3000"
+      - "${AGENTBASE_BIND_HOST:-127.0.0.1}:3000:3000"
     environment:
       # Server-side fetches go through the docker network to the api service
       API_URL: http://api:3002
       PORT: 3000
       NODE_ENV: production
+      # The dashboard carries the same guard as the API (apps/web/src/lib/
+      # auth-mode.ts) but throws per-request instead of at boot. Without this
+      # the container starts fine and every page returns 500; the healthcheck
+      # only flips it to unhealthy about 40s later, well after `up` has
+      # already reported success.
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      AGENTBASE_ALLOW_UNAUTHENTICATED: ${AGENTBASE_ALLOW_UNAUTHENTICATED:-1}
+      #
+      # NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is deliberately NOT passed here.
+      # It is what flips the dashboard to enforced auth, but Next.js inlines
+      # NEXT_PUBLIC_* at build time — setting it as a runtime env on an
+      # already-built image would not reach the client bundle, so listing it
+      # would advertise a switch that does not work. Enabling dashboard auth
+      # means rebuilding the web image with the key present at build time.
     depends_on:
       api:
         condition: service_healthy

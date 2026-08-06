@@ -72,11 +72,23 @@ also does. This shows the part it does not:
 
 ```bash
 # a dispatch timeout shorter than the command needs
-AGENTBASE_DISPATCH_TIMEOUT_MS=400 AGENTBASE_SHELL_ENABLED=1 \
+AGENTBASE_DISPATCH_TIMEOUT_MS=50 AGENTBASE_SHELL_ENABLED=1 \
   AGENTBASE_ALLOW_UNAUTHENTICATED=1 pnpm --filter @agentbase/api dev
 
 pnpm --filter '@agentbase/effect-gate-demo' quarantine
 ```
+
+The timeout is machine-dependent: it has to be shorter than `find /` takes on
+your disk, and on a fast machine with a warm cache that is a very small number.
+If the demo reports the command completed, lower it further. It says which of
+these actually happened rather than guessing, because every one of them used to
+surface as the same "lower the timeout" message — including a rejected API key.
+
+> **Re-run `setup.sh` before this if you have touched policy since.** The org
+> has exactly one active policy, so saving one from the dashboard editor — or
+> running the Playwright e2e suite, which saves one — replaces the demo's. This
+> read-only command then matches no rule, falls through to `default: deny`, and
+> no dispatch is ever attempted.
 
 ```text
 1. Dispatching a command that will outlast the timeout…
