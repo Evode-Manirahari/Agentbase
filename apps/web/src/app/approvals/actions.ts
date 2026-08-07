@@ -9,11 +9,13 @@ export interface BulkDecideState {
 }
 
 // The decider is derived from the verified session by the API and cannot be
-// supplied by the caller — `decided_by_email` was removed from the request
-// contract because accepting it let anyone write someone else's name into the
-// audit trail. The dashboard kept collecting and sending it, which the API
-// silently discarded: a field that looked like attribution and attributed
-// nothing.
+// supplied by the caller.
+//
+// `decided_by_email` was accepted from the request body once, and that was the
+// spoofing hole #81 closed. It has been off the contract since, so the copy the
+// dashboard kept sending was never a live vector — the API discarded it. The
+// problem was that the form still asked for it: a field presented as
+// attribution, attributing nothing, and marked required.
 export async function decideOneAction(formData: FormData) {
   const id = String(formData.get('approval_id') ?? '');
   const decision = String(formData.get('decision') ?? '') as 'approve' | 'deny';
