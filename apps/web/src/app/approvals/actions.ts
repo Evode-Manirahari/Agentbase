@@ -8,15 +8,19 @@ export interface BulkDecideState {
   error: string | null;
 }
 
+// The decider is derived from the verified session by the API and cannot be
+// supplied by the caller — `decided_by_email` was removed from the request
+// contract because accepting it let anyone write someone else's name into the
+// audit trail. The dashboard kept collecting and sending it, which the API
+// silently discarded: a field that looked like attribution and attributed
+// nothing.
 export async function decideOneAction(formData: FormData) {
   const id = String(formData.get('approval_id') ?? '');
   const decision = String(formData.get('decision') ?? '') as 'approve' | 'deny';
-  const email = String(formData.get('email') ?? '').trim() || undefined;
   const notes = String(formData.get('notes') ?? '').trim() || undefined;
   if (!id || (decision !== 'approve' && decision !== 'deny')) return;
   await api.approvals.decide(id, {
     decision,
-    ...(email ? { decided_by_email: email } : {}),
     ...(notes ? { notes } : {}),
   });
   revalidatePath('/approvals');
@@ -34,7 +38,6 @@ export async function bulkDecideAction(
 ): Promise<BulkDecideState> {
   const ids = formData.getAll('approval_id').map((v) => String(v));
   const decision = String(formData.get('decision') ?? '') as 'approve' | 'deny';
-  const email = String(formData.get('email') ?? '').trim() || undefined;
   const notes = String(formData.get('notes') ?? '').trim() || undefined;
 
   if (ids.length === 0) {
@@ -43,18 +46,14 @@ export async function bulkDecideAction(
   if (decision !== 'approve' && decision !== 'deny') {
     return { result: null, error: 'Decision must be approve or deny.' };
   }
-  if (!email) {
-    return {
-      result: null,
-      error: 'Your email is required so the decision is attributed.',
-    };
-  }
+  // The email requirement here blocked bulk decide outright behind a field the
+  // API discards. Attribution comes from the session, so there is nothing to
+  // ask for.
 
   try {
     const result = await api.approvals.bulkDecide({
       approval_ids: ids,
       decision,
-      decided_by_email: email,
       ...(notes ? { notes } : {}),
     });
     revalidatePath('/approvals');

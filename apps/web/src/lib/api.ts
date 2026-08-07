@@ -428,7 +428,10 @@ export const api = {
     list: () => req<{ items: ApprovalRow[] }>(`/v1/approvals`),
     decide: (
       approvalId: string,
-      body: { decision: 'approve' | 'deny'; decided_by_email?: string; notes?: string },
+      // No decided_by_email: the API derives the decider from the verified
+      // session and discards anything the caller sends. Typing it here made
+      // the compiler agree to a field with no effect.
+      body: { decision: 'approve' | 'deny'; notes?: string },
     ) =>
       req<{
         approval_id: string;
@@ -443,7 +446,6 @@ export const api = {
     bulkDecide: (body: {
       approval_ids: string[];
       decision: 'approve' | 'deny';
-      decided_by_email?: string;
       notes?: string;
     }) =>
       req<BulkApprovalDecisionResponse>(`/v1/approvals/bulk-decide`, {
