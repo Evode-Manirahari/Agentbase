@@ -8,15 +8,21 @@ export interface BulkDecideState {
   error: string | null;
 }
 
+// The decider is derived from the verified session by the API and cannot be
+// supplied by the caller.
+//
+// `decided_by_email` was accepted from the request body once, and that was the
+// spoofing hole #81 closed. It has been off the contract since, so the copy the
+// dashboard kept sending was never a live vector — the API discarded it. The
+// problem was that the form still asked for it: a field presented as
+// attribution, attributing nothing, and marked required.
 export async function decideOneAction(formData: FormData) {
   const id = String(formData.get('approval_id') ?? '');
   const decision = String(formData.get('decision') ?? '') as 'approve' | 'deny';
-  const email = String(formData.get('email') ?? '').trim() || undefined;
   const notes = String(formData.get('notes') ?? '').trim() || undefined;
   if (!id || (decision !== 'approve' && decision !== 'deny')) return;
   await api.approvals.decide(id, {
     decision,
-    ...(email ? { decided_by_email: email } : {}),
     ...(notes ? { notes } : {}),
   });
   revalidatePath('/approvals');
@@ -34,7 +40,6 @@ export async function bulkDecideAction(
 ): Promise<BulkDecideState> {
   const ids = formData.getAll('approval_id').map((v) => String(v));
   const decision = String(formData.get('decision') ?? '') as 'approve' | 'deny';
-  const email = String(formData.get('email') ?? '').trim() || undefined;
   const notes = String(formData.get('notes') ?? '').trim() || undefined;
 
   if (ids.length === 0) {
@@ -43,18 +48,14 @@ export async function bulkDecideAction(
   if (decision !== 'approve' && decision !== 'deny') {
     return { result: null, error: 'Decision must be approve or deny.' };
   }
-  if (!email) {
-    return {
-      result: null,
-      error: 'Your email is required so the decision is attributed.',
-    };
-  }
+  // The email requirement here blocked bulk decide outright behind a field the
+  // API discards. Attribution comes from the session, so there is nothing to
+  // ask for.
 
   try {
     const result = await api.approvals.bulkDecide({
       approval_ids: ids,
       decision,
-      decided_by_email: email,
       ...(notes ? { notes } : {}),
     });
     revalidatePath('/approvals');
