@@ -72,16 +72,8 @@ Deferred work captured during reviews. Each item has enough context to pick up c
   outreach; zero-reply rule dated 2026-06-19). Nothing customization-runtime-shaped ships
   before the triggers above.
 
-## P3 — Mark agent-runtime/ as a frozen reference
+## DONE — Mark agent-runtime/ as a frozen reference
 
-- **What:** Add a one-line marker at the top of `apps/api/src/agent-runtime/` (module README or
-  entry file comment) stating it is a frozen reference implementation (the bundled AI SDR) that
-  proves the gate, NOT the product. Freeze policy: no new features, just keep CI green.
-- **Why:** It's the largest module (14 source files) and least-tested, and the wedge pivot demoted
-  it from headline to proof artifact. A marker stops future sessions (human or agent) from
-  treating the SDR as the product and from investing in it.
-- **Pros:** Clarifies the story for new readers; prevents wasted investment.
-- **Cons:** None; documentation-only.
-- **Context:** Repo analysis 2026-06-05 (finding 2); decision was "keep as reference, freeze it"
-  (not extract to examples/, to avoid breaking the cross-stack demo that imports it).
-- **Depends on / blocked by:** None.
+Shipped: `apps/api/src/agent-runtime/README.md` plus a header comment on
+`agent-runtime.module.ts`. Freeze policy is written down there — no new
+features, keep CI green, and improving the SDR is not progress.

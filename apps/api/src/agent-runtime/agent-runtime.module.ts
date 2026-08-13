@@ -1,3 +1,6 @@
+// FROZEN REFERENCE IMPLEMENTATION — this module is the bundled AI SDR that
+// proves the commit layer works on a real agent. It is not the product, and it
+// takes no new features. See ./README.md before changing anything here.
 import { Global, Module, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ActionsModule } from '../actions/actions.module.js';
