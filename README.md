@@ -1,6 +1,8 @@
 # Agentbase
 
 > Commit an agent's irreversible actions exactly once, prove what happened, and survive a crash in the middle.
+>
+> At-most-once holds wherever the provider deduplicates. Where it cannot, Agentbase reports that it does not know rather than guessing.
 
 [![CI](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml/badge.svg)](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml)
 
@@ -126,7 +128,7 @@ Run it: [`examples/effect-gate-demo`](./examples/effect-gate-demo) — five ordi
 The governed runtime:
 
 - **Agent runtime** — generic loop on the API (`apps/api/src/agent-runtime/`) that takes a `Job` config (system prompt + tool list + initial-message builder) and a context, calls Claude via the Anthropic SDK with adaptive thinking and `xhigh` effort, dispatches every tool call through the same `ActionsService.execute` path an external agent would use, and returns a transcript. Pauses cleanly on `awaiting_approval`; resumes when the approval lands. Single tool per turn via `disable_parallel_tool_use` so pause state stays simple.
-- **Revenue-agent jobs** — outbound lead handling, follow-up, reply handling, and CRM hygiene prove that one runtime can govern research, enrichment, CRM writes, task creation, and email sending. Adding a new workflow is data + prompts, not a new product.
+- **The frozen SDR jobs** — outbound lead handling, follow-up, reply handling, and CRM hygiene prove that one runtime can govern research, enrichment, CRM writes, task creation, and email sending. Adding a new workflow is data + prompts, not a new product.
 - **Async runs + resume** — `agent_runs` table persists conversation state. `POST /v1/campaigns/runs` enqueues a BullMQ job, returns the run id immediately. `GET /v1/campaigns/runs/:id` is polled by the dashboard. When a Slack approval (or the expiry sweeper) transitions the action out of `awaiting_approval`, `ApprovalsService` notifies `AgentRunsService` and a resume job continues the loop with the resolved tool_result.
 - **Runs dashboard** — `/campaigns` launches governed runs, including batches from lead lists. Recent runs table on the index page. Transcript view tones agent_thinking / agent_message / tool_call / tool_result blocks by status (allow=green, require_approval=amber, deny/failed=rose).
 
@@ -383,7 +385,7 @@ CONNECTOR_CREDENTIALS_KEY=hex:64656a617661732d6c6f63616c2d646f636b65722d6b65792d
 API_PUBLIC_URL=http://localhost:3002
 DASHBOARD_URL=http://localhost:3000
 
-# Required for the governed revenue-agent runtime. Without it, /v1/campaigns/runs
+# Required for the governed agent runtime. Without it, /v1/campaigns/runs
 # enqueues a run but the worker fails the run with a clear error. The
 # rest of the platform (policy editor, approvals, audit, connectors)
 # works without this key.

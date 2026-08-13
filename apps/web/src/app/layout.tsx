@@ -7,7 +7,7 @@ import { Shell } from '../components/nav';
 export const metadata: Metadata = {
   title: 'Agentbase',
   description:
-    "Effect commit layer for AI agents — commit irreversible actions exactly once, prove what happened, and survive a crash in the middle.",
+    "Effect commit layer for AI agents — commit irreversible actions exactly once wherever the provider deduplicates, prove what happened, and survive a crash in the middle.",
 };
 
 export const viewport: Viewport = {
