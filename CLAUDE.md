@@ -1,7 +1,8 @@
 # Agentbase
 
 The **effect commit layer** for AI agents: commit an agent's irreversible
-actions exactly once, prove what happened, and survive a crash in the middle.
+actions exactly once wherever the provider deduplicates, prove what happened,
+and survive a crash in the middle.
 
 A permission gateway answers "may this agent call this tool?" — that question is
 well served elsewhere and is NOT what Agentbase sells. The product has identity

@@ -26,14 +26,17 @@ fail=0
 # --- 1. Retired tagline must not appear on platform surfaces -----------------
 # Phrases specific to the old positioning. Bare "sales" is intentionally NOT
 # banned (Sales Agent permission profile, sales_sdr demo profile are legit).
+# Matched as extended regexes (-E), so a phrase cannot slip through on its
+# separator alone: "revenue-agent" in dashboard copy passed a literal
+# "revenue agent" check for exactly that reason. Escape regex metacharacters.
 BANNED=(
   "secure action layer"
   "AI sales agents"
   "for AI sales agent"
   "safe-action layer"
   "cross-stack governance"
-  "revenue agent"
-  "Okta + Zapier + Datadog"
+  "revenue[ -]agent"
+  "Okta \+ Zapier \+ Datadog"
 )
 
 # Allowlist = the frozen AI SDR reference implementation, where "sales" is the
@@ -44,7 +47,6 @@ EXCLUDES=(
   ":(exclude)docs/demo/**"
   ":(exclude)examples/**"
   ":(exclude)apps/api/src/agent-runtime/**"
-  ":(exclude)apps/web/src/app/campaigns/**"
   ":(exclude)scripts/check-positioning.sh"
   ":(exclude)CHANGELOG.md"
   ":(exclude)TODOS.md"
@@ -52,7 +54,7 @@ EXCLUDES=(
 
 for phrase in "${BANNED[@]}"; do
   # git grep respects .gitignore (skips node_modules, dist, .next) and pathspecs.
-  if matches=$(git grep -nI -i -e "$phrase" -- . "${EXCLUDES[@]}" 2>/dev/null); then
+  if matches=$(git grep -nI -i -E -e "$phrase" -- . "${EXCLUDES[@]}" 2>/dev/null); then
     echo "✗ Retired positioning phrase \"$phrase\" found:"
     echo "$matches" | sed 's/^/    /'
     fail=1
@@ -73,7 +75,36 @@ else
   done
 fi
 
+# --- 3. The exactly-once claim never ships without its condition -------------
+# At-most-once holds ONLY where the provider deduplicates (connectors declare
+# key/natural/none; undeclared means none). A surface that states the claim and
+# omits the condition is an overclaim, and it is the one thing in this repo an
+# engineer evaluating us will test first. Any file asserting the claim must also
+# carry the condition somewhere in the same file.
+CLAIM_SURFACES=(
+  "docs/positioning.md"
+  "README.md"
+  "CLAUDE.md"
+  "package.json"
+  "apps/marketing/public/llms.txt"
+  "apps/marketing/src/app/layout.tsx"
+  "apps/marketing/src/app/page.tsx"
+  "apps/web/src/app/layout.tsx"
+  "apps/web/src/app/page.tsx"
+  "packages/sdk/README.md"
+  "packages/mcp-server/README.md"
+)
+
+for f in "${CLAIM_SURFACES[@]}"; do
+  [ -f "$f" ] || continue
+  if grep -qi "exactly once" "$f" && ! grep -qi "dedup" "$f"; then
+    echo "✗ $f states the exactly-once claim without the provider-deduplication condition."
+    echo "    At-most-once holds only where the provider dedupes. Say so on the same surface."
+    fail=1
+  fi
+done
+
 if [ "$fail" -eq 0 ]; then
-  echo "✓ positioning guard passed (no retired tagline; llms.txt present + correct)"
+  echo "✓ positioning guard passed (no retired tagline; llms.txt correct; no unconditional exactly-once claim)"
 fi
 exit "$fail"

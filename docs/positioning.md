@@ -14,8 +14,12 @@ Agentbase is the second one.
 
 ## One-line pitch
 
-Commit an agent's irreversible actions exactly once, prove what happened, and
-survive a crash in the middle.
+Commit an agent's irreversible actions exactly once wherever the provider
+deduplicates, prove what happened, and survive a crash in the middle.
+
+The condition is part of the pitch, not a footnote to it. Every surface that
+copies this line copies the condition with it — see "The qualifier" below for
+why saying it up front is what makes the rest credible.
 
 ## The problem
 

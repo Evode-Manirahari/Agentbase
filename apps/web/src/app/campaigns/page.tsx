@@ -27,8 +27,9 @@ export default async function CampaignsPage() {
     <div className="max-w-5xl">
       <H1>Agent runs</H1>
       <Subtitle>
-        Launch governed revenue-agent jobs. Each tool call is mediated by
-        identity, policy, approval routing, connector dispatch, and audit.
+        Launch the bundled reference jobs. Each tool call is mediated by
+        identity, policy, approval routing, connector dispatch, and audit —
+        the same path any third-party agent takes through the gate.
       </Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}
