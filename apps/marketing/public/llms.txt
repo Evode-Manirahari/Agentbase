@@ -1,20 +1,30 @@
 # Agentbase
 
-> The safe-action layer for internal AI agents. Scoped identity, approval, and audit
-> for AI agents before they touch your APIs, CRM, email, and internal tools.
+> The effect commit layer for AI agents. Commit an agent's irreversible actions
+> exactly once, prove what happened, and survive a crash in the middle.
 
-Agentbase is the control plane an AI agent acts through. Every tool call the agent
-makes runs through one identity, one policy (allow / require_approval / deny), one
-human-approval queue, and one immutable audit trail — across HubSpot, Salesforce,
-Gmail, Outreach, Apollo, and internal APIs.
+A permission gateway answers "may this agent call this tool?" — settled before
+anything leaves the machine. Agentbase answers what comes after: the call was
+permitted and approved, so how is it committed exactly once, proven, and
+recovered from a crash without repeating it?
 
-Short form: Okta + Zapier + Datadog for AI agents.
+Between sending a request and reading its response, the effect may or may not
+exist. Nothing on the caller's side closes that gap. Agentbase does not guess.
+
+Ten retries across three crash points produce exactly one effect. Remove the
+idempotency key and the same test produces eight.
+
+**The guarantee is conditional.** At-most-once holds only where the provider
+deduplicates. Connectors declare `key`, `natural`, or `none` per call;
+undeclared means `none`. Against a provider that cannot dedupe, Agentbase
+reports that it does not know rather than pretending.
 
 ## Who this is for
 
-- Agents (and the developers deploying them) that need to act on real systems safely.
-- The revenue/CRM beachhead first (an agent writing to Salesforce/HubSpot), then any
-  internal agent (ops, support, internal tooling).
+- Agents (and the developers deploying them) that take irreversible actions —
+  payments, sends, deploys, publishes, external writes.
+- Teams running agents unattended, where nobody is watching the moment a
+  process dies mid-call.
 
 ## How an agent starts using Agentbase (today)
 
@@ -34,9 +44,8 @@ yet. Today a human provisions the scoped key first; the agent operates autonomou
 
 ## What happens to an irreversible call
 
-The gate does not stop at "may this agent call this tool?". Once a call is
-permitted and a human has approved it, Agentbase commits it exactly once and
-records what happened:
+Once a call is permitted and a human has approved it, Agentbase commits it
+exactly once and records what happened:
 
 - Every shell command is classified by CONSEQUENCE before it runs — read,
   workspace_write, vcs_write, deploy, publish, infra_write, egress,

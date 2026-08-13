@@ -1,41 +1,37 @@
 # Agentbase operator docs
 
-Playbooks for selling and demoing the safe-action layer for internal AI agents, not for building it. The repo's [top-level README](../README.md) covers the engineering surface; this folder is for the RevOps-led, security-signed-off GTM motion (the revenue/CRM beachhead).
+Documentation for what Agentbase claims and how it holds. The repo's
+[top-level README](../README.md) covers the engineering surface.
 
 ## What's here
 
 | File | When you use it |
 |---|---|
-| [`positioning.md`](./positioning.md) | Product direction source of truth: category, pitch, buyer, differentiation, and product thesis. |
-| [`outbound/first-touch.md`](./outbound/first-touch.md) | Day-one cold message. Includes the 30-day target list criteria + the qualifying question. |
-| [`outbound/follow-up.md`](./outbound/follow-up.md) | 3-touch follow-up cadence after the first send. Includes the break-up message. |
-| [`outbound/discovery-call-script.md`](./outbound/discovery-call-script.md) | 20-minute first-call script. Six forcing questions; goal is one of three clear bucket answers by minute 20. |
-| [`demo/demo-script-6min.md`](./demo/demo-script-6min.md) | Storyboard for the 6-minute recorded demo. Six scenes, exact voiceover, production notes. |
+| [`positioning.md`](./positioning.md) | Source of truth: category, pitch, buyer, the conditional guarantee, and what is not yet validated. CI enforces it via `scripts/check-positioning.sh`. |
+| [`effect-commit.md`](./effect-commit.md) | The protocol itself — reserve before dispatch, settle with the provider's reference, quarantine, replay. Read this before changing anything in `apps/api/src/actions/`. |
+| [`demo/byoa-60s.md`](./demo/byoa-60s.md) | Sixty-second bring-your-own-agent walkthrough. |
 
-## How they fit together
+## The GTM playbooks were removed
 
-```
-Day 0    → first-touch.md       (40 sends, week 1)
-Day 4    → follow-up.md (touch 2 + demo video link)
-Day 7    → reply yes/no? if yes:
-              → discovery-call-script.md
-              → after the call: send security packet, scope pilot
-Day 11   → follow-up.md (touch 3, break-up) — only if no reply yet
-Day 14   → if pilot scoped: kickoff
-Day 60   → pilot ends → expand or kill
-```
+`outbound/first-touch.md`, `outbound/follow-up.md`,
+`outbound/discovery-call-script.md`, and `demo/demo-script-6min.md` sold the
+retired positioning — cold opens about stalled RevOps pilots, a six-scene
+storyboard built on HubSpot and Gmail, a discovery script whose qualifying
+questions were about CRM write scopes.
+
+They were not stale wording around a good pitch. They were a different product's
+pitch, and rewriting them before a single conversation has happened would be
+inventing a script for objections nobody has raised yet.
+
+The qualifying question that replaces all of it:
+
+> When your agent crashes mid-call, how do you currently find out whether the
+> thing happened?
+
+Write the playbook after five people have answered it. Git history has the old
+ones if the beachhead ever comes back.
 
 ## What this folder is NOT
 
-- Not a marketing site. The hero copy on the live product page is in the [top-level README](../README.md) and [`apps/web/`](../apps/web/).
-- Not a sales CRM. Track outreach in Notion/Linear/a spreadsheet — these files are stable templates, not a moving target list.
-- Not a security packet. That's [`../SECURITY.md`](../SECURITY.md). Send it after the discovery call, when the prospect asks "what do I show my security team?"
-- Not a runbook for a single agent. That's the engineering surface — see governed runs at `/campaigns`.
-
-## When to update
-
-- **first-touch.md, follow-up.md** — when the qualifying question stops working. Track which subject line and which body text led to replies; iterate after every 30 sends.
-- **discovery-call-script.md** — after the first 5 real calls. The six forcing questions will need tightening once you've heard real answers.
-- **demo-script-6min.md** — when a prospect's pushback during the demo reveals a missing scene, or when the product evolves into a new governed revenue workflow and the demo needs a second flow.
-
-Don't optimize these before they're tested. The first 30 sends + 5 calls are the only feedback that matters.
+- Not a marketing site. Hero copy lives in [`apps/marketing/`](../apps/marketing/).
+- Not a build guide. Sequencing and deferred work live in [`TODOS.md`](../TODOS.md).

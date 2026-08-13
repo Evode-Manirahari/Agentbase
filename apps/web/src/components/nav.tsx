@@ -23,7 +23,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <aside className="w-full md:w-56 shrink-0 border-b md:border-b-0 md:border-r border-[var(--color-border)] bg-[var(--color-panel)] p-4 flex flex-col gap-1">
         <div className="px-2 pb-4 mb-2 border-b border-[var(--color-border)]">
           <div className="text-lg font-semibold tracking-tight">Agentbase</div>
-          <div className="text-xs text-[var(--color-muted)]">safe-action layer</div>
+          <div className="text-xs text-[var(--color-muted)]">effect commit layer</div>
         </div>
         {items.map((it) => (
           <Link

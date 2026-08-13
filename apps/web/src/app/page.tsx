@@ -35,10 +35,10 @@ export default async function OverviewPage() {
     <div className="max-w-6xl">
       <H1>Overview</H1>
       <Subtitle>
-        Cross-stack governance for revenue agents before they touch CRM, email,
-        and sales tools.{' '}
-        <a href="/campaigns" className="underline hover:text-[var(--color-accent)]">
-          Start a governed run →
+        Commit an agent&apos;s irreversible actions exactly once, prove what
+        happened, and survive a crash in the middle.{' '}
+        <a href="/effects" className="underline hover:text-[var(--color-accent)]">
+          See the quarantine →
         </a>
       </Subtitle>
 
@@ -115,15 +115,15 @@ function ControlPlaneBrief() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
         <BriefItem
           label="Identity"
-          value="Every sales agent gets a scoped identity and revocable API key."
+          value="Every action is graded by consequence — effect class plus whether it can be undone."
         />
         <BriefItem
           label="Governance"
-          value="Policies decide which Salesforce, Gmail, Slack, Outreach, and enrichment actions run, pause, or stop."
+          value="Policy matches on what an action does, so a command nobody anticipated is still gated."
         />
         <BriefItem
           label="Monitoring"
-          value="Approvals, connector outcomes, and audit exports give RevOps, security, and IT one evidence trail."
+          value="One receipt per attempt with the provider’s own reference. An interrupted dispatch stays unknown until a human resolves it."
         />
       </div>
     </Card>

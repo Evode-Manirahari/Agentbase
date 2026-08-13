@@ -2,7 +2,7 @@
 
 The client for calling the [Agentbase](https://github.com/Evode-Manirahari/Agentbase) action gate from your own AI agent. Use it when you have an agent (Mastra, LangChain, Vercel AI SDK, raw Anthropic SDK, anything that can make HTTP calls) and you want each tool call to run through scoped permissions, policy, human approval, and audit before it touches Salesforce, HubSpot, Gmail, Outreach, Apollo, or your internal APIs.
 
-> Agentbase is the safe-action layer for internal AI agents. This SDK is what makes that true for *your* agent.
+> Agentbase is the effect commit layer for AI agents — it commits irreversible actions exactly once and survives a crash in the middle. This SDK is what makes that true for *your* agent.
 
 ## Install
 
