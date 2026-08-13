@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Agentbase — the safe-action layer for internal AI agents',
+  title: 'Agentbase — the effect commit layer for AI agents',
   description:
-    'Scoped identity, approval, and audit for AI agents before they touch your APIs, CRM, email, and internal tools. Okta + Zapier + Datadog for AI agents.',
+    "Commit an agent's irreversible actions exactly once, prove what happened, and survive a crash in the middle. Ten retries across three crash points, one effect.",
   openGraph: {
-    title: 'Agentbase — the safe-action layer for internal AI agents',
+    title: 'Agentbase — the effect commit layer for AI agents',
     description:
-      'Scoped identity, approval, and audit for AI agents before they touch your APIs, CRM, email, and internal tools.',
+      "Commit an agent's irreversible actions exactly once, prove what happened, and survive a crash in the middle.",
     type: 'website',
   },
 };

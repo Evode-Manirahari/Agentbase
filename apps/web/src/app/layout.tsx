@@ -7,7 +7,7 @@ import { Shell } from '../components/nav';
 export const metadata: Metadata = {
   title: 'Agentbase',
   description:
-    'Safe-action layer for internal AI agents across your APIs, CRM, email, and internal tools.',
+    "Effect commit layer for AI agents — commit irreversible actions exactly once, prove what happened, and survive a crash in the middle.",
 };
 
 export const viewport: Viewport = {

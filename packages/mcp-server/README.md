@@ -2,7 +2,7 @@
 
 Expose the [Agentbase](https://github.com/Evode-Manirahari/Agentbase) action gate as a [Model Context Protocol](https://modelcontextprotocol.io) server. Drop the server's URL into any MCP-aware client — Claude Desktop, Cursor, Codex, Claude Code, MCP-Inspector — and every tool call to HubSpot, Salesforce, Gmail, Outreach, or Apollo is now routed through Agentbase's policy, identity, approval, and audit layer.
 
-> Agentbase is the safe-action layer for internal AI agents. This package is the **protocol-level** integration; the [`@agentbase/sdk`](../sdk) package is the code-level integration. Same gate behind both.
+> Agentbase is the effect commit layer for AI agents — it commits irreversible actions exactly once and survives a crash in the middle. This package is the **protocol-level** integration; the [`@agentbase/sdk`](../sdk) package is the code-level integration. Same gate behind both.
 
 ## When to use this vs. the SDK
 

@@ -1,51 +1,63 @@
 # Agentbase
 
-> Scoped identity, approval, and audit for AI agents before they touch your APIs, CRM, email, and internal tools.
+> Commit an agent's irreversible actions exactly once, prove what happened, and survive a crash in the middle.
 
 [![CI](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml/badge.svg)](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml)
 
-Agentbase is the safe-action layer for internal AI agents.
+Agentbase is the **effect commit layer** for AI agents.
 
-> "Every SaaS company will become a GaaS [agentic-as-a-service] company, and every engineer will carry an annual token budget alongside their salary."
-> — Jensen Huang, NVIDIA GTC Taipei 2026
-
-When every company runs agents on a token budget, every one of those agents needs an identity, a permission boundary, and an audit trail. That layer is Agentbase.
-
-The product direction source of truth lives in [docs/positioning.md](./docs/positioning.md).
+The product direction source of truth lives in [docs/positioning.md](./docs/positioning.md). The protocol is in [docs/effect-commit.md](./docs/effect-commit.md).
 
 ## What this is
 
-Teams are deploying AI agents against Salesforce, Gmail, Slack, Outreach, Apollo, internal APIs, and enrichment tools. The agents can research, enrich records, update systems of record, draft and send messages, create tasks, summarize activity, and run multi-step workflows. Security and IT block them before they can touch production systems because the agents lack scoped identity, approval rules, revocation, and audit trails.
+A permission gateway answers **"may this agent call this tool, with whose credentials?"** — settled before anything leaves the machine. [Executor](https://executor.sh/), MCPX, Docker's MCP Gateway, and the MCP spec's own just-in-time authorization all serve that question well.
 
-Agentbase is the control plane those teams can trust:
+Agentbase answers the one that comes after:
 
-- Give every agent an identity and scoped API key.
-- Govern what it can do across CRM, email, internal APIs, Slack-adjacent approvals, and third-party tools.
-- Route sensitive actions to humans before execution.
-- Revoke compromised or over-scoped agents quickly.
-- Monitor every attempted action with policy decisions, connector outcomes, and exportable audit trails.
+> The call was permitted and a human approved it. How do we commit it exactly once, prove what happened, survive a crash at any point in between, and keep it from happening again during replay?
 
-The pitch:
+Between sending a request and reading its response, the effect may or may not exist. Nothing on the caller's side of the network closes that gap — not a transaction, not a lock, not a retry policy. The provider either processed it or did not, and the process may die before finding out.
 
-> **Agentbase is Okta + Zapier + Datadog for AI agents: identity, governed execution, and observability across everything the agent touches.**
+Everything in production today resolves that ambiguity by guessing. Retry, and the customer is charged twice. Report failure, and the system has lied about something that already happened.
 
-We sell first into the revenue/CRM beachhead — RevOps teams deploying an agent against Salesforce/HubSpot — then expand to any team running internal agents (ops, support, internal tooling). Security and IT are the required sign-off. Salesforce, HubSpot, Outreach, and Gmail can govern agents inside their own products; Agentbase governs agents across the full workflow.
+Agentbase refuses to guess:
 
-The bundled outbound, follow-up, reply-handler, CRM hygiene, and lead-list flows are a frozen reference implementation — proof the gate works on a real agent. The product is not "an AI SDR." The product is the cross-stack action layer that lets any internal agent act safely.
+- **Reserve before dispatch** — the attempt is written `indeterminate` *before* the request leaves, so a crash at the worst moment leaves evidence rather than nothing.
+- **Idempotency key on the wire** wherever the provider honours one.
+- **Quarantine, never auto-retry** — an attempt that never settled stays `indeterminate` and is closed only by a human recording what they found at the provider. Retry is refused outright for a provider that cannot deduplicate.
+- **Replay without re-sending** — recorded receipts come back with zero requests to any provider.
+- **Grade by consequence** — policy matches on what an action *does* (effect class, reversibility), so a command nobody anticipated is still gated.
+
+### The claim
+
+**Ten retries across three crash points produce exactly one effect. Remove the idempotency key and the same test produces eight.**
+
+Test: `apps/api/src/actions/effect-dispatcher.test.ts`.
+
+### The qualifier, which ships with the claim
+
+**At-most-once holds only where the provider deduplicates.** Connectors declare `key`, `natural`, or `none` per call; undeclared means `none`. Against a provider that cannot dedupe, the honesty *is* the product — Agentbase reports that it does not know rather than pretending. Never pitch the guarantee unconditionally.
+
+### Buyer
+
+Teams running unattended agents that touch irreversible things — payments, sends, deploys, infrastructure, publishing, external writes. The qualifying question is not "do you use AI agents?" but:
+
+> When your agent crashes mid-call, how do you currently find out whether the thing happened?
+
+**Demand is unvalidated.** No customer has asked for this yet. The technical claim is tested and the demo runs; neither is evidence anyone will pay.
+
+The bundled outbound, follow-up, reply-handler, and CRM-hygiene flows in `apps/api/src/agent-runtime/` are a **frozen reference implementation** — proof the layer works on a real agent, not the product.
 
 ## Why this becomes defensible
 
-Agentbase's moat is becoming the trusted control plane for agent actions across the revenue stack:
-
-- **Trust + compliance position** — RevOps and security teams need proof before letting agents touch CRM, email, and sales tools. Agentbase should become the approval and audit source of truth: every agent identity, permission, policy decision, approval, denial, connector result, revocation, and exportable audit event in one system security can inspect.
-- **Cross-stack integration depth** — Salesforce, HubSpot, Gmail, Outreach, Slack, Apollo, and enrichment vendors each have their own permissions and logs. Agentbase governs the whole workflow across those tools instead of governing one app at a time.
-- **Embedded switching cost** — once agent identities, scoped API keys, policies, approvals, logs, connector credentials, and audit exports live in Agentbase, replacing it means rebuilding the trust layer around every production agent workflow.
-- **Agent-native interface** — the buyer is human, but the daily user is the agent. SDK and MCP access let agents call Agentbase directly while humans keep control over identity, policy, approvals, and audit.
-- **Action history data** — as customers use Agentbase, action history becomes a compounding asset: which tools are risky, which policies work, which approvals are common, which agents need tighter scopes, and which guardrails security accepts.
+- **The evidence ledger** — one row per attempt with the provider's own reference. Replacing Agentbase means abandoning the record of what your agents actually did.
+- **Connector idempotency knowledge** — which providers dedupe, on what key, for how long, is grubby per-provider truth that only accumulates by doing the work.
+- **Agent-native interface** — the buyer is human, but the daily caller is the agent. SDK and MCP access let agents commit through Agentbase directly while humans keep the quarantine exit.
+- **Action history data** — which effect classes actually get denied, which quarantines resolve as committed, and which providers are unsafe to retry compounds into better defaults over time.
 
 ## Bring your own agent
 
-Agentbase governs *your* agent, not just ours. The bundled Revenue Agent jobs are reference implementations — proof the gate works on a real agent — but any TypeScript-side LLM tool-use loop can plug in with one import:
+Agentbase governs *your* agent, not just ours. The bundled SDR jobs are a frozen reference implementation — proof the layer works on a real agent — but any TypeScript-side LLM tool-use loop can plug in with one import:
 
 ```ts
 import { AgentbaseClient } from '@agentbase/sdk';
@@ -78,7 +90,7 @@ Two integration surfaces — code-level (SDK) and protocol-level (MCP):
 End-to-end in <2 minutes once the API is up:
 
 1. Open `http://localhost:3000/campaigns`.
-2. Pick the **Revenue Agent — outbound** job and an active agent identity.
+2. Pick the bundled outbound job (the frozen SDR reference) and an active agent identity.
 3. Paste lead emails + optional notes. Click **Start governed run**.
 4. You're redirected to `/campaigns/batch/[id]`, which polls live as Claude:
    - calls `apollo.people.match` and `apollo.organizations.match` (auto-execute)
@@ -89,7 +101,7 @@ End-to-end in <2 minutes once the API is up:
 6. Approver clicks ✓. The action transitions to `executed`, the worker picks up the resume job, the loop continues, and the dashboard timeline updates to `completed` with a final summary from Claude.
 7. Every state transition is in the audit log; **Download CSV** on `/audit` hands security the evidence.
 
-The same control loop applies to Salesforce + Gmail + Slack, HubSpot + Gmail + Slack, Outreach sequencing, Apollo enrichment, and future revenue-stack connectors. The current outbound job is one workflow on top of a generic runtime and connector gate.
+The same control loop applies to any connector — the outbound job is one workflow on top of a generic runtime and commit protocol, not a special case. `gmail.send` is gated here because sending mail is irreversible, which is the same reason `terraform destroy` is gated in the effect-gate demo.
 
 ## Status
 
@@ -118,20 +130,20 @@ The governed runtime:
 - **Async runs + resume** — `agent_runs` table persists conversation state. `POST /v1/campaigns/runs` enqueues a BullMQ job, returns the run id immediately. `GET /v1/campaigns/runs/:id` is polled by the dashboard. When a Slack approval (or the expiry sweeper) transitions the action out of `awaiting_approval`, `ApprovalsService` notifies `AgentRunsService` and a resume job continues the loop with the resolved tool_result.
 - **Runs dashboard** — `/campaigns` launches governed runs, including batches from lead lists. Recent runs table on the index page. Transcript view tones agent_thinking / agent_message / tool_call / tool_result blocks by status (allow=green, require_approval=amber, deny/failed=rose).
 
-The safe-action layer:
+The commit layer:
 
 - **Approval workflow** — DB-backed pending queue, transactional decide endpoint, idempotency (409), 24h TTL, BullMQ-backed expiry sweeper on Redis
 - **Slack approval cards** — interactive Approve / Deny buttons with the full action payload, signed webhook (HMAC + 5-min replay window), per-rule channel routing, two-way consistency (web decisions update the Slack card via `chat.update`)
-- **Policy templates** — three one-click templates that cover the most common pilot questions: require approval before external email, require approval on CRM writes over $10k, and deny delete/export/bulk actions. Sit above the YAML editor so the RevOps buyer never has to write Rego on call one.
+- **Policy templates** — three one-click templates that cover the most common pilot questions: require approval before external email, require approval on CRM writes over $10k, and deny delete/export/bulk actions. Sit above the YAML editor so a reviewer never has to write Rego on call one. There is also an **effect template** that grades by consequence rather than naming tools — the one to reach for first.
 - **Audit log + export** — every state transition recorded with actor type/id, exportable as RFC 4180 CSV or JSON straight from the dashboard, so security teams can take evidence into SOC 2 reviews and questionnaires
 - **Production auth refusal** — `ClerkAuthGuard` and the Next middleware both throw at boot if `NODE_ENV=production` and Clerk env vars aren't set; explicit `AGENTBASE_ALLOW_UNAUTHENTICATED=1` is the only way to opt out
 
 The plumbing both sides share:
 
 - **Identity & API keys** — register agents, assign permission profiles, issue scoped `agb_…` tokens (sha256-hashed at rest), and revoke agents idempotently
-- **Permission profiles** — Sales Agent, RevOps Admin, Support Agent, Read-only Analyst, and Custom — used to seed policy templates per agent role
+- **Permission profiles** — `sales_agent`, `revops_admin`, `support_agent`, `readonly_analyst`, and custom — stored identifiers seeded by the frozen SDR reference, used to seed policy templates per agent role
 - **Policy DSL** — YAML + Zod, rule-based effects (`allow` / `require_approval` / `deny`), tool glob matching, agent id/name/profile matching, dotted-path conditions with `eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`contains`/`exists`; the templates compile to this, and security can read it
-- **Connectors** — Salesforce, HubSpot, Gmail, Outreach, and Apollo, all behind the same safe-action layer, with Zod-validated params and structured connector errors. Pilots ship on Salesforce + Gmail + Slack or HubSpot + Gmail + Slack; the rest are available if a customer asks.
+- **Connectors** — Salesforce, HubSpot, Gmail, Outreach, Apollo, and `shell`, all behind the same commit protocol, with Zod-validated params and structured connector errors. Each declares its idempotency mode (`key` / `natural` / `none`), which is what decides whether a retry is ever safe.
 - **Org-scoped connector credentials** — HubSpot, Salesforce, Gmail, and Outreach OAuth install/reconnect plus dashboard-managed static credentials override process env vars per org, are AES-256-GCM encrypted at rest, refresh access tokens before connector dispatch, show account/expiry metadata, can be tested from the dashboard, and can be disabled to block inherited env fallback
 - **Web dashboard** (Next.js 15 + Tailwind v4) — Overview, Runs, Agents, Policies (templates + YAML editor), Approvals (web inbox alongside Slack), Actions, Connectors, Webhooks, Audit
 - **CI + tests** — GitHub Actions gates lint, typecheck, production build, the API test suite, and Playwright dashboard E2E including connector credential/OAuth-state and permission-profile coverage

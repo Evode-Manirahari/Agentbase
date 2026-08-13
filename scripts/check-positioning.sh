@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Positioning guard. Fails CI if the retired "AI sales agents" tagline creeps back
-# into platform surfaces, and asserts the agent-readable llms.txt front door exists
-# and carries its key markers.
+# Positioning guard. Fails CI if a retired tagline creeps back into platform
+# surfaces, and asserts the agent-readable llms.txt front door exists and carries
+# its key markers.
 #
 # Canonical positioning lives in docs/positioning.md:
-#   "the safe-action layer for internal AI agents"
+#   "the effect commit layer for AI agents"
 #
-# Allowlisted: the SDR reference demo (docs/demo, docs/outbound), this script, build
-# output, and deps. The bundled AI SDR demo is a frozen reference where "sales" is
-# correct on purpose.
+# Two generations of retired pitch are guarded here. "AI sales agents" was
+# retired in 2026-05; "safe-action layer / scoped identity, approval, and audit"
+# was retired when the product became the effect commit layer, and it is the more
+# dangerous of the two because it describes a real feature of the system. The
+# product HAS identity and approval — it is not what it SELLS, because permission
+# gateways serve that question and do not make a crash-safety claim.
+#
+# Allowlisted: the SDR reference demo (docs/demo), this script, build output, and
+# deps. The bundled AI SDR demo is a frozen reference where "sales" is correct on
+# purpose.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,6 +30,10 @@ BANNED=(
   "secure action layer"
   "AI sales agents"
   "for AI sales agent"
+  "safe-action layer"
+  "cross-stack governance"
+  "revenue agent"
+  "Okta + Zapier + Datadog"
 )
 
 # Allowlist = the frozen AI SDR reference implementation, where "sales" is the
@@ -31,9 +42,9 @@ BANNED=(
 # surface and must carry the current positioning.
 EXCLUDES=(
   ":(exclude)docs/demo/**"
-  ":(exclude)docs/outbound/**"
   ":(exclude)examples/**"
   ":(exclude)apps/api/src/agent-runtime/**"
+  ":(exclude)apps/web/src/app/campaigns/**"
   ":(exclude)scripts/check-positioning.sh"
   ":(exclude)CHANGELOG.md"
   ":(exclude)TODOS.md"
@@ -54,7 +65,7 @@ if [ ! -s "$LLMS" ]; then
   echo "✗ $LLMS is missing or empty — the agent-first discovery front door is broken."
   fail=1
 else
-  for marker in "safe-action layer for internal AI agents" "agb_" "human provisions" ; do
+  for marker in "effect commit layer" "exactly once" "agb_" "human provisions" ; do
     if ! grep -qi "$marker" "$LLMS"; then
       echo "✗ $LLMS is missing expected marker: \"$marker\""
       fail=1

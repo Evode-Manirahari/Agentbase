@@ -1,8 +1,16 @@
 # Agentbase
 
-The safe-action layer for internal AI agents. Every business command your agents
-run is scoped, approved, and audited. Canonical positioning lives in
-`docs/positioning.md` (enforced by `scripts/check-positioning.sh` in CI).
+The **effect commit layer** for AI agents: commit an agent's irreversible
+actions exactly once, prove what happened, and survive a crash in the middle.
+
+A permission gateway answers "may this agent call this tool?" — that question is
+well served elsewhere and is NOT what Agentbase sells. The product has identity
+and approval, but it is positioned on what happens AFTER permission is granted.
+Canonical positioning lives in `docs/positioning.md` (enforced by
+`scripts/check-positioning.sh` in CI, which bans both retired taglines).
+
+The guarantee is CONDITIONAL: at-most-once holds only where the provider
+deduplicates. Never state it unconditionally in code comments, docs, or copy.
 
 - TypeScript pnpm/turbo monorepo: `apps/api` (NestJS + Fastify), `apps/marketing`
   (Next.js), `packages/` (sdk, mcp-server, shared, db), `connectors/`.

@@ -34,8 +34,8 @@ export default async function AgentsPage() {
     <div className="max-w-5xl">
       <H1>Agents</H1>
       <Subtitle>
-        Every revenue agent gets an identity, scoped API key, permission profile,
-        and revocation path before it can act on customer systems.
+        Every agent gets an identity, scoped API key, permission profile, and
+        revocation path before it can commit anything irreversible.
       </Subtitle>
 
       {error ? <ErrorBox error={error} /> : null}

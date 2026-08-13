@@ -54,7 +54,5 @@ In 60 seconds the viewer sees three things they cannot get from a single-vendor 
 - [ ] Caption file (.vtt) attached for LinkedIn auto-play
 - [ ] 9:16 vertical cut for X / LinkedIn / TikTok if you're using paid distribution
 - [ ] Linked from:
-  - Outbound touch #2 ([`docs/outbound/follow-up.md`](../outbound/follow-up.md))
   - Top-level README hero
   - [`docs/positioning.md`](../positioning.md) (link to recording under "Bring your own agent")
-  - Discovery-call script (the 5-minute "show me" beat)
