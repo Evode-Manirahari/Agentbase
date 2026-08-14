@@ -2,7 +2,7 @@
   "name": "agentbase",
   "private": true,
   "version": "0.0.0",
-  "description": "Agentbase — the effect commit layer for AI agents. Commit irreversible actions exactly once, prove what happened, survive a crash in the middle.",
+  "description": "Agentbase — the effect commit layer for AI agents. Commit irreversible actions exactly once wherever the provider deduplicates, prove what happened, survive a crash in the middle.",
   "license": "Apache-2.0",
   "packageManager": "pnpm@10.30.3",
   "engines": {

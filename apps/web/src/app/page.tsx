@@ -35,8 +35,9 @@ export default async function OverviewPage() {
     <div className="max-w-6xl">
       <H1>Overview</H1>
       <Subtitle>
-        Commit an agent&apos;s irreversible actions exactly once, prove what
-        happened, and survive a crash in the middle.{' '}
+        Commit an agent&apos;s irreversible actions exactly once wherever the
+        provider deduplicates, prove what happened, and survive a crash in the
+        middle.{' '}
         <a href="/effects" className="underline hover:text-[var(--color-accent)]">
           See the quarantine →
         </a>
