@@ -95,11 +95,22 @@ CLAIM_SURFACES=(
   "packages/mcp-server/README.md"
 )
 
+# An AFFIRMATIVE qualifier, not merely the substring "dedup". A bare claim in a
+# file that happens to mention deduplication elsewhere — including a sentence
+# saying the provider CANNOT dedupe — must still fail, or the check reports a
+# false pass on exactly the overclaim it exists to catch.
+QUALIFIER_RE='(wherever|where|only where) the provider (deduplicates|dedupes)'
+
 for f in "${CLAIM_SURFACES[@]}"; do
   [ -f "$f" ] || continue
-  if grep -qi "exactly once" "$f" && ! grep -qi "dedup" "$f"; then
+  # Collapse all whitespace first: both the claim and its qualifier wrap across
+  # lines in prose and in JSX, so a line-oriented grep misses them.
+  flat=$(tr -s '[:space:]' ' ' < "$f")
+  if printf '%s' "$flat" | grep -qi "exactly once" \
+    && ! printf '%s' "$flat" | grep -qiE "$QUALIFIER_RE"; then
     echo "✗ $f states the exactly-once claim without the provider-deduplication condition."
-    echo "    At-most-once holds only where the provider dedupes. Say so on the same surface."
+    echo "    At-most-once holds only where the provider dedupes. Say so on the same surface,"
+    echo "    in the affirmative — e.g. \"exactly once wherever the provider deduplicates\"."
     fail=1
   fi
 done
