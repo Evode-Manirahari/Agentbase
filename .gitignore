@@ -31,6 +31,12 @@ coverage/
 test-results/
 playwright-report/
 
+# booking-audit output. The cache holds raw call transcripts and the reports
+# hold call data: neither belongs in a public repo.
+.booking-audit-cache/
+booking-audit-report/
+booking-audit-demo/
+
 # misc
 *.pem
 .gstack/

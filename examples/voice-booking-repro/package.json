@@ -1,0 +1,11 @@
+{
+  "name": "@agentbase/voice-booking-repro",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runnable reproduction of three public voice-agent booking failures, unprotected and through the commit protocol. No install, no keys, no network.",
+  "scripts": {
+    "start": "node repro.mjs",
+    "test": "node --test"
+  }
+}

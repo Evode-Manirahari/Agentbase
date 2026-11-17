@@ -1,15 +1,85 @@
 # TODOS
 
-Deferred work captured during reviews. Each item has enough context to pick up cold.
+Sequencing and deferred work. Each item has enough context to pick up cold.
 
-> **Demand status, verified 2026-08-04: Agentbase has ZERO customers and no way to
-> take money.** There is no Stripe, no billing code, and no plan/invoice/seat table in
-> `packages/db/src/schema.ts` — grep `stripe|billing|checkout|payment` across the API,
-> web app, and schema returns nothing. Earlier revisions of this file described "Daniel"
-> as "the $1k/mo customer who pushed for RBAC" and referred to "Maya's actual workflows."
-> **Both were personas invented during a 2026-06-05 office-hours exercise, not real
-> people.** They have been removed below. Do not cite them — or any customer — as
-> evidence for prioritisation until a named human has actually paid.
+> **Demand status, verified 2026-11-16: Agentbase has ZERO users and ZERO customers.**
+> Nobody outside the founder has run anything in this repo. There is no billing code.
+> Earlier revisions of this file cited "Daniel" and "Maya" as customers; both were personas
+> invented during a 2026-06-05 office-hours exercise. Do not cite them, or any customer, as
+> evidence for prioritisation until a named human has actually run the audit or paid.
+
+## Direction (2026-11-16): booking integrity for voice agents
+
+The horizontal "commit layer for every agent" headline is retired. The product is the
+booking audit; the commit engine is what a fix will be built on. Design doc:
+`~/.gstack/projects/Evode-Manirahari-Agentbase/evodemanirahari-main-design-20261116-102154.md`.
+
+## NOW — get the audit in front of one outside builder
+
+Shipped on `feat/booking-audit` (2026-11-16): `packages/booking-audit` (Retell, four checks,
+HTML report, `demo` command), `examples/voice-booking-repro`, repositioned docs and landing page.
+
+- [ ] **Run it on real Retell data.** Everything is tested against hand-built fixtures shaped
+      like the API reference. It has never read a real call log. Make a throwaway booking agent,
+      place 20+ real calls including forced duplicates and a forced timeout, and audit them.
+      Fix what breaks before anyone else sees it. Blocks: nothing. Needs: a Retell account.
+- [ ] **Send the six messages** (the assignment in the design doc). Reply in the live Retell
+      duplicate-booking thread and message five more people who reported a booking bug in the
+      last 90 days, asking to test the audit on a real export. Log every reply, one file per
+      person, in `~/.gstack/projects/Evode-Manirahari-Agentbase/outreach/`. NOT in this repo: it
+      is public.
+- [ ] **Publish to npm.** `.github/workflows/publish-booking-audit.yml` publishes on a
+      `booking-audit-v*` tag. Before the first tag: confirm the package name is one you own
+      (the `@agentbase` scope has not been checked) and add the `NPM_TOKEN` secret. Then replace
+      every "not on npm yet" with the `npx` line and drop that marker from
+      `scripts/check-positioning.sh`.
+- [ ] **Vapi adapter.** Same normalized model (`packages/booking-audit/src/types.ts`), new
+      `normalize-vapi.ts`. Take field names from Vapi's official API reference at build time.
+      The shape seen during research came from a third-party page and is not trusted.
+- [ ] **Deploy the landing page.** `apps/marketing` builds; it has never been deployed.
+
+Success criteria and stop rule (from the design doc):
+
+- By 2026-11-30: posted where the bug is reported in 5+ threads or communities; 3+ outside
+  builders have run the audit on real calls and said so.
+- By 2026-12-14: at least one agency ran it on more than one client account (the first-payer
+  test).
+- **Stop rule:** fewer than 3 outside runs by 2026-12-14 after 10+ posts means stage two does
+  not get built. The next question is whether the bet or the channel is wrong.
+
+## GATED — stage two: the commit endpoint (do NOT build yet)
+
+- **What:** one URL in front of a builder's existing booking webhook. Retell and Vapi adapters,
+  a booking-intent key, confirmed / failed / unknown replies the agent can speak, a callback
+  queue for unknowns, per-call receipts. Built on `apps/api/src/actions/` (reserve, dispatch,
+  settle, quarantine, resolve).
+- **Gate:** ONE outside builder runs the audit on real calls, finds something, and asks how to
+  stop it. An explicit ask, not a like. Build it for that builder's stack, as a design partner.
+- **Until then:** no proxy, no hosted service, no billing, no dashboard work.
+- **Why gated:** it asks strangers to route live bookings through a solo developer's service.
+  Three positionings were built before a user existed. This one waits for the user.
+- **Open design questions for when it unlocks:** unify the audit's intent key
+  (`packages/booking-audit/src/canonical.ts`) with the API's request hash; what a lookup
+  finding nothing should mean (the reproduction keeps it unknown); per-backend dedupe modes
+  for Cal.com, GoHighLevel, Google Calendar.
+
+## Known limits of the audit (v0.1)
+
+- **F5, the same booking across two calls,** is not checked. A caller who rings back and gets
+  booked again is invisible to a per-call audit.
+- **Claim detection is English-only pattern matching.** Target: 9 of 10 F3 flags judged correct
+  by a builder on their own calls. If real data misses that, add an optional
+  bring-your-own-key model pass. Do not add it speculatively.
+- **F2 misses a fallback that happens after an agent-only turn.** It needs "no caller speech
+  between", so an agent that says "one moment" and then books a different slot is not flagged.
+- **Other packages' test scripts use `@swc-node/register`, which fails to load on Node 24.**
+  CI is on Node 22 so it is green there. `packages/booking-audit` uses `tsx` and works on both.
+  Migrating the rest is a small, separate change.
+
+## PARKED with the horizontal positioning
+
+The three items below were written for the retired positioning. They stay parked, and none of
+them unparks on the new product's gate.
 
 ## Approach B — Agent self-serve onboarding + RBAC
 

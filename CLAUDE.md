@@ -1,25 +1,46 @@
 # Agentbase
 
-The **effect commit layer** for AI agents: commit an agent's irreversible
-actions exactly once wherever the provider deduplicates, prove what happened,
-and survive a crash in the middle.
+**Booking integrity for voice agents.** Find the bookings a voice agent
+duplicated, never confirmed with the caller, or never made, and say so when the
+outcome is unknown.
 
-A permission gateway answers "may this agent call this tool?" — that question is
-well served elsewhere and is NOT what Agentbase sells. The product has identity
-and approval, but it is positioned on what happens AFTER permission is granted.
-Canonical positioning lives in `docs/positioning.md` (enforced by
-`scripts/check-positioning.sh` in CI, which bans both retired taglines).
+- The product today is `packages/booking-audit`: a read-only CLI over
+  voice-platform call logs (Retell first). It runs locally, has zero runtime
+  dependencies, and redacts by default.
+- The commit engine (`apps/api`, protocol in `docs/effect-commit.md`) is what
+  will prevent the failures the audit finds. It is NOT wired to voice platforms.
+  Do not build the commit endpoint, hosting, billing, or dashboard features
+  until one outside builder has run the audit on real calls and asked how to
+  stop the findings. The gate is in `TODOS.md`.
+- Canonical positioning lives in `docs/positioning.md` (enforced by
+  `scripts/check-positioning.sh` in CI, which bans every retired headline).
 
-The guarantee is CONDITIONAL: at-most-once holds only where the provider
-deduplicates. Never state it unconditionally in code comments, docs, or copy.
+Two honesty rules. Never break either in code comments, docs, or copy:
 
-- TypeScript pnpm/turbo monorepo: `apps/api` (NestJS + Fastify), `apps/marketing`
-  (Next.js), `packages/` (sdk, mcp-server, shared, db), `connectors/`.
-- Tests: `pnpm test` in `apps/api` (node:test). Integration tests need Postgres
-  on 5433 + Redis on 6380 via `docker compose -f infra/docker-compose.yml up -d`,
-  schema via `pnpm --filter @agentbase/db db:push`.
-- `apps/api/src/agent-runtime/` is a frozen reference implementation (the bundled
-  AI SDR that proves the gate). No new features there.
+1. The audit reads the call log only. When it cannot see an outcome it reports
+   `unknown` or "unverified claim", never "failed" or "missing". Never upgrade
+   an unknown to a known.
+2. The engine's guarantee is CONDITIONAL: at-most-once holds only where the
+   provider deduplicates. Never state it unconditionally.
+
+Never describe users, pilots, or revenue that do not exist. Sample call data is
+synthetic and must be labeled as made up wherever it appears.
+
+- TypeScript pnpm/turbo monorepo: `packages/booking-audit` (the product),
+  `apps/api` (NestJS + Fastify, the engine), `apps/web`, `apps/marketing`
+  (Next.js), `packages/` (sdk, mcp-server, shared, db, effects), `connectors/`.
+- Audit tests: `pnpm --filter @agentbase/booking-audit test`. No services
+  needed. They run on `tsx`, because `@swc-node/register` fails to load on
+  Node 24 and the other packages' test scripts still use it (CI is on Node 22).
+- API tests: `pnpm test` in `apps/api` (node:test). Integration tests need
+  Postgres on 5433 + Redis on 6380 via
+  `docker compose -f infra/docker-compose.yml up -d`, schema via
+  `pnpm --filter @agentbase/db db:push`.
+- Frozen, no new features: `apps/api/src/agent-runtime/` (the bundled AI SDR),
+  the sales connectors, Slack approvals, the policy editor, and the dashboard.
+- Never commit call logs or audit output. `.booking-audit-cache/`,
+  `booking-audit-report/` and `booking-audit-demo/` are gitignored because the
+  repo is public and the cache holds raw transcripts.
 - Deferred work and sequencing live in `TODOS.md`.
 
 ## Skill routing

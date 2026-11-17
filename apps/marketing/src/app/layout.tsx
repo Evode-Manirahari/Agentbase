@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Agentbase — the effect commit layer for AI agents',
+  title: 'Agentbase — booking integrity for voice agents',
   description:
-    "Commit an agent's irreversible actions exactly once wherever the provider deduplicates, prove what happened, and survive a crash in the middle. Ten retries across three crash points, one effect.",
+    'Find the bookings your voice agent duplicated, never confirmed with the caller, or never made. A read-only audit of your call logs that runs on your machine. Where the outcome is unknown, it says so.',
   openGraph: {
-    title: 'Agentbase — the effect commit layer for AI agents',
+    title: 'Agentbase — booking integrity for voice agents',
     description:
-      "Commit an agent's irreversible actions exactly once wherever the provider deduplicates, prove what happened, and survive a crash in the middle.",
+      'Find the bookings your voice agent duplicated, never confirmed with the caller, or never made. Read-only, local, and honest about what it cannot see.',
     type: 'website',
   },
 };

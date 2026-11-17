@@ -1,0 +1,61 @@
+{
+  "name": "@agentbase/booking-audit",
+  "version": "0.1.0",
+  "description": "Read-only audit of voice-agent call logs. Finds bookings that were sent more than once, bookings the caller never confirmed, spoken booking claims with no confirming tool result, and bookings whose outcome is unknown. Runs locally. Sends nothing anywhere.",
+  "keywords": [
+    "voice-agent",
+    "retell",
+    "vapi",
+    "booking",
+    "appointments",
+    "idempotency",
+    "audit",
+    "ai-agents"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Evode-Manirahari/Agentbase.git",
+    "directory": "packages/booking-audit"
+  },
+  "homepage": "https://github.com/Evode-Manirahari/Agentbase/tree/main/packages/booking-audit#readme",
+  "bugs": {
+    "url": "https://github.com/Evode-Manirahari/Agentbase/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "booking-audit": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src --max-warnings=0",
+    "test": "node --import tsx --test 'src/**/*.test.ts'",
+    "prepublishOnly": "pnpm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.2"
+  }
+}
