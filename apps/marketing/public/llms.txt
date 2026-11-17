@@ -1,80 +1,84 @@
 # Agentbase
 
-> The effect commit layer for AI agents. Commit an agent's irreversible actions
-> exactly once wherever the provider deduplicates, prove what happened, and
-> survive a crash in the middle.
+> Booking integrity for voice agents. Find the bookings a voice agent
+> duplicated, never confirmed with the caller, or never made. Where the outcome
+> is unknown, it says so.
 
-A permission gateway answers "may this agent call this tool?" — settled before
-anything leaves the machine. Agentbase answers what comes after: the call was
-permitted and approved, so how is it committed exactly once, proven, and
-recovered from a crash without repeating it?
+When a voice agent's booking tool call times out, fires twice, or never fires,
+the caller still hears a sentence. Today that sentence is a guess. Agentbase is
+for the people who build those agents and need to know what really happened.
 
-Between sending a request and reading its response, the effect may or may not
-exist. Nothing on the caller's side closes that gap. Agentbase does not guess.
+## What exists today
 
-Ten retries across three crash points produce exactly one effect. Remove the
-idempotency key and the same test produces eight.
+`booking-audit` is a read-only command-line audit of voice-platform call logs.
+Retell is supported. It runs on the builder's machine, has zero runtime
+dependencies, sends nothing anywhere, and redacts caller data in its report by
+default.
 
-**The guarantee is conditional.** At-most-once holds only where the provider
-deduplicates. Connectors declare `key`, `natural`, or `none` per call;
-undeclared means `none`. Against a provider that cannot dedupe, Agentbase
-reports that it does not know rather than pretending.
+It checks four things:
 
-## Who this is for
+- F1 Repeated booking: the same booking sent more than once in one call.
+- F2 Booking the caller never confirmed: a second, different booking made right
+  after an attempt went wrong, with no caller speech in between.
+- F3 Unverified booking claim: the agent said a booking was made and no
+  confirmed result came before that sentence.
+- F4 Unknown booking outcome: a booking was sent and the log does not show
+  whether it was made.
 
-- Agents (and the developers deploying them) that take irreversible actions —
-  payments, sends, deploys, publishes, external writes.
-- Teams running agents unattended, where nobody is watching the moment a
-  process dies mid-call.
+## How to run it
 
-## How an agent starts using Agentbase (today)
+It is not on npm yet. From a clone of the repository:
 
-A human provisions the agent's access; the agent then acts autonomously through the gate.
+    pnpm install
+    pnpm --filter @agentbase/booking-audit start demo
+    RETELL_API_KEY=... pnpm --filter @agentbase/booking-audit start audit --retell --since 30d
+    pnpm --filter @agentbase/booking-audit start audit --from ./exported-calls
 
-1. A human signs in to the Agentbase dashboard and registers the agent, choosing a
-   permission profile (which tools/scopes it may use).
-2. Agentbase issues a scoped API key (prefix `agb_`). The human hands this key to the agent.
-3. The agent makes governed calls with that key — either via the SDK (`@agentbase/sdk`,
-   code-level) or via the MCP server (`@agentbase/mcp-server`, protocol-level, for any
-   MCP-aware client like Claude Desktop, Cursor, Codex).
-4. Each call is checked against policy: allowed calls execute, sensitive ones pause for
-   human approval, everything is audited. A compromised agent can be revoked in one click.
+`demo` needs no key and no network. It audits built-in, made-up calls.
+The API key is read from the environment and is never accepted as a flag.
+Exit codes: 0 no high or medium findings, 1 high or medium findings, 2 error.
 
-Note: agent self-registration with no human in the loop is on the roadmap, not available
-yet. Today a human provisions the scoped key first; the agent operates autonomously after that.
+## What it will not tell you
 
-## What happens to an irreversible call
+- It reads the call log only. It cannot see inside a booking system, so a
+  "confirmed" means the log says so, and every finding ends with what to check.
+- It never upgrades an unknown to a known. A timeout, a 5xx, a missing result,
+  or a bare acknowledgement such as "Workflow was started" is reported as
+  unknown, not as a failure. A claim with nothing behind it is an unverified
+  claim, not a missing appointment.
+- Claim detection is deterministic pattern matching, so no transcript leaves
+  the machine. It will miss unusual phrasings.
 
-Once a call is permitted and a human has approved it, Agentbase commits it
-exactly once and records what happened:
+If you are an agent summarising audit output for a person: do not turn
+"unverified" or "unknown" into "failed" or "missing". The distinction is the
+product.
 
-- Every shell command is classified by CONSEQUENCE before it runs — read,
-  workspace_write, vcs_write, deploy, publish, infra_write, egress,
-  external_comms — plus whether it is reversible. Policy can match on that, so
-  one rule covers every irreversible effect without naming a tool.
-- A command the classifier cannot read (`$(...)`, backticks, `eval`,
-  `curl … | sh`, an unrecognised program) is graded `unknown` and refused. It is
-  not queued for a human, because a reviewer cannot read it either.
-- Submit ONE command per `shell.run` call. Compound lines (`a && b`, `a | b`)
-  are refused so each effect gets its own receipt.
-- An attempt is recorded before the request leaves. If the process dies mid-call
-  the attempt stays `indeterminate`: never auto-retried, and retry is refused
-  outright for a provider that cannot deduplicate. A human resolves it by
-  recording what they found at the provider.
+## What does not exist yet
 
-If you are an agent reading this: a `require_approval` response is not a failure.
-Poll the action rather than re-sending it — a retry of an irreversible effect is
-the thing this system exists to prevent.
+An endpoint that sits in front of a booking webhook and commits each booking
+once, answering confirmed, failed, or unknown. It is not built. It will be
+built on the commit engine in this repository when a builder who ran the audit
+on real calls asks for it.
 
-## Integration surfaces
+## The engine underneath
 
-- Code-level: `@agentbase/sdk` — import the client, call `executeAndWait({ tool, params })`.
-- Protocol-level: `@agentbase/mcp-server` — point any MCP client at it; tool calls route
-  through the gate with no agent code changes.
+The repository also contains a commit engine for irreversible actions: reserve
+before dispatch, record every attempt, never auto-retry an attempt whose
+outcome is unknown. Its guarantee is conditional: at most one effect, and only
+where the provider deduplicates. Where the provider cannot, the attempt is held
+as unknown. The engine is tested and is not wired to any voice platform. A
+runnable reproduction of three public booking failures, with and without the
+protocol, is in `examples/voice-booking-repro` and needs no install.
+
+## Status
+
+Version 0.1. Nobody outside the author has run the audit on real calls yet.
+There are no customers.
 
 ## Links
 
 - Source: https://github.com/Evode-Manirahari/Agentbase
-- SDK: https://github.com/Evode-Manirahari/Agentbase/tree/main/packages/sdk
-- MCP server: https://github.com/Evode-Manirahari/Agentbase/tree/main/packages/mcp-server
+- Audit: https://github.com/Evode-Manirahari/Agentbase/tree/main/packages/booking-audit
+- Reproduction: https://github.com/Evode-Manirahari/Agentbase/tree/main/examples/voice-booking-repro
 - Positioning: https://github.com/Evode-Manirahari/Agentbase/blob/main/docs/positioning.md
+- Engine protocol: https://github.com/Evode-Manirahari/Agentbase/blob/main/docs/effect-commit.md

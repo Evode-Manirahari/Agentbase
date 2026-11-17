@@ -4,14 +4,17 @@
 # its key markers.
 #
 # Canonical positioning lives in docs/positioning.md:
-#   "the effect commit layer for AI agents"
+#   "booking integrity for voice agents"
 #
-# Two generations of retired pitch are guarded here. "AI sales agents" was
-# retired in 2026-05; "safe-action layer / scoped identity, approval, and audit"
-# was retired when the product became the effect commit layer, and it is the more
-# dangerous of the two because it describes a real feature of the system. The
-# product HAS identity and approval — it is not what it SELLS, because permission
-# gateways serve that question and do not make a crash-safety claim.
+# Three generations of retired pitch are guarded here. "AI sales agents" was
+# retired in 2026-05. "safe-action layer / scoped identity, approval, and audit"
+# was retired next. The third, retired 2026-11-16, sold the commit engine as
+# horizontal infrastructure for every AI agent. It is the most dangerous of the
+# three because the engine is real and tested: the product HAS a commit engine.
+# It is not what it SELLS, because exactly-once as general infrastructure is a
+# feature other layers are absorbing, and it found no users. "The effect commit
+# layer" is still the correct name of the PROTOCOL (docs/effect-commit.md); what
+# is banned is naming it as the product for all agents.
 #
 # Allowlisted: the SDR reference demo (docs/demo), this script, build output, and
 # deps. The bundled AI SDR demo is a frozen reference where "sales" is correct on
@@ -37,6 +40,7 @@ BANNED=(
   "cross-stack governance"
   "revenue[ -]agent"
   "Okta \+ Zapier \+ Datadog"
+  "commit layer for (all |any )?(AI )?agents"
 )
 
 # Allowlist = the frozen AI SDR reference implementation, where "sales" is the
@@ -67,7 +71,7 @@ if [ ! -s "$LLMS" ]; then
   echo "✗ $LLMS is missing or empty — the agent-first discovery front door is broken."
   fail=1
 else
-  for marker in "effect commit layer" "exactly once" "agb_" "human provisions" ; do
+  for marker in "booking integrity" "booking-audit" "read-only" "unverified" "not on npm yet" ; do
     if ! grep -qi "$marker" "$LLMS"; then
       echo "✗ $LLMS is missing expected marker: \"$marker\""
       fail=1
@@ -93,6 +97,8 @@ CLAIM_SURFACES=(
   "apps/web/src/app/page.tsx"
   "packages/sdk/README.md"
   "packages/mcp-server/README.md"
+  "packages/booking-audit/README.md"
+  "examples/voice-booking-repro/README.md"
 )
 
 # An AFFIRMATIVE qualifier, not merely the substring "dedup". A bare claim in a
@@ -115,7 +121,35 @@ for f in "${CLAIM_SURFACES[@]}"; do
   fi
 done
 
+# --- 4. The audit never claims more than a call log can show -----------------
+# The audit reads the call log only. A surface that describes it must say so,
+# and must name the "unknown" outcome, or it is selling a certainty the tool
+# does not have. This is the audit's version of the qualifier above.
+AUDIT_SURFACES=(
+  "docs/positioning.md"
+  "README.md"
+  "packages/booking-audit/README.md"
+  "apps/marketing/public/llms.txt"
+  "apps/marketing/src/app/page.tsx"
+)
+for f in "${AUDIT_SURFACES[@]}"; do
+  if [ ! -f "$f" ]; then
+    echo "✗ $f is missing — it is a surface that describes the booking audit."
+    fail=1
+    continue
+  fi
+  flat=$(tr -s '[:space:]' ' ' < "$f")
+  if ! printf '%s' "$flat" | grep -qiE "reads the call log (and nothing else|only)"; then
+    echo "✗ $f describes the booking audit without saying it reads the call log only."
+    fail=1
+  fi
+  if ! printf '%s' "$flat" | grep -qi "unknown"; then
+    echo "✗ $f describes the booking audit without the unknown outcome."
+    fail=1
+  fi
+done
+
 if [ "$fail" -eq 0 ]; then
-  echo "✓ positioning guard passed (no retired tagline; llms.txt correct; no unconditional exactly-once claim)"
+  echo "✓ positioning guard passed (no retired tagline; llms.txt correct; no unconditional exactly-once claim; audit claims carry their limit)"
 fi
 exit "$fail"

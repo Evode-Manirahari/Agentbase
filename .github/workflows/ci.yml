@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   health:
-    name: lint + typecheck + build + API tests
+    name: lint + typecheck + build + tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -80,6 +80,12 @@ jobs:
 
       - name: Apply database schema
         run: pnpm --filter '@agentbase/db' exec drizzle-kit push --force
+
+      - name: Booking audit tests
+        run: pnpm --filter '@agentbase/booking-audit' run test
+
+      - name: Booking reproduction tests
+        run: pnpm --filter '@agentbase/voice-booking-repro' run test
 
       - name: API tests
         run: pnpm --filter '@agentbase/api' run test

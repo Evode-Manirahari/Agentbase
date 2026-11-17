@@ -2,132 +2,189 @@
 
 ## Category
 
-Agentbase is the **effect commit layer** for AI agents.
+Agentbase is **booking integrity for voice agents**.
 
-The agent-first internet is building two layers, and only one of them is
-crowded:
+A voice agent that books appointments has two jobs: make the booking, and tell
+the caller the truth about it. Platforms cover the conversation. QA tools cover
+how the conversation went. Nothing covers the gap between the tool call and the
+sentence the caller hears next:
 
-- **Permission** — may this agent call this tool, with whose credentials?
-- **Commitment** — the call was permitted; did it actually happen, exactly once?
-
-Agentbase is the second one.
+- Did the booking happen once?
+- Did it happen at all?
+- Does anyone know?
 
 ## One-line pitch
 
-Commit an agent's irreversible actions exactly once wherever the provider
-deduplicates, prove what happened, and survive a crash in the middle.
+Find the bookings your voice agent duplicated, never confirmed with the caller,
+or never made. Where the outcome is unknown, it says so.
 
-The condition is part of the pitch, not a footnote to it. Every surface that
-copies this line copies the condition with it — see "The qualifier" below for
-why saying it up front is what makes the rest credible.
+"It says so" is part of the pitch, not a footnote to it. See "The qualifiers"
+below for why saying it up front is what makes the rest credible.
 
 ## The problem
 
-Between sending a request and reading its response, the effect may or may not
-exist. Nothing on our side of the network closes that gap — not a transaction,
-not a lock, not a retry policy. The provider either processed it or did not, and
-the process may die before finding out.
+When a booking tool call times out, fires twice, or never fires, the caller
+still hears a sentence within a second. Today that sentence is a guess.
+Builders find the damage later, by hand: duplicate appointment records, and
+callers who were told "you're booked" with nothing in the calendar.
 
-Every agent framework in production today resolves that ambiguity by guessing.
-Retry, and the customer is charged twice. Report failure, and the system has
-lied about something that already happened. Both are wrong, and the second one
-is worse because it is silent.
+This is documented in public, by the people it happens to:
 
-The failure is not theoretical and it is not rare. It is one crash, one timeout,
-or one restart away, on every irreversible call an unattended agent makes.
+- A Retell builder, July 2026: the engine "emitted 5 identical
+  `Book_Appointment` tool calls in the same turn," leaving one patient with
+  seven appointment records across three times. The reply told him to add a
+  lock on his own side.
+  ([thread](https://community.retellai.com/t/book-appointment-tool-calls-fired-in-a-single-llm-turn-after-streaming-timeout-resulted-in-multiple-appointments-booked-for-one-requested-slot/3301))
+- The Agentic AI Foundation's October 2026 failure analysis: "A timeout cannot
+  safely be treated as proof that nothing happened." "Retrying without checking
+  can produce two bookings." It names no product as the answer.
+  ([post](https://aaif.io/blog/where-voice-agents-fail-in-production-part-2-tools-recovery-and-observability))
+- Vapi's docs tell builders to point the tool at a proxy they control and to
+  check the record before retrying.
+  ([docs](https://docs.vapi.ai/tools/api-request/reliability))
+- Retell's docs say to enable retries only if the endpoint is idempotent.
+  ([docs](https://docs.retellai.com/build/single-multi-prompt/custom-function))
 
-## What Agentbase does
+Forum posts are a symptom of the problem. They are not demand for this product.
+See "Status".
 
-- **Reserves before dispatch.** The attempt is written `indeterminate` *before*
-  the request leaves, so a crash at the worst moment leaves evidence rather than
-  nothing.
-- **Carries a provider idempotency key** on the wire wherever the provider
+## What ships today
+
+`packages/booking-audit`: a read-only command-line audit of voice-platform call
+logs. Retell first. It runs on the builder's machine, has zero runtime
+dependencies, sends nothing anywhere, and redacts by default.
+
+Four checks:
+
+- **F1 Repeated booking.** The same booking sent more than once in one call.
+- **F2 Booking the caller never confirmed.** A second, different booking made
+  right after an attempt went wrong, with no caller speech in between.
+- **F3 Unverified booking claim.** The agent said a booking was made and no
+  confirmed result came before that sentence.
+- **F4 Unknown booking outcome.** A booking was sent and the log does not show
+  whether it was made.
+
+`booking-audit demo` produces a real report from built-in, made-up calls in
+about ten seconds, with no key and no network.
+
+## What does not exist yet
+
+**The fix.** One URL in front of a builder's existing booking webhook that
+commits each booking intent once and answers confirmed, failed, or unknown, so
+the agent never says "booked" on an unknown.
+
+It is not built on purpose. It gets built when one outside builder runs the
+audit on real calls, finds something, and asks how to stop it. Until then: no
+proxy, no hosted service, no billing, no dashboard work. The gate is written
+down in [`TODOS.md`](../TODOS.md).
+
+## The engine underneath
+
+The fix will be built on the commit protocol that already exists in `apps/api`
+and is specified in [`effect-commit.md`](./effect-commit.md):
+
+- **Reserve before dispatch.** The attempt is written `indeterminate` *before*
+  the request leaves, so a crash at the worst moment leaves evidence.
+- **Carry a provider idempotency key** on the wire wherever the provider
   honours one.
-- **Refuses to guess.** An attempt that never settled stays `indeterminate`, is
-  never auto-retried, and can only be closed by a human recording what they
-  actually found at the provider.
-- **Replays without re-sending.** Recorded receipts are returned with zero
-  requests to any provider.
-- **Grades by consequence, not by name.** Policy matches on what an action
-  *does* — its effect class and whether it is reversible — so a command nobody
-  anticipated is still gated.
+- **Refuse to guess.** An attempt that never settled stays `indeterminate`, is
+  never auto-retried, and is closed only by a human recording what they found.
+- **Replay without re-sending.**
 
-## The claim
+Ten retries across three crash points produce one effect, wherever the provider
+deduplicates. Remove the idempotency key and the same test produces eight.
+Tested in `apps/api/src/actions/effect-dispatcher.test.ts`.
 
-Ten retries across three crash points produce **exactly one** effect. Remove the
-idempotency key and the same test produces eight.
+The engine is built and tested. It is not wired to any voice platform. In a
+back-office agent an unknown outcome can wait in a queue. In a phone call the
+agent has to speak now, and the engine's `indeterminate` state is the sentence
+it says next. That is why voice is where this engine is a product and not
+plumbing.
 
-Tested in `apps/api/src/actions/effect-dispatcher.test.ts`. Protocol in
-[`effect-commit.md`](./effect-commit.md).
+## The qualifiers, which ship with every claim
 
-## The qualifier, which ships with the claim
+**1. The audit reads the call log and nothing else.** "Confirmed" means the log
+says so. When the log cannot say, the audit reports `unknown` or "unverified
+claim". It never reports "failed" or "missing" on a guess. A missing success
+response does not prove an appointment is absent, and only the builder's
+booking system can settle it. Every finding ends with what to check there.
 
-**At-most-once holds only where the provider deduplicates.** Connectors declare
-`key`, `natural`, or `none` per call; undeclared means `none`. Against a
-provider that cannot dedupe, Agentbase's honesty is the product — it will tell
-you it does not know rather than pretend.
+**2. The engine's guarantee is conditional.** At-most-once holds only where the
+provider deduplicates. Connectors declare `key`, `natural`, or `none` per call;
+undeclared means `none`. Against a backend that cannot dedupe and cannot be
+looked up, the engine holds the attempt as unknown rather than retrying it.
 
-Never pitch the guarantee unconditionally. The first competent engineer who
-hears it will ask, and the qualifier is what makes the rest credible.
+Never pitch either one without its condition. The first competent engineer who
+hears it will ask.
 
 ## Buyer
 
-Teams running **unattended agents that touch irreversible things** — payments,
-email sends, deploys, infrastructure, publishing, external writes.
+**First payer (hypothesis):** an agency that maintains many low-code booking
+installs (Retell or Vapi in front, n8n / Make / GoHighLevel / Cal.com behind)
+for client businesses. They hit this at every client, have no database to add a
+constraint to, and need checks that keep running.
 
-The qualifying question is not "do you use AI agents?" It is:
+**Free users and source of signal:** vertical voice startups with their own
+backend. They can stop duplicates with one unique constraint. They will run the
+audit, fix it themselves, and tell us what the audit got wrong.
 
-> When your agent crashes mid-call, how do you currently find out whether the
-> thing happened?
+**Not the buyer:** the dental office, the HVAC shop, or "teams running agents".
 
-Teams with a real answer are not buyers. Teams that go quiet are.
+The qualifying question:
+
+> When a client tells you a caller was double-booked, or was told they were
+> booked and was not, how do you find out which other calls it happened on?
+
+Teams with a real answer are not buyers. Teams that say "we wait for the next
+complaint" are.
+
+The test of the first-payer hypothesis: does an agency run the audit on more
+than one client account?
 
 ## Differentiation
 
-Permission gateways — [Executor](https://executor.sh/), MCPX, Docker's MCP
-Gateway, and the MCP spec's own just-in-time authorization — answer whether a
-call is allowed. That question is settled before anything leaves the machine,
-and it is well served.
+- **Voice platforms** (Retell, Vapi, LiveKit, Pipecat) orchestrate the call.
+  Each fixes its own side and tells the builder to make the endpoint idempotent.
+- **QA and observability** (Cekura, Hamming, Coval) test and monitor the
+  conversation. These stack with an audit; they do not replace the booking
+  system as the source of truth, and neither does this.
+- **Automation tools** (n8n, Make, Zapier) are the pipes the booking travels
+  through. They deliver at least once and do not know the outcome.
+- **Agentbase** is about the booking itself: one intent, one appointment, and
+  the truth when nobody knows.
 
-None of them makes a crash-safety, receipt, or replay claim.
+## Moat (hypothesis, not yet earned)
 
-**These stack.** A gateway can front this layer; this layer does not replace
-one. Positioning against gateways is a mistake — the pitch is what happens after
-they have done their job.
+- **How each booking backend behaves.** Which ones deduplicate, on what key,
+  and which can be looked up after a timeout. Grubby per-backend truth that
+  only accumulates by doing the work.
+- **Neutral across platforms.** An agency runs more than one.
+- **The shapes of failure.** Every real log the audit gets wrong makes it
+  better at the next one.
 
-## Moat
+## What was retired on 2026-11-16
 
-- **The evidence ledger.** One row per attempt with the provider's own
-  reference. Replacing Agentbase means abandoning the record of what your agents
-  actually did.
-- **Connector idempotency knowledge.** Which providers dedupe, on what key, for
-  how long, is grubby per-provider truth that only accumulates by doing the
-  work.
-- **Agent-native interface.** The buyer is human; the daily caller is the agent.
-  SDK and MCP access let agents commit through Agentbase directly while humans
-  keep the quarantine exit.
+The headline that described Agentbase as horizontal infrastructure for any AI
+agent. Three versions of it (sales agents, safe actions for internal agents,
+one commit layer under every kind of agent) produced zero users. Exactly-once sold as
+general infrastructure is a feature that workflow engines, MCP gateways and the
+model labs are absorbing, and the standalone attempts at it have almost no
+users.
 
-## Product thesis
+The engine is kept. The claim that it is the product is not.
 
-The bundled outbound, follow-up, reply-handler, and CRM-hygiene flows in
-`apps/api/src/agent-runtime/` are a **frozen reference implementation** — proof
-the layer works on a real agent, not the product. "Sales" is correct inside that
-directory and its examples, and nowhere else.
-
-Every irreversible agent action should pass through the same primitives:
-
-- Effect classification by consequence.
-- Policy decision.
-- Approval routing for what cannot be undone.
-- Reserve → dispatch → settle, with a receipt per attempt.
-- Quarantine with a human exit.
-- Replay without re-sending.
+The bundled outbound, follow-up, reply-handler and CRM-hygiene flows in
+`apps/api/src/agent-runtime/` remain a **frozen reference implementation**. So
+do the sales connectors, Slack approvals, the policy editor and the dashboard.
 
 ## Status
 
-**Demand is unvalidated.** No customer has asked for this. The technical claim
-is tested and the demo runs; neither is evidence that anyone will pay. Do not
+**Demand is unvalidated.** As of 2026-11-16 nobody outside the founder has run
+the audit. It is tested against hand-built fixtures shaped like the Retell API
+reference, not against a body of real call logs. It is not on npm. Do not
 describe pilots, users, or revenue that do not exist.
 
-The next step is conversations with teams running unattended agents — not more
-building. See the §11 tripwire in [`TODOS.md`](../TODOS.md).
+The next step is one outside builder running it on their own calls. The stop
+rule: if fewer than three have done so by 2026-12-14 after ten or more posts
+where the bug is being reported, stage two does not get built and the question
+becomes whether the bet or the channel is wrong.

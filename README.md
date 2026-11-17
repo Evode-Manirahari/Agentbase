@@ -1,61 +1,99 @@
 # Agentbase
 
-> Commit an agent's irreversible actions exactly once, prove what happened, and survive a crash in the middle.
->
-> At-most-once holds wherever the provider deduplicates. Where it cannot, Agentbase reports that it does not know rather than guessing.
+> **Booking integrity for voice agents.** Find the bookings your voice agent duplicated, never confirmed with the caller, or never made. Where the outcome is unknown, it says so.
 
 [![CI](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml/badge.svg)](https://github.com/Evode-Manirahari/Agentbase/actions/workflows/ci.yml)
 
-Agentbase is the **effect commit layer** for AI agents.
+When a voice agent's booking tool call times out, fires twice, or never fires, the caller still hears a sentence. Today that sentence is a guess, and builders find the damage later, by hand.
 
-The product direction source of truth lives in [docs/positioning.md](./docs/positioning.md). The protocol is in [docs/effect-commit.md](./docs/effect-commit.md).
+This repo has two things for that, and an engine underneath:
 
-## What this is
+1. **[`booking-audit`](./packages/booking-audit)**: a read-only audit of your call logs. Runs on your machine, sends nothing anywhere.
+2. **[`voice-booking-repro`](./examples/voice-booking-repro)**: three public booking failures, reproduced, then run through a commit protocol that holds each to one booking.
 
-A permission gateway answers **"may this agent call this tool, with whose credentials?"** — settled before anything leaves the machine. [Executor](https://executor.sh/), MCPX, Docker's MCP Gateway, and the MCP spec's own just-in-time authorization all serve that question well.
+Positioning source of truth: [docs/positioning.md](./docs/positioning.md).
 
-Agentbase answers the one that comes after:
+## See it in ten seconds
 
-> The call was permitted and a human approved it. How do we commit it exactly once, prove what happened, survive a crash at any point in between, and keep it from happening again during replay?
+No API key, no network. The demo audits built-in, made-up calls and writes a real report.
 
-Between sending a request and reading its response, the effect may or may not exist. Nothing on the caller's side of the network closes that gap — not a transaction, not a lock, not a retry policy. The provider either processed it or did not, and the process may die before finding out.
+```bash
+git clone https://github.com/Evode-Manirahari/Agentbase && cd Agentbase
+pnpm install
+pnpm --filter @agentbase/booking-audit start demo
+```
 
-Everything in production today resolves that ambiguity by guessing. Retry, and the customer is charged twice. Report failure, and the system has lied about something that already happened.
+```text
+booking-audit 0.1.0  (built-in sample calls (made up, not real data), demo)
 
-Agentbase refuses to guess:
+Booking tools detected:
+  Book_Appointment  (12 tool calls, mcp)  same booking = same PatientId, AppointmentStartDate, OPId
+  book_appointment  (1 tool call, custom)  same booking = same phone, name, start
 
-- **Reserve before dispatch** — the attempt is written `indeterminate` *before* the request leaves, so a crash at the worst moment leaves evidence rather than nothing.
-- **Idempotency key on the wire** wherever the provider honours one.
-- **Quarantine, never auto-retry** — an attempt that never settled stays `indeterminate` and is closed only by a human recording what they found at the provider. Retry is refused outright for a provider that cannot deduplicate.
-- **Replay without re-sending** — recorded receipts come back with zero requests to any provider.
-- **Grade by consequence** — policy matches on what an action *does* (effect class, reversibility), so a command nobody anticipated is still gated.
+Calls scanned: 7   with booking attempts: 6   booking attempts: 13
+Outcomes: 10 confirmed, 1 failed, 2 unknown
 
-### The claim
+F1  Repeated booking                    2  (1 high, 1 low)
+F2  Booking the caller never confirmed  1  (1 high)
+F3  Unverified booking claim            2  (2 high)
+F4  Unknown booking outcome             2  (2 medium)
 
-**Ten retries across three crash points produce exactly one effect. Remove the idempotency key and the same test produces eight.**
+5 of 7 calls have findings.
+Report: ./booking-audit-demo/report.html
+```
 
-Test: `apps/api/src/actions/effect-dispatcher.test.ts`.
+## Run it on your own calls
 
-### The qualifier, which ships with the claim
+```bash
+# From the Retell API. The key is read from the environment, never from a flag.
+RETELL_API_KEY=key_... pnpm --filter @agentbase/booking-audit start audit --retell --since 30d
 
-**At-most-once holds only where the provider deduplicates.** Connectors declare `key`, `natural`, or `none` per call; undeclared means `none`. Against a provider that cannot dedupe, the honesty *is* the product — Agentbase reports that it does not know rather than pretending. Never pitch the guarantee unconditionally.
+# Or from call objects you already exported, if you would rather not hand over a key.
+pnpm --filter @agentbase/booking-audit start audit --from ./my-calls
+```
 
-### Buyer
+| Check | Flags |
+|---|---|
+| **F1 Repeated booking** | The same booking sent more than once in one call. |
+| **F2 Booking the caller never confirmed** | A second, different booking made right after an attempt went wrong, with no caller speech in between. |
+| **F3 Unverified booking claim** | The agent said a booking was made and no confirmed result came before that sentence. |
+| **F4 Unknown booking outcome** | A booking was sent and the log does not show whether it was made. |
 
-Teams running unattended agents that touch irreversible things — payments, sends, deploys, infrastructure, publishing, external writes. The qualifying question is not "do you use AI agents?" but:
+The audit reads the call log and nothing else. It never upgrades an unknown to a known: a timeout, a 5xx, or a bare `"Workflow was started"` is reported as **unknown**, not as a failure, and a claim with nothing behind it is an **unverified claim**, not a missing appointment. Every finding ends with what to check in your booking system. Details, options and privacy notes: [packages/booking-audit/README.md](./packages/booking-audit/README.md).
 
-> When your agent crashes mid-call, how do you currently find out whether the thing happened?
+## The failures, reproduced
 
-**Demand is unvalidated.** No customer has asked for this yet. The technical claim is tested and the demo runs; neither is evidence anyone will pay.
+```bash
+node examples/voice-booking-repro/repro.mjs    # no install needed
+```
 
-The bundled outbound, follow-up, reply-handler, and CRM-hygiene flows in `apps/api/src/agent-runtime/` are a **frozen reference implementation** — proof the layer works on a real agent, not the product.
+```text
+Appointments that exist in the booking backend afterwards. The caller asked for one.
 
-## Why this becomes defensible
+   Scenario                                     Unprotected   Through the commit protocol
+1. Five identical booking calls in one turn     5             1
+2. The booking lands, the response is lost      2             1
+3. The caller repeats, the tool fires again     2             1
+```
 
-- **The evidence ledger** — one row per attempt with the provider's own reference. Replacing Agentbase means abandoning the record of what your agents actually did.
-- **Connector idempotency knowledge** — which providers dedupe, on what key, for how long, is grubby per-provider truth that only accumulates by doing the work.
-- **Agent-native interface** — the buyer is human, but the daily caller is the agent. SDK and MCP access let agents commit through Agentbase directly while humans keep the quarantine exit.
-- **Action history data** — which effect classes actually get denied, which quarantines resolve as committed, and which providers are unsafe to retry compounds into better defaults over time.
+The backend, callers and appointments in the reproduction are made up. The failures are modeled on public reports, linked in [its README](./examples/voice-booking-repro/README.md). The condition ships with the claim: the protocol never re-sends a booking whose outcome it does not know, retrying is only safe where the backend deduplicates on a key, and where it cannot the attempt is held as unknown and the caller is told the truth.
+
+## Status
+
+- **Version 0.1. Demand is unvalidated.** Nobody outside the author has run the audit on real calls yet. It is tested against hand-built fixtures shaped like the Retell API reference, not against a body of real call logs.
+- **Not on npm yet.** Run it from a clone, as above.
+- **Retell only.** Vapi is next.
+- **The fix is not built, on purpose.** A URL in front of your booking webhook that commits each booking once and answers confirmed, failed, or unknown gets built when one outside builder runs the audit on real calls and asks how to stop what it found. See [TODOS.md](./TODOS.md).
+
+If the audit gets something wrong on your calls, that is the most useful thing you can tell us. Open an issue with the `--share-summary` line (counts only) and what you expected.
+
+## The engine and its reference implementation
+
+Everything below this line is the **commit engine** the fix will be built on, and the frozen reference agent that proved it. It is real, tested, and not wired to any voice platform.
+
+The engine commits an irreversible action exactly once wherever the provider deduplicates, records what happened, and survives a crash in the middle. Where the provider cannot deduplicate, it holds the attempt as unknown rather than guessing. Protocol: [docs/effect-commit.md](./docs/effect-commit.md). Fault-injection test: `apps/api/src/actions/effect-dispatcher.test.ts` (ten retries across three crash points produce one effect; remove the idempotency key and the same test produces eight).
+
+The sales connectors, the SDR runtime in `apps/api/src/agent-runtime/`, Slack approvals, the policy editor and the dashboard are frozen. No new features there.
 
 ## Bring your own agent
 
@@ -105,7 +143,7 @@ End-to-end in <2 minutes once the API is up:
 
 The same control loop applies to any connector — the outbound job is one workflow on top of a generic runtime and commit protocol, not a special case. `gmail.send` is gated here because sending mail is irreversible, which is the same reason `terraform destroy` is gated in the effect-gate demo.
 
-## Status
+## Engine status
 
 Early. The full demoable loop works end-to-end locally. Production auth now fails closed unless Clerk is configured or an explicit unauthenticated escape hatch is set; broader production hardening is still incomplete. No customers yet.
 
